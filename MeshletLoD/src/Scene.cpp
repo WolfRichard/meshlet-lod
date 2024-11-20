@@ -8,6 +8,12 @@ Scene::Scene()
 
 void Scene::init(std::string file_path, uint selectedLoD)
 {
+    m_scene_objects.clear();
+    for (auto mesh : m_meshes) delete mesh;
+    m_meshes.clear();
+    uint m_draw_task_count = 0;
+    m_meshlet_counts.clear();
+    m_indirect_attributes.clear();
     loadScene(file_path, selectedLoD);
 }
 
@@ -43,14 +49,11 @@ void Scene::processSceneNode(aiNode* node, const aiScene* scene, float4x4 parent
         m_draw_task_count += m_meshlet_counts[node->mMeshes[i]];
 
         uint thread_count = ((m_meshlet_counts[node->mMeshes[i]] + GROUP_SIZE - 1) / GROUP_SIZE) * GROUP_SIZE;
+
+        m_indirect_attributes.push_back((uint)m_scene_objects.size() - 1);
         m_indirect_attributes.push_back(thread_count);
         m_indirect_attributes.push_back(1);
         m_indirect_attributes.push_back(1);
-
-        m_indirect_attributes_withConstant.push_back((uint)m_scene_objects.size() - 1);
-        m_indirect_attributes_withConstant.push_back(thread_count);
-        m_indirect_attributes_withConstant.push_back(1);
-        m_indirect_attributes_withConstant.push_back(1);
         
     }
 

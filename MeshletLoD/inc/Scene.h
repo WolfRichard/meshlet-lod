@@ -25,7 +25,6 @@ public:
 
     std::vector<uint> m_meshlet_counts;
     std::vector<uint> m_indirect_attributes;
-    std::vector<uint> m_indirect_attributes_withConstant;
 
 private:
     void loadScene(std::string file_path, uint selectedLoD);

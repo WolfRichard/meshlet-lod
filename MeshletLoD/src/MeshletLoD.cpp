@@ -401,7 +401,7 @@ bool MeshletLoD::LoadContent()
 
     UpdateBufferResource(commandList,
         &m_indirectArgumentBuffer, &copy_indirectAtgumentBuffer,
-        (uint)m_scene.m_indirect_attributes_withConstant.size() / 4, sizeof(CommandStructure), m_scene.m_indirect_attributes_withConstant.data());
+        (uint)m_scene.m_indirect_attributes.size() / 4, sizeof(CommandStructure), m_scene.m_indirect_attributes.data());
 
 
     // transition to indirect argument state
@@ -534,6 +534,22 @@ void MeshletLoD::OnResize(ResizeEventArgs& e)
 void MeshletLoD::UnloadContent()
 {
     m_ContentLoaded = false;
+
+    m_RootSignature.Reset();
+    m_PipelineState.Reset();
+
+    // clear & reset model buffers
+    m_CBV_SRV_UAV_Heap.Reset();
+
+    m_IndexBuffers.clear();
+    m_VertexBuffers.clear();
+    m_TriangleBuffers.clear();
+    m_DrawTasksBuffers.clear();
+    m_ObjectsBuffer.Reset();
+    m_MeshletCountsBuffer.Reset();
+
+    m_indirectArgumentBuffer.Reset();
+    m_commandSignature.Reset();
 }
 
 void MeshletLoD::OnUpdate(UpdateEventArgs& e)
@@ -809,6 +825,9 @@ void MeshletLoD::OnMouseWheel(MouseWheelEventArgs& e)
 
 void MeshletLoD::initImGui() 
 {
+    static bool alreadyInitialized = false;
+    if (alreadyInitialized) return;
+
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
@@ -841,6 +860,7 @@ void MeshletLoD::initImGui()
         m_ImGuiDescriptorHeap->GetGPUDescriptorHandleForHeapStart()
     );   
 
+    alreadyInitialized = true;
 }
 
 void MeshletLoD::updateImGui()
@@ -927,7 +947,9 @@ void MeshletLoD::updateImGui()
         ImGui::SameLine();
         if (ImGui::Button("Load Model"))
         {
-         
+            Application::Get().Flush();
+            UnloadContent();
+            LoadContent();
         }
         static int lod = 0;
         ImGui::SliderInt("Level of Detail", &lod, 0, 10);
