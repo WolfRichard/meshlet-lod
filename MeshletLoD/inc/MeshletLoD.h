@@ -125,8 +125,8 @@ private:
     
     bool m_freeCamera = false;
     bool m_autoRotateScene = true;
-    float m_autoCameraDistance = 10.0f;
-    float m_autoRotationOffset = 0;
+    float m_autoCameraDistance = 15.0f;
+    float m_autoRotationOffset = 2;
     
     
 
@@ -157,5 +157,5 @@ private:
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
 
     Scene m_scene;
-    char  m_model_file_path[1024] = "./assets/TestScene.glb";//"C:/Users/wolfr/Desktop/MA_Models_and_Scenes/instanceTestScene/instanceTestScene.glb"; //"C:/Users/wolfr/Desktop/3dscans/Szene/test_scene2.ply";
+    char  m_model_file_path[1024] = "./assets/TestScene.glb"; //"C:/Users/wolfr/Desktop/3dscans/Szene/test_scene2.ply";
 };
