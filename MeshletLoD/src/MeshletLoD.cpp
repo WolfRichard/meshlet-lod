@@ -134,6 +134,48 @@ void MeshletLoD::CreateBufferResource(
     }
 }
 
+void MeshletLoD::CreatePSO()
+{
+    m_PipelineState.Reset();
+    auto device = Application::Get().GetDevice();
+
+    struct PipelineStateStream
+    {
+        CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE pRootSignature;
+        CD3DX12_PIPELINE_STATE_STREAM_PRIMITIVE_TOPOLOGY PrimitiveTopologyType;
+        CD3DX12_PIPELINE_STATE_STREAM_AS AS;
+        CD3DX12_PIPELINE_STATE_STREAM_MS MS;
+        CD3DX12_PIPELINE_STATE_STREAM_PS PS;
+        CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL_FORMAT DSVFormat;
+        CD3DX12_PIPELINE_STATE_STREAM_RENDER_TARGET_FORMATS RTVFormats;
+        CD3DX12_PIPELINE_STATE_STREAM_RASTERIZER RasterizerState;
+    } pipelineStateStream;
+
+    D3D12_RT_FORMAT_ARRAY rtvFormats = {};
+    rtvFormats.NumRenderTargets = 1;
+    rtvFormats.RTFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+
+    // Define the custom rasterizer state to set culling mode
+    CD3DX12_RASTERIZER_DESC rasterizerDesc(D3D12_DEFAULT);
+    if (!m_backFaceCulling) rasterizerDesc.CullMode = D3D12_CULL_MODE_NONE;
+    if (m_wireframe) rasterizerDesc.FillMode = D3D12_FILL_MODE_WIREFRAME;
+
+    pipelineStateStream.pRootSignature = m_RootSignature.Get();
+    pipelineStateStream.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    pipelineStateStream.MS = CD3DX12_SHADER_BYTECODE(m_meshShaderBlob.Get());
+    pipelineStateStream.AS = CD3DX12_SHADER_BYTECODE(m_taskShaderBlob.Get());
+    pipelineStateStream.PS = CD3DX12_SHADER_BYTECODE(m_pixelShaderBlob.Get());
+    pipelineStateStream.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+    pipelineStateStream.RTVFormats = rtvFormats;
+    pipelineStateStream.RasterizerState = rasterizerDesc;
+
+    D3D12_PIPELINE_STATE_STREAM_DESC pipelineStateStreamDesc = {
+        sizeof(PipelineStateStream), &pipelineStateStream
+    };
+    ThrowIfFailed(device->CreatePipelineState(&pipelineStateStreamDesc, IID_PPV_ARGS(&m_PipelineState)));
+}
+
+
 bool MeshletLoD::LoadContent()
 {
     m_scene.init(m_model_file_path, 0);
@@ -319,16 +361,14 @@ bool MeshletLoD::LoadContent()
     ThrowIfFailed(device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&m_DSVHeap)));
 
     // Load the pixel shader.
-    ComPtr<ID3DBlob> pixelShaderBlob;
-    ThrowIfFailed(D3DReadFileToBlob(L"PixelShader.cso", &pixelShaderBlob));
+    
+    ThrowIfFailed(D3DReadFileToBlob(L"PixelShader.cso", &m_pixelShaderBlob));
 
     // Load the mesh shader.
-    ComPtr<ID3DBlob> meshShaderBlob;
-    ThrowIfFailed(D3DReadFileToBlob(L"MeshShader.cso", &meshShaderBlob));
+    ThrowIfFailed(D3DReadFileToBlob(L"MeshShader.cso", &m_meshShaderBlob));
 
     // Load the task shader.
-    ComPtr<ID3DBlob> taskShaderBlob;
-    ThrowIfFailed(D3DReadFileToBlob(L"TaskShader.cso", &taskShaderBlob));
+    ThrowIfFailed(D3DReadFileToBlob(L"TaskShader.cso", &m_taskShaderBlob));
 
 
     // Create a root signature.
@@ -427,40 +467,7 @@ bool MeshletLoD::LoadContent()
     commandSignatureDesc.ByteStride = sizeof(CommandStructure);
     device->CreateCommandSignature(&commandSignatureDesc, m_RootSignature.Get(), IID_PPV_ARGS(&m_commandSignature));
 
-
-    struct PipelineStateStream
-    {
-        CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE pRootSignature;
-        CD3DX12_PIPELINE_STATE_STREAM_PRIMITIVE_TOPOLOGY PrimitiveTopologyType;
-        CD3DX12_PIPELINE_STATE_STREAM_AS AS;
-        CD3DX12_PIPELINE_STATE_STREAM_MS MS;
-        CD3DX12_PIPELINE_STATE_STREAM_PS PS;
-        CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL_FORMAT DSVFormat;
-        CD3DX12_PIPELINE_STATE_STREAM_RENDER_TARGET_FORMATS RTVFormats;
-        CD3DX12_PIPELINE_STATE_STREAM_RASTERIZER RasterizerState;
-    } pipelineStateStream;
-
-    D3D12_RT_FORMAT_ARRAY rtvFormats = {};
-    rtvFormats.NumRenderTargets = 1;
-    rtvFormats.RTFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-
-    // Define the custom rasterizer state to set culling mode
-    CD3DX12_RASTERIZER_DESC rasterizerDesc(D3D12_DEFAULT);
-    rasterizerDesc.CullMode = D3D12_CULL_MODE_BACK;
-
-    pipelineStateStream.pRootSignature = m_RootSignature.Get();
-    pipelineStateStream.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    pipelineStateStream.MS = CD3DX12_SHADER_BYTECODE(meshShaderBlob.Get());
-    pipelineStateStream.AS = CD3DX12_SHADER_BYTECODE(taskShaderBlob.Get());
-    pipelineStateStream.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob.Get());
-    pipelineStateStream.DSVFormat = DXGI_FORMAT_D32_FLOAT;
-    pipelineStateStream.RTVFormats = rtvFormats;
-    pipelineStateStream.RasterizerState = rasterizerDesc;
-    
-    D3D12_PIPELINE_STATE_STREAM_DESC pipelineStateStreamDesc = {
-        sizeof(PipelineStateStream), &pipelineStateStream
-    };
-    ThrowIfFailed(device->CreatePipelineState(&pipelineStateStreamDesc, IID_PPV_ARGS(&m_PipelineState)));
+    CreatePSO();
 
     auto fenceValue = commandQueue->ExecuteCommandList(commandList);
     commandQueue->WaitForFenceValue(fenceValue);
@@ -958,9 +965,11 @@ void MeshletLoD::updateImGui()
 
     if (!ImGui::CollapsingHeader("Debug Settings"))
     {
-        ImGui::Checkbox("Wireframe", &m_wireframe);
-        ImGui::Checkbox("Debug Visuals", &m_debugVisuals);
-
+        if (ImGui::Checkbox("Wireframe", &m_wireframe)) CreatePSO();
+        ImGui::SameLine();
+        if (ImGui::Checkbox("Back Face Culling", &m_backFaceCulling)) CreatePSO();
+        ImGui::SameLine();
+        if (ImGui::Checkbox("Debug Visuals", &m_debugVisuals)) CreatePSO();
         
         if (ImGui::Button("Force Lag"))
             Sleep(1000);

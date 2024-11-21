@@ -53,6 +53,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_ImGuiDescriptorHeap;
     void initImGui();
     void updateImGui();
+    void CreatePSO();
 
     // Helper functions
     // Transition a resource
@@ -104,12 +105,18 @@ private:
     DirectX::XMMATRIX m_ViewMatrix;
     DirectX::XMMATRIX m_ProjectionMatrix;
 
+    Microsoft::WRL::ComPtr<ID3DBlob> m_pixelShaderBlob;
+    Microsoft::WRL::ComPtr<ID3DBlob> m_meshShaderBlob;
+    Microsoft::WRL::ComPtr<ID3DBlob> m_taskShaderBlob;
+
+
     bool m_ContentLoaded;
 
     float m_ClearColor[4] = {23.0f / 255.0f, 23.0f / 255.0f, 31.0f / 255.0f, 1.0f};
     double m_fps = 0;
     double m_frameTime = 0;
     bool m_wireframe = false;
+    bool m_backFaceCulling = true;
     bool m_frustumCulling = true;
     bool m_coneCulling = false;
     bool m_debugVisuals = false;
