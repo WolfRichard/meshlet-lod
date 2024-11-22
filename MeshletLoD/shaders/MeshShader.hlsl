@@ -25,8 +25,6 @@ StructuredBuffer<uint> indicesBuffers[]          : register(t0, space2);
 StructuredBuffer<uint> trianglesBuffers[]        : register(t0, space3);
 
 
-
-
 uint SampleTriangleBufferAsCharArray(uint i, uint mesh_id)
 {
     uint array_pos = i / 4;
@@ -92,7 +90,12 @@ void main(in uint I : SV_GroupIndex,
         verts[v].Pos = mul(mul(float4(vertex.position.xyz, 1.0), objectsBuffer[meshPayload.object_id[gid]].object_matrix), constantsBuffer.ViewProjMat);
         //verts[v].UV = vertex.uv.xy;
         
-        verts[v].Color = Rainbow(Random(gid)) * clamp(dot(normalize(float3(2, 1, -4)), vertex.normal.xyz), 0.05, 1);
+        
+        float brightness = clamp(clamp(dot(normalize(float3(2, 1, -4)), vertex.normal.xyz), 0, 1) + clamp(dot(normalize(float3(-1, -2, 4)), vertex.normal.xyz), 0, 1), 0.05, 1);
+        if (constantsBuffer.BoolConstants & DEBUG_VISUALS_BIT_POS)
+            verts[v].Color = Rainbow(Random(gid)) * brightness;
+        else 
+            verts[v].Color = brightness;
 
     }
     

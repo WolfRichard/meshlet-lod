@@ -11,6 +11,7 @@
 #include "../shaders/Structures.fxh"
 
 
+
 class Scene
 {
 public:
@@ -24,7 +25,7 @@ public:
     uint m_draw_task_count = 0;
 
     std::vector<uint> m_meshlet_counts;
-    std::vector<uint> m_indirect_attributes;
+    std::vector<CommandStructure> m_indirect_attributes;
 
 private:
     void loadScene(std::string file_path, uint selectedLoD);

@@ -78,12 +78,6 @@ struct CustomVertex
     float4 color;
 };
 
-struct IndirectMeshDrawArguments
-{
-    uint task_count;
-    uint first_task;
-};
-
 struct SceneObject
 {
     float4x4 object_matrix;
@@ -94,4 +88,10 @@ struct SceneObject
     uint mesh_id;
     
     float3 byte_allignement; // used to keep 16 byte allignement for structured buffer
+};
+
+struct CommandStructure
+{
+    uint instanceID;
+    uint3 dispatchArguments;
 };

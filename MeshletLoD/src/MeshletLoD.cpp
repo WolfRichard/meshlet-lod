@@ -22,6 +22,8 @@ using namespace Microsoft::WRL;
 
 #include <d3dcompiler.h>
 
+//#include "DirectXTex.h"
+
 #include <algorithm> 
 #if defined(min)
 #undef min
@@ -434,14 +436,11 @@ bool MeshletLoD::LoadContent()
     // setup indirect draw attributes buffer
     ComPtr<ID3D12Resource> copy_indirectAtgumentBuffer;
 
-    struct CommandStructure {
-        unsigned int instanceID;
-        D3D12_DISPATCH_MESH_ARGUMENTS dispatchArguments;
-    };
+    
 
     UpdateBufferResource(commandList,
         &m_indirectArgumentBuffer, &copy_indirectAtgumentBuffer,
-        (uint)m_scene.m_indirect_attributes.size() / 4, sizeof(CommandStructure), m_scene.m_indirect_attributes.data());
+        (uint)m_scene.m_indirect_attributes.size(), sizeof(CommandStructure), m_scene.m_indirect_attributes.data());
 
 
     // transition to indirect argument state

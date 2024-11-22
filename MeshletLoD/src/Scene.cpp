@@ -50,11 +50,11 @@ void Scene::processSceneNode(aiNode* node, const aiScene* scene, float4x4 parent
 
         uint thread_count = ((m_meshlet_counts[node->mMeshes[i]] + GROUP_SIZE - 1) / GROUP_SIZE) * GROUP_SIZE;
 
-        m_indirect_attributes.push_back((uint)m_scene_objects.size() - 1);
-        m_indirect_attributes.push_back(thread_count);
-        m_indirect_attributes.push_back(1);
-        m_indirect_attributes.push_back(1);
-        
+        m_indirect_attributes.push_back(CommandStructure());
+        m_indirect_attributes.back().instanceID = (uint)(m_scene_objects.size() - 1u);
+        m_indirect_attributes.back().dispatchArguments.x = thread_count;
+        m_indirect_attributes.back().dispatchArguments.y = 1u;
+        m_indirect_attributes.back().dispatchArguments.z = 1u;
     }
 
     for (uint i = 0; i < node->mNumChildren; i++)

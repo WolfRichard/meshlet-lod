@@ -119,7 +119,7 @@ private:
     bool m_backFaceCulling = true;
     bool m_frustumCulling = true;
     bool m_coneCulling = false;
-    bool m_debugVisuals = false;
+    bool m_debugVisuals = true;
 
     // camera related variables
     float3 m_cameraPos = float3(0, 0, 0);

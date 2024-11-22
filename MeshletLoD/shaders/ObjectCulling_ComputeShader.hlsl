@@ -1,17 +1,54 @@
+# include "Structures.fxh"
+
 // Input buffers (read-only)
-StructuredBuffer<float> InputA : register(t0);
-StructuredBuffer<float> InputB : register(t1);
+
+//Constants Buffer for frustum information
+cbuffer InstanceIDBuffer : register(b0, space0)
+{
+    Constants constantsBuffer;
+};
+
+// Objects Buffer
+StructuredBuffer<SceneObject> objectsBuffer : register(t0, space0);
+// Per Mesh: Meshlet Counts Buffer
+StructuredBuffer<uint> meshletCountsBuffer : register(t1, space0);
+
 
 // Output buffer (read-write)
-RWStructuredBuffer<float> Output : register(u0);
 
-// Compute shader entry point
-[numthreads(256, 1, 1)] // Defines the number of threads per thread group
+// number of visible objects
+RWBuffer<uint> visibleObjectCount : register(u0);
+
+// arguments buffer for dispatch indirect
+RWStructuredBuffer<CommandStructure> indirectArgumentBuffer : register(u1);
+
+
+
+// Frustum Culling
+bool IsInFrustum(float3 center, float radius)
+{
+    float4 f4Center = float4(center, 1.0);
+    for (int i = 0; i < 6; ++i)
+    {
+        if (dot(constantsBuffer.Frustum[i], f4Center) < -radius)
+            return false;
+    }
+    return true;
+}
+
+
+[numthreads(GROUP_SIZE, 1, 1)]
 void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
-    // Fetch the thread ID
-    uint index = dispatchThreadID.x;
-
-    // Perform element-wise addition
-    Output[index] = InputA[index] + InputB[index];
+    uint objectID = dispatchThreadID.x;
+    SceneObject object = objectsBuffer[objectID];
+    if (IsInFrustum(object.bounding_sphere_center, object.bounding_sphere_radius))
+    {
+        uint argumentBufferID;
+        InterlockedAdd(visibleObjectCount[0], 1, argumentBufferID);
+        uint thread_count = ((meshletCountsBuffer[object.mesh_id] + GROUP_SIZE - 1) / GROUP_SIZE) * GROUP_SIZE;
+        
+        indirectArgumentBuffer[argumentBufferID].instanceID = objectID;
+        indirectArgumentBuffer[argumentBufferID].dispatchArguments = uint3(thread_count, 1, 1);       
+    }
 }
