@@ -42,8 +42,8 @@ bool IsInFrustum(float3 center, float radius)
 // Cone Culling
 bool IsShowingBackside(float3 coneApex, float3 coneAxis, float coneCutoff)
 {
-    return (dot(normalize(constantsBuffer.CameraWorldPos - coneApex), coneAxis) >= coneCutoff); // cos(acos(coneCutoff) * 2));
-
+    float3 directionConeCamera = normalize(constantsBuffer.CameraWorldPos - coneApex);
+    return (dot(directionConeCamera, coneAxis) >= coneCutoff);
 }
 
 
@@ -73,9 +73,12 @@ void main(in uint I : SV_GroupIndex,
         float3 bounding_sphere_center = mul(float4(task.culling_info.bounding_sphere_center, 1.0), objectsBuffer[object_id].object_matrix).xyz;
         float bounding_sphere_radius = length(mul(float4(task.culling_info.bounding_sphere_center + float3(task.culling_info.bounding_sphere_radius, 0, 0), 1.0), objectsBuffer[object_id].object_matrix).xyz - bounding_sphere_center);
         
+        float3 normal_cone_apex = mul(float4(task.culling_info.normal_cone_apex, 1.0), objectsBuffer[object_id].object_matrix).xyz;
+        float3 normal_cone_axis = mul(float4(task.culling_info.normal_cone_axis, 0.0), objectsBuffer[object_id].object_matrix).xyz;
+        
         
         if ((!(constantsBuffer.BoolConstants & FRUSTUM_CULLING_BIT_POS) || IsInFrustum(bounding_sphere_center, bounding_sphere_radius)) &&
-            (!(constantsBuffer.BoolConstants & CONE_CULLING_BIT_POS) || !IsShowingBackside(task.culling_info.normal_cone_apex, task.culling_info.normal_cone_axis, task.culling_info.normal_cone_cutoff)))
+            (!(constantsBuffer.BoolConstants & CONE_CULLING_BIT_POS) || !IsShowingBackside(normal_cone_apex, normal_cone_axis, task.culling_info.normal_cone_cutoff)))
         {
         // Acquire an index that will be used to safely access the payload.
         // Each thread gets a unique index.
