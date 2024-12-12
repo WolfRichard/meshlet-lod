@@ -8,7 +8,7 @@
 ## Setup Instructions
 ### Install the following packages via vcpkg:<be>
 ```
-vcpkg install imgui
+vcpkg install imgui[core,dx12-binding,win32-binding]:x64-windows
 vcpkg install directx-headers
 vcpkg install meshoptimizer
 vcpkg install assimp
