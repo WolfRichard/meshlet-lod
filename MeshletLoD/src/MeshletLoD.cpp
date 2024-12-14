@@ -177,6 +177,26 @@ void MeshletLoD::CreatePSO()
     ThrowIfFailed(device->CreatePipelineState(&pipelineStateStreamDesc, IID_PPV_ARGS(&m_PipelineState)));
 }
 
+void MeshletLoD::CreateCullingPSO()
+{
+    m_ObjectCulling_PipelineState.Reset();
+    auto device = Application::Get().GetDevice();
+
+    struct PipelineStateStream
+    {
+        CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE pRootSignature;
+        CD3DX12_PIPELINE_STATE_STREAM_CS CS;
+    } pipelineStateStream;
+
+    pipelineStateStream.pRootSignature = m_ObjectCulling_RootSignature.Get();
+    pipelineStateStream.CS = CD3DX12_SHADER_BYTECODE(m_objectCullingComputeShaderBlob.Get());
+
+    D3D12_PIPELINE_STATE_STREAM_DESC pipelineStateStreamDesc = {
+        sizeof(PipelineStateStream), &pipelineStateStream
+    };
+    ThrowIfFailed(device->CreatePipelineState(&pipelineStateStreamDesc, IID_PPV_ARGS(&m_ObjectCulling_PipelineState)));
+}
+
 
 bool MeshletLoD::LoadContent()
 {
@@ -189,7 +209,7 @@ bool MeshletLoD::LoadContent()
 
 
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-    heapDesc.NumDescriptors = (uint)m_scene.m_meshes.size() * 4 + 2;
+    heapDesc.NumDescriptors = (uint)m_scene.m_meshes.size() * 4 + 3;
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     heapDesc.NodeMask = 0;
@@ -355,6 +375,29 @@ bool MeshletLoD::LoadContent()
     device->CreateShaderResourceView(m_MeshletCountsBuffer.Get(), &meshletCountsSrvDesc, srvHandle);
     srvHandle.Offset(1, descriptorSize);
 
+    // visible object count buffer
+    m_visibleObjectCountSrvHandle = m_meshletCountsSrvHandle;
+    m_visibleObjectCountSrvHandle.ptr += descriptorSize;
+    uint initialObjectCount = m_scene.m_scene_objects.size();
+
+    ComPtr<ID3D12Resource> visibleObjectCountCopyBuffer;
+    UpdateBufferResource(commandList, m_objectCountBuffer.GetAddressOf(), visibleObjectCountCopyBuffer.GetAddressOf(),
+        1, sizeof(uint), &initialObjectCount);
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC visibleObjectCountSrvDesc = {};
+    visibleObjectCountSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    visibleObjectCountSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    visibleObjectCountSrvDesc.Buffer.FirstElement = 0;
+    visibleObjectCountSrvDesc.Buffer.NumElements = 1;
+    visibleObjectCountSrvDesc.Buffer.StructureByteStride = sizeof(uint);
+    visibleObjectCountSrvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+
+    device->CreateShaderResourceView(m_MeshletCountsBuffer.Get(), &visibleObjectCountSrvDesc, srvHandle);
+    srvHandle.Offset(1, descriptorSize);
+
+
+
+
     // Create the descriptor heap for the depth-stencil view.
     D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
     dsvHeapDesc.NumDescriptors = 1;
@@ -372,6 +415,9 @@ bool MeshletLoD::LoadContent()
     // Load the task shader.
     ThrowIfFailed(D3DReadFileToBlob(L"TaskShader.cso", &m_taskShaderBlob));
 
+    // Load the object culling compute shader.
+    ThrowIfFailed(D3DReadFileToBlob(L"ObjectCulling_ComputeShader.cso", &m_objectCullingComputeShaderBlob));
+
 
     // Create a root signature.
     D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
@@ -385,8 +431,9 @@ bool MeshletLoD::LoadContent()
     D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
         D3D12_ROOT_SIGNATURE_FLAG_NONE;
 
-    // A single 32-bit constant root parameter that is used by the vertex shader.
+
     CD3DX12_ROOT_PARAMETER1 rootParameters[8];
+    // constants
     rootParameters[0].InitAsConstants(sizeof(Constants) / 4, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
 
     // vertices
@@ -433,10 +480,45 @@ bool MeshletLoD::LoadContent()
         rootSignatureBlob->GetBufferSize(), IID_PPV_ARGS(&m_RootSignature)));
 
 
+
+
+    // setup object culling root signature
+    CD3DX12_ROOT_PARAMETER1 objectCullingRootParameters[6];
+
+    // constants
+    objectCullingRootParameters[0].InitAsConstants(sizeof(Constants) / 4, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
+    objectCullingRootParameters[5].InitAsConstants(sizeof(uint) / 4, 1, 0, D3D12_SHADER_VISIBILITY_ALL);
+
+    // objects
+    objectCullingRootParameters[1].InitAsShaderResourceView(0, 0);
+
+    // meshlet counts
+    objectCullingRootParameters[2].InitAsShaderResourceView(1, 0);
+
+    // visible object count buffer
+    objectCullingRootParameters[3].InitAsUnorderedAccessView(0, 0);
+
+    // inirect arguments buffer
+    objectCullingRootParameters[4].InitAsUnorderedAccessView(1, 0);
+
+    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC objectCullingRootSignatureDescription;
+    objectCullingRootSignatureDescription.Init_1_1(_countof(objectCullingRootParameters), objectCullingRootParameters, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+
+    // Serialize the root signature.
+    ComPtr<ID3DBlob> objectCullingRootSignatureBlob;
+    ComPtr<ID3DBlob> objectCullingErrorBlob;
+    ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&objectCullingRootSignatureDescription,
+        featureData.HighestVersion, &objectCullingRootSignatureBlob, &objectCullingErrorBlob));
+
+    // Create the root signature.
+    ThrowIfFailed(device->CreateRootSignature(0, objectCullingRootSignatureBlob->GetBufferPointer(),
+        objectCullingRootSignatureBlob->GetBufferSize(), IID_PPV_ARGS(&m_ObjectCulling_RootSignature)));
+
+
+
+
     // setup indirect draw attributes buffer
     ComPtr<ID3D12Resource> copy_indirectAtgumentBuffer;
-
-    
 
     UpdateBufferResource(commandList,
         &m_indirectArgumentBuffer, &copy_indirectAtgumentBuffer,
@@ -467,6 +549,7 @@ bool MeshletLoD::LoadContent()
     device->CreateCommandSignature(&commandSignatureDesc, m_RootSignature.Get(), IID_PPV_ARGS(&m_commandSignature));
 
     CreatePSO();
+    CreateCullingPSO();
 
     auto fenceValue = commandQueue->ExecuteCommandList(commandList);
     commandQueue->WaitForFenceValue(fenceValue);
@@ -544,6 +627,9 @@ void MeshletLoD::UnloadContent()
     m_RootSignature.Reset();
     m_PipelineState.Reset();
 
+    m_ObjectCulling_RootSignature.Reset();
+    m_ObjectCulling_PipelineState.Reset();
+
     // clear & reset model buffers
     m_CBV_SRV_UAV_Heap.Reset();
 
@@ -553,8 +639,9 @@ void MeshletLoD::UnloadContent()
     m_DrawTasksBuffers.clear();
     m_ObjectsBuffer.Reset();
     m_MeshletCountsBuffer.Reset();
-
+    m_objectCountBuffer.Reset();
     m_indirectArgumentBuffer.Reset();
+
     m_commandSignature.Reset();
 }
 
@@ -701,28 +788,8 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
     auto rtv = m_pWindow->GetCurrentRenderTargetView();
     auto dsv = m_DSVHeap->GetCPUDescriptorHandleForHeapStart();
 
-    // Clear the render targets.
-    {
-        TransitionResource(commandList, backBuffer,
-            D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
-
-        ClearRTV(commandList, rtv, m_ClearColor);
-        ClearDepth(commandList, dsv);
-    }
-
-    commandList->SetPipelineState(m_PipelineState.Get());
-    commandList->SetGraphicsRootSignature(m_RootSignature.Get());
-
-    commandList->RSSetViewports(1, &m_Viewport);
-    commandList->RSSetScissorRects(1, &m_ScissorRect);
-
-    commandList->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
 
     // Update the MVP matrix
-    /*
-    XMMATRIX mvpMatrix = XMMatrixMultiply(m_ModelMatrix, m_ViewMatrix);
-    mvpMatrix = XMMatrixMultiply(mvpMatrix, m_ProjectionMatrix);
-    */
     XMMATRIX mvpMatrix = XMMatrixTranspose(XMMatrixMultiply(m_ViewMatrix, m_ProjectionMatrix));
     Constants constants;
 
@@ -746,13 +813,61 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
     if (m_debugVisuals) constants.BoolConstants |= DEBUG_VISUALS_BIT_POS;
 
 
+    // Clear the render targets.
+    {
+        TransitionResource(commandList, backBuffer,
+            D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+
+        ClearRTV(commandList, rtv, m_ClearColor);
+        ClearDepth(commandList, dsv);
+    }
+
+
+
+
+    // object culling compute pass
+    commandList->SetPipelineState(m_ObjectCulling_PipelineState.Get());
+    commandList->SetComputeRootSignature(m_ObjectCulling_RootSignature.Get());
+
+    commandList->SetComputeRoot32BitConstants(0, sizeof(Constants) / 4, &constants, 0);
+    uint maxObjectCount = (uint)m_scene.m_scene_objects.size();
+    commandList->SetComputeRoot32BitConstants(5, sizeof(uint) / 4, &maxObjectCount, 0);
+
+    ID3D12DescriptorHeap* heaps[] = { m_CBV_SRV_UAV_Heap.Get() };
+    commandList->SetDescriptorHeaps(_countof(heaps), heaps);
+
+    // set objects buffer
+    commandList->SetComputeRootShaderResourceView(1, m_ObjectsBuffer.Get()->GetGPUVirtualAddress());
+    // set meshlet counts buffer
+    commandList->SetComputeRootShaderResourceView(2, m_MeshletCountsBuffer.Get()->GetGPUVirtualAddress());
+    // set visible object count buffer
+    commandList->SetComputeRootUnorderedAccessView(3, m_objectCountBuffer.Get()->GetGPUVirtualAddress());
+    // set indirect arguments buffer
+    commandList->SetComputeRootUnorderedAccessView(4, m_indirectArgumentBuffer.Get()->GetGPUVirtualAddress());
+
+    uint32_t groupCountX = (maxObjectCount + GROUP_SIZE - 1) / GROUP_SIZE;
+    if (m_objectCulling)
+        commandList->Dispatch(groupCountX, 1, 1);
+
+
+
+    // main render pass
+    commandList->SetPipelineState(m_PipelineState.Get());
+    commandList->SetGraphicsRootSignature(m_RootSignature.Get());
+
+    commandList->RSSetViewports(1, &m_Viewport);
+    commandList->RSSetScissorRects(1, &m_ScissorRect);
+
+    commandList->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
 
     commandList->SetGraphicsRoot32BitConstants(0, sizeof(Constants) / 4, &constants, 0);
 
     //commandList->DrawIndexedInstanced(_countof(g_Indicies), 1, 0, 0, 0);
 
+    /*
     ID3D12DescriptorHeap* heaps[] = { m_CBV_SRV_UAV_Heap.Get()};
     commandList->SetDescriptorHeaps(_countof(heaps), heaps);
+    */
 
     // set bindless index buffers
     commandList->SetGraphicsRootDescriptorTable(1, m_indexSrvHandle);
@@ -776,7 +891,7 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
         (uint)m_scene.m_scene_objects.size(),
         m_indirectArgumentBuffer.Get(),
         0,
-        nullptr,
+        m_objectCountBuffer.Get(),
         0
     );
     
@@ -904,12 +1019,12 @@ void MeshletLoD::updateImGui()
     ImGui::SetNextWindowPos(ImVec2(12, 12), ImGuiCond_Always);
     ImGui::Begin("Settings");                           
 
-    if (!ImGui::CollapsingHeader("Perfromance"))
+    if (!ImGui::CollapsingHeader("Perfromance Statistics"))
     {
         ImGui::Text("%.1f FPS", m_fps);
         ImGui::Text("%.2fms Frame Time", m_frameTime * 1000);
         ImGui::SameLine();
-        ImGui::PlotLines("\0", fpsHistory, fpsHistorySize);
+        ImGui::PlotLines("##IDfix", fpsHistory, fpsHistorySize);
         if (GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&memoryInfo, sizeof(memoryInfo))) 
             ImGui::Text("%.3fGB RAM Usage", (memoryInfo.WorkingSetSize) / 1073741824.0f);
         ImGui::Text("%.3fGB VRAM Usage", videoMemoryInfo.CurrentUsage / 1000000000.0f);   
@@ -918,8 +1033,9 @@ void MeshletLoD::updateImGui()
 
     if (!ImGui::CollapsingHeader("Render Settings"))
     {
-        ImGui::Checkbox("Frustum Culling", &m_frustumCulling);
-        ImGui::Checkbox("Cone Culling", &m_coneCulling);
+        ImGui::Checkbox("Meshlet based Frustum Culling", &m_frustumCulling);
+        ImGui::Checkbox("Meshlet based Cone Culling", &m_coneCulling);
+        ImGui::Checkbox("Object Culling", &m_objectCulling);
         ImGui::ColorEdit4("Clear Color", m_ClearColor);
         if (ImGui::Button("Toggle Fullscreen"))
         {

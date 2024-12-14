@@ -54,6 +54,7 @@ private:
     void initImGui();
     void updateImGui();
     void CreatePSO();
+    void CreateCullingPSO();
 
     // Helper functions
     // Transition a resource
@@ -91,11 +92,14 @@ private:
     // Descriptor heap for depth buffer.
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_DSVHeap;
 
-    // Root signature
+    // Root signatures
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_RootSignature;
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> m_ObjectCulling_RootSignature;
 
-    // Pipeline state object.
+    // Pipeline state objects.
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_PipelineState;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_ObjectCulling_PipelineState;
+
 
     D3D12_VIEWPORT m_Viewport;
     D3D12_RECT m_ScissorRect;
@@ -108,6 +112,7 @@ private:
     Microsoft::WRL::ComPtr<ID3DBlob> m_pixelShaderBlob;
     Microsoft::WRL::ComPtr<ID3DBlob> m_meshShaderBlob;
     Microsoft::WRL::ComPtr<ID3DBlob> m_taskShaderBlob;
+    Microsoft::WRL::ComPtr<ID3DBlob> m_objectCullingComputeShaderBlob;
 
 
     bool m_ContentLoaded;
@@ -120,6 +125,7 @@ private:
     bool m_frustumCulling = true;
     bool m_coneCulling = false;
     bool m_debugVisuals = true;
+    bool m_objectCulling = true;
 
     // camera related variables
     float3 m_cameraPos = float3(0, 0, 0);
@@ -150,6 +156,8 @@ private:
     std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_DrawTasksBuffers;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_ObjectsBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_MeshletCountsBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_indirectArgumentBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_objectCountBuffer;
 
     // gpu handles
     D3D12_GPU_DESCRIPTOR_HANDLE m_indexSrvHandle;
@@ -158,11 +166,10 @@ private:
     D3D12_GPU_DESCRIPTOR_HANDLE m_drawTasksSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_objectsSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_meshletCountsSrvHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_visibleObjectCountSrvHandle;
 
-
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_indirectArgumentBuffer;
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
 
     Scene m_scene;
-    char  m_model_file_path[1024] = "./assets/TestScene.glb"; //"C:/Users/wolfr/Desktop/3dscans/Szene/test_scene2.ply";
+    char  m_model_file_path[1024] = "./assets/TestScene.glb"; //"E:/backup/backup/MasterArbeit/3dscans/Szene/test_scene2.ply";
 };

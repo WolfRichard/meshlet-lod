@@ -14,7 +14,7 @@
 
 #define PI 3.1415927
 
-struct CullingInfo
+struct CullingInfo // culling data is presented in object space
 {
     float3 bounding_sphere_center;
     float bounding_sphere_radius;
@@ -82,8 +82,8 @@ struct SceneObject
 {
     float4x4 object_matrix;
     
-    float3 bounding_sphere_center;
-    float bounding_sphere_radius;
+    float3 bounding_sphere_center; // in world space
+    float bounding_sphere_radius; // in world space
     
     uint mesh_id;
     

@@ -36,7 +36,7 @@ void Scene::processSceneNode(aiNode* node, const aiScene* scene, float4x4 parent
 
         // transform object space bounding sphere ti world space
 
-        XMVECTOR wSpaceCentre = XMVector3Transform(XMLoadFloat3(&(m_meshes[so.mesh_id]->m_boundingSphereCentre)), model_matrix);
+        XMVECTOR wSpaceCentre = XMVector3Transform(XMLoadFloat3(&(m_meshes[so.mesh_id]->m_boundingSphereCentre)), XMMatrixTranspose(model_matrix));
         XMStoreFloat3(&so.bounding_sphere_center, wSpaceCentre);
         // scale bounding radius by highest axis scale factor
         XMVECTOR scaleX = XMVector3Length(model_matrix.r[0]); 
