@@ -23,6 +23,8 @@ public:
     std::vector<MeshletMesh*> m_meshes;
 
     uint m_draw_task_count = 0;
+    uint m_vertex_count = 0;
+    uint m_triangles_count = 0;
 
     std::vector<uint> m_meshlet_counts;
     std::vector<CommandStructure> m_indirect_attributes;

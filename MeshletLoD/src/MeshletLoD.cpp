@@ -746,7 +746,7 @@ void MeshletLoD::OnUpdate(UpdateEventArgs& e)
 
     // Update the projection matrix.
     float aspectRatio = GetClientWidth() / static_cast<float>(GetClientHeight());
-    m_ProjectionMatrix = XMMatrixPerspectiveFovLH(XMConvertToRadians(m_FoV), aspectRatio, 0.1f, 1000.0f);
+    m_ProjectionMatrix = XMMatrixPerspectiveFovLH(XMConvertToRadians(m_FoV), aspectRatio, 0.1f, 100000.0f);
 
     updateImGui();
 }
@@ -1053,7 +1053,7 @@ void MeshletLoD::updateImGui()
         ImGui::Checkbox("Free Camera", &m_freeCamera);
         if (m_freeCamera)
         {
-            ImGui::SliderFloat("Camera speed", &m_cameraSpeed, 0.1f, 100.0f);
+            ImGui::SliderFloat("Camera speed", &m_cameraSpeed, 0.1f, 1000.0f);
         }
         else
         {
@@ -1108,6 +1108,17 @@ void MeshletLoD::updateImGui()
         ImGui::Text("esc     - close application");
         ImGui::Text("F11     - toggle fullscreen");
         ImGui::Text("V       - toggle v-sync");
+    }
+    if (!ImGui::CollapsingHeader("Scene Stats"))
+    {
+        ImGui::Text("scene  objects count: %d", (unsigned int)m_scene.m_scene_objects.size());
+        ImGui::Text("unique  meshes count: %d", (unsigned int)m_scene.m_meshes.size());
+        ImGui::Text("total  meshlet count: %d", (unsigned int)m_scene.m_draw_task_count);
+        ImGui::Text("total   vertex count: %d", (unsigned int)m_scene.m_vertex_count);
+        ImGui::Text("total triangle count: %d", (unsigned int)m_scene.m_triangles_count);
+
+
+
     }
     
     ImGui::End();

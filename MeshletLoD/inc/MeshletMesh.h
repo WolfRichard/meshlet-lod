@@ -26,16 +26,17 @@ public:
     std::vector<unsigned char>  m_meshlet_triangles;
     std::vector<DrawTask>       m_draw_tasks;
 
-    float3 m_boundingSphereCentre;
-    float m_boundingSphereRadius;
+    float3                      m_boundingSphereCentre;
+    float                       m_boundingSphereRadius;
 
+    size_t                      m_index_count;
+    size_t                      m_vertex_count;
 private:
     void parseMesh(aiMesh* assimp_mesh);
     void generateMeshlets();
 
 
-    size_t                    m_index_count;
-    size_t                    m_vertex_count;
+    
     std::vector<unsigned int> m_indices;
     
 
