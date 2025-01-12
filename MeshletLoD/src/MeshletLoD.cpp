@@ -1004,7 +1004,7 @@ void MeshletLoD::updateImGui()
 
     fpsHistory[(unsigned int)fpsHistoryOffset] = std::max(fpsHistory[(unsigned int)fpsHistoryOffset], (float)m_frameTime);
     fpsHistory[((unsigned int)fpsHistoryOffset + 1) % fpsHistorySize] = 0;
-    fpsHistoryOffset += fpsHistorySpeed * (float)m_frameTime;
+    fpsHistoryOffset += clamp(fpsHistorySpeed * (float)m_frameTime, 0.0f, 1.0f);
     if (fpsHistoryOffset >= fpsHistorySize) fpsHistoryOffset = 0.0f;
 
 
@@ -1116,8 +1116,15 @@ void MeshletLoD::updateImGui()
         ImGui::Text("total  meshlet count: %d", (unsigned int)m_scene.m_draw_task_count);
         ImGui::Text("total   vertex count: %d", (unsigned int)m_scene.m_vertex_count);
         ImGui::Text("total triangle count: %d", (unsigned int)m_scene.m_triangles_count);
-
-
+       
+        if (!ImGui::CollapsingHeader("Scene Processing Times"))
+        {
+            ImGui::Text("model load time:         %.4f sec", m_scene.m_modelLoadTime.count());
+            ImGui::Text("LoD generation time:     %.4f sec", m_scene.m_totalLoDGenTime.count());
+            ImGui::Text("meshlet generation time: %.4f sec", m_scene.m_totalMeshletGenTime.count());
+            ImGui::Separator();
+            ImGui::Text("total load time:         %.4f sec", m_scene.m_totalTime.count());
+        }
 
     }
     

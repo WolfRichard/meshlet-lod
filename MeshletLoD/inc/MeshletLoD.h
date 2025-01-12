@@ -171,5 +171,5 @@ private:
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
 
     Scene m_scene;
-    char  m_model_file_path[1024] = "./assets/TestScene.glb"; //"E:/backup/backup/MasterArbeit/3dscans/Szene/test_scene2.ply";
+    char  m_model_file_path[1024] = "./assets/TestScene.glb";
 };

@@ -10,6 +10,8 @@
 
 #include "../shaders/Structures.fxh"
 
+#include <chrono>
+
 
 
 class Scene
@@ -28,6 +30,11 @@ public:
 
     std::vector<uint> m_meshlet_counts;
     std::vector<CommandStructure> m_indirect_attributes;
+
+    std::chrono::duration<double> m_modelLoadTime;
+    std::chrono::duration<double> m_totalLoDGenTime;
+    std::chrono::duration<double> m_totalMeshletGenTime;
+    std::chrono::duration<double> m_totalTime;
 
 private:
     void loadScene(std::string file_path, uint selectedLoD);

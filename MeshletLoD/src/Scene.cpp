@@ -16,7 +16,17 @@ void Scene::init(std::string file_path, uint selectedLoD)
     m_triangles_count = 0;
     m_meshlet_counts.clear();
     m_indirect_attributes.clear();
+
+    m_modelLoadTime = m_modelLoadTime.zero();
+    m_totalLoDGenTime = m_totalLoDGenTime.zero();
+    m_totalMeshletGenTime = m_totalMeshletGenTime.zero();
+    m_totalTime = m_totalTime.zero();
+
+    auto benchmark_time_start = std::chrono::high_resolution_clock::now();
     loadScene(file_path, selectedLoD);
+    auto benchmark_time_end = std::chrono::high_resolution_clock::now();
+    m_totalTime = benchmark_time_end - benchmark_time_start;
+    
 }
 
 
@@ -71,15 +81,18 @@ void Scene::processSceneNode(aiNode* node, const aiScene* scene, float4x4 parent
 void Scene::loadScene(std::string file_path, uint selectedLoD)
 {
     // try to load the model via assimp
+    auto benchmark_time_start = std::chrono::high_resolution_clock::now();
     Assimp::Importer importer;
-    const aiScene*   scene = importer.ReadFile(file_path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals); // | aiProcess_RemoveRedundantMaterials | aiProcess_OptimizeMeshes | aiProcess_OptimizeGraph | aiProcess_JoinIdenticalVertices);
+    const aiScene* scene = importer.ReadFile(file_path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals); // | aiProcess_RemoveRedundantMaterials | aiProcess_OptimizeMeshes | aiProcess_OptimizeGraph | aiProcess_JoinIdenticalVertices);
 
     // verify that loading was successfull + error handeling
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
     {
         throw std::exception();
     }
+    auto benchmark_time_end = std::chrono::high_resolution_clock::now();
 
+    m_modelLoadTime = benchmark_time_end - benchmark_time_start;
 
     // load meshes
     for (uint m = 0; m < scene->mNumMeshes; m++)
@@ -87,6 +100,9 @@ void Scene::loadScene(std::string file_path, uint selectedLoD)
         m_meshes.push_back(new MeshletMesh(scene->mMeshes[m]));
 
         m_meshlet_counts.push_back((uint)m_meshes.back()->m_draw_tasks.size());
+
+        m_totalLoDGenTime += m_meshes.back()->m_LoDGenTime;
+        m_totalMeshletGenTime += m_meshes.back()->m_meshletGenTime;
     }
 
     // process scene tree

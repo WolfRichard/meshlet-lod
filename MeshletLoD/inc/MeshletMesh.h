@@ -8,6 +8,7 @@
 
 #include "HLSLnames.h"
 
+#include <chrono>
 
 namespace
 {
@@ -31,15 +32,14 @@ public:
 
     size_t                      m_index_count;
     size_t                      m_vertex_count;
+
+    std::chrono::duration<double> m_LoDGenTime;
+    std::chrono::duration<double> m_meshletGenTime;
+
 private:
     void parseMesh(aiMesh* assimp_mesh);
     void generateMeshlets();
+    void generateLoD(uint resolution_level);
 
-
-    
     std::vector<unsigned int> m_indices;
-    
-
-    
-    
 };
