@@ -122,10 +122,10 @@ private:
     double m_frameTime = 0;
     bool m_wireframe = false;
     bool m_backFaceCulling = true;
-    bool m_frustumCulling = true;
+    bool m_frustumCulling = false;
     bool m_coneCulling = false;
     bool m_debugVisuals = true;
-    bool m_objectCulling = true;
+    bool m_objectCulling = false;
 
     // camera related variables
     float3 m_cameraPos = float3(0, 0, 0);
@@ -138,8 +138,8 @@ private:
     
     bool m_freeCamera = false;
     bool m_autoRotateScene = true;
-    float m_autoCameraDistance = 15.0f;
-    float m_autoRotationOffset = 2;
+    float m_autoCameraDistance = 4.0f;
+    float m_autoRotationOffset = 4;
     
     
 
@@ -158,6 +158,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> m_MeshletCountsBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_indirectArgumentBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_objectCountBuffer;
+    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_BoneMatricesBuffers;
 
     // gpu handles
     D3D12_GPU_DESCRIPTOR_HANDLE m_indexSrvHandle;
@@ -167,9 +168,10 @@ private:
     D3D12_GPU_DESCRIPTOR_HANDLE m_objectsSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_meshletCountsSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_visibleObjectCountSrvHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_boneMatricesSrvHandle;
 
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
 
     Scene m_scene;
-    char  m_model_file_path[1024] = "./assets/TestScene.glb";
+    char  m_model_file_path[1024] = "./assets/SkeletalTestScene.glb";
 };

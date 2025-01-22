@@ -1,8 +1,10 @@
 #include "MeshletMesh.h"
 
-MeshletMesh::MeshletMesh(aiMesh* assimp_mesh)
+using namespace DirectX;
+
+MeshletMesh::MeshletMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
 {
-    parseMesh(assimp_mesh);
+    parseMesh(assimp_mesh, assimp_scene);
 
     // LoD
     auto benchmark_time_start = std::chrono::high_resolution_clock::now();
@@ -18,7 +20,7 @@ MeshletMesh::MeshletMesh(aiMesh* assimp_mesh)
 }
 
 
-void MeshletMesh::parseMesh(aiMesh* assimp_mesh)
+void MeshletMesh::parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
 {
     m_boundingSphereCentre = float3(0, 0, 0);
     m_boundingSphereRadius = 0;
@@ -72,6 +74,13 @@ void MeshletMesh::parseMesh(aiMesh* assimp_mesh)
             new_vert.color = float4(1, 0, 1, 1);
         }
 
+        // set all vertex bone data to default
+        for (uint bone = 0; bone < MAX_BONES_PER_VERTEX; bone++) {
+            new_vert.bones[bone] = -1;
+            new_vert.bone_weights[bone] = 0;
+        }
+        
+
 
         raw_vertices.push_back(new_vert);
 
@@ -93,6 +102,9 @@ void MeshletMesh::parseMesh(aiMesh* assimp_mesh)
         m_boundingSphereRadius = m_boundingSphereRadius < distSq ? distSq : m_boundingSphereRadius;
     }
     m_boundingSphereRadius = std::sqrt(m_boundingSphereRadius);
+
+
+    extractAssimpBoneData(raw_vertices, assimp_mesh, assimp_scene);
 
 
     // mesh optimize as preperation for lod and meshlet generation
@@ -166,5 +178,53 @@ void MeshletMesh::generateLoD(uint number_of_levels)
         // Resize the index vector to the actual simplified size
         simplified_indices.resize(simplified_count);
         //m_indices = simplified_indices;
+    }
+}
+
+void MeshletMesh::addVertexBoneData(CustomVertex& vertex, int boneID, float weight)
+{
+    for (uint bone = 0; bone < MAX_BONES_PER_VERTEX; bone++) 
+    {
+        if (vertex.bones[bone] < 0) // check if bone slot is free
+        {
+            vertex.bones[bone] = boneID;
+            vertex.bone_weights[bone] = weight;
+            return;
+        }
+    }
+}
+
+// TODO: CHech if there is a solution without a map is possible by just using a vector to store the bones and use their index position as boneID (just a vector of their matrices)
+
+void MeshletMesh::extractAssimpBoneData(std::vector<CustomVertex>& vertices, aiMesh* mesh, const aiScene* scene)
+{
+    for (uint boneIndex = 0; boneIndex < mesh->mNumBones; ++boneIndex)
+    {
+        int boneID = -1;
+        std::string boneName = mesh->mBones[boneIndex]->mName.C_Str();
+        if (m_BoneInfoMap.find(boneName) == m_BoneInfoMap.end())
+        {
+            BoneInfo newBoneInfo;
+            newBoneInfo.id = m_BoneCounter;
+            newBoneInfo.transform_matrix = assimpToFloat4x4Matrix(mesh->mBones[boneIndex]->mOffsetMatrix);
+            m_BoneInfoMap[boneName] = newBoneInfo;
+            boneID = m_BoneCounter;
+            m_BoneCounter++;
+        }
+        else
+        {
+            boneID = m_BoneInfoMap[boneName].id;
+        }
+        assert(boneID != -1);
+        auto weights = mesh->mBones[boneIndex]->mWeights;
+        int numWeights = mesh->mBones[boneIndex]->mNumWeights;
+
+        for (int weightIndex = 0; weightIndex < numWeights; ++weightIndex)
+        {
+            int vertexId = weights[weightIndex].mVertexId;
+            float weight = weights[weightIndex].mWeight;
+            assert(vertexId <= vertices.size());
+            addVertexBoneData(vertices[vertexId], boneID, weight);
+        }
     }
 }

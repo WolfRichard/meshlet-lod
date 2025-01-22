@@ -6,23 +6,25 @@ struct PixelShaderInput
     float4 Color : COLOR;
 };
 
-cbuffer InstanceIDBuffer                         : register(b0, space0)
+cbuffer InstanceIDBuffer                          : register(b0, space0)
 {
     Constants constantsBuffer;
 };
 
-cbuffer InstanceIDBuffer                         : register(b1, space0)
+cbuffer InstanceIDBuffer                          : register(b1, space0)
 {
     uint object_id;
 };
 
 // Objects Buffer
-StructuredBuffer<SceneObject> objectsBuffer      : register(t0, space0);
+StructuredBuffer<SceneObject> objectsBuffer       : register(t0, space0);
 
 // bindless buffers
-StructuredBuffer<CustomVertex> verticesBuffers[] : register(t0, space1);
-StructuredBuffer<uint> indicesBuffers[]          : register(t0, space2);
-StructuredBuffer<uint> trianglesBuffers[]        : register(t0, space3);
+StructuredBuffer<CustomVertex> verticesBuffers[]  : register(t0, space1);
+StructuredBuffer<uint> indicesBuffers[]           : register(t0, space2);
+StructuredBuffer<uint> trianglesBuffers[]         : register(t0, space3);
+
+StructuredBuffer<float4x4> bonesMatricesBuffers[] : register(t0, space5);
 
 
 uint SampleTriangleBufferAsCharArray(uint i, uint mesh_id)
@@ -87,14 +89,56 @@ void main(in uint I : SV_GroupIndex,
         
         int vertexIndex = indicesBuffers[mesh_id][meshPayload.vertex_offset[gid] + v];
         CustomVertex vertex = verticesBuffers[mesh_id][vertexIndex];
-        verts[v].Pos = mul(mul(float4(vertex.position.xyz, 1.0), objectsBuffer[meshPayload.object_id[gid]].object_matrix), constantsBuffer.ViewProjMat);
+        
+        // skeletal animation
+        float4 localPosition;
+        float4 localNormal;
+        float4x4 boneTransform = float4x4(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        uint bone_counter = 0;
+        float total_weight = 0;
+        for (int i = 0; i < MAX_BONES_PER_VERTEX; i++)
+        {
+            if (vertex.bones[i] == -1)
+                continue;
+            if (vertex.bones[i] >= MAX_BONES_PER_MESH)
+            {
+                localPosition = vertex.position;
+                localNormal = vertex.normal;
+                break;
+            }
+            boneTransform += bonesMatricesBuffers[mesh_id][vertex.bones[i]] * vertex.bone_weights[i];
+            bone_counter++;
+            total_weight += vertex.bone_weights[i];
+      
+            // TODO: proper normal adjustment for skeletal animation!!!!!
+            localPosition = mul(float4(vertex.position.xyz, 1.0), boneTransform);
+            localNormal = mul(vertex.normal, boneTransform);
+            
+        }
+        if (!bone_counter || total_weight < 0.9 || false)
+        {
+            localPosition = vertex.position;
+            localNormal = vertex.normal;
+        }
+        // skeletal animation*
+        
+        
+        verts[v].Pos = mul(mul(localPosition, objectsBuffer[meshPayload.object_id[gid]].object_matrix), constantsBuffer.ViewProjMat);
         //verts[v].UV = vertex.uv.xy;
         
-        
-        float brightness = clamp(clamp(dot(normalize(float3(2, 1, -4)), vertex.normal.xyz), 0, 1) + clamp(dot(normalize(float3(-1, -2, 4)), vertex.normal.xyz), 0, 1), 0.05, 1);
+        float4 normal = mul(localNormal, objectsBuffer[meshPayload.object_id[gid]].object_matrix);
+        float brightness = clamp(clamp(dot(normalize(float3(1, 1, 1)), normal.xyz), 0, 1) + clamp(dot(normalize(float3(-2, 1, -1)), normal.xyz), 0, 0.6), 0.05, 1);
         if (constantsBuffer.BoolConstants & DEBUG_VISUALS_BIT_POS)
-            verts[v].Color = Rainbow(Random(gid)) * brightness;
-        else 
+        {
+            //verts[v].Color = Rainbow(Random(gid)) * brightness;
+            float4 tempColor = float4(0, 0, 0, 0);
+            for (int b = 0; b < MAX_BONES_PER_VERTEX; b++)
+            {
+                tempColor += Rainbow(Random(vertex.bones[b] * 5.1236)) * vertex.bone_weights[b];
+            }
+            verts[v].Color = tempColor * brightness;
+        }    
+        else
             verts[v].Color = brightness;
 
     }

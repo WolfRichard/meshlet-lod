@@ -11,6 +11,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(ASSET_DIR "${CMAKE_SOURCE_DIR}/MeshletLoD/assets")
 set(OUTPUT_DIR "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>")
 
+
 add_custom_command(
     OUTPUT ${OUTPUT_DIR}/assets
     COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -29,6 +30,9 @@ set( HEADER_FILES
     inc/MeshletMesh.h
     inc/HLSLnames.h
     shaders/Structures.fxh
+    inc/Bone.h
+    inc/Animation.h
+    inc/Animator.h
 )
 
 # source files
@@ -37,6 +41,9 @@ set( SRC_FILES
     src/MeshletLoD.cpp
     src/Scene.cpp
     src/MeshletMesh.cpp
+    src/Bone.cpp
+    src/Animation.cpp
+    src/Animator.cpp
 )
 
 # shaders

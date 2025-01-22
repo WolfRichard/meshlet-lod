@@ -9,6 +9,7 @@
 #include "HLSLnames.h"
 
 #include <chrono>
+#include <map>
 
 namespace
 {
@@ -17,10 +18,25 @@ namespace
 
 } // namespace
 
+struct BoneInfo
+{
+    int id; // relative position in its mesh's boneMatrices buffer
+    float4x4 transform_matrix; // transformation matrix from model to bone space
+};
+
 class MeshletMesh
 {
 public:
-    MeshletMesh(aiMesh* assimp_mesh);
+    MeshletMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene);
+    static float4x4 assimpToFloat4x4Matrix(const aiMatrix4x4& assimpMatrix)
+    {
+        return XMMatrixTranspose(DirectX::XMMATRIX(
+            assimpMatrix.a1, assimpMatrix.a2, assimpMatrix.a3, assimpMatrix.a4,  // Row 0
+            assimpMatrix.b1, assimpMatrix.b2, assimpMatrix.b3, assimpMatrix.b4,  // Row 1
+            assimpMatrix.c1, assimpMatrix.c2, assimpMatrix.c3, assimpMatrix.c4,  // Row 2
+            assimpMatrix.d1, assimpMatrix.d2, assimpMatrix.d3, assimpMatrix.d4   // Row 3
+        ));
+    }
 
     std::vector<CustomVertex>   m_vertices;
     std::vector<unsigned int>   m_meshlet_vertices;
@@ -36,10 +52,16 @@ public:
     std::chrono::duration<double> m_LoDGenTime;
     std::chrono::duration<double> m_meshletGenTime;
 
+    std::map<std::string, BoneInfo> m_BoneInfoMap;
+    int m_BoneCounter = 0;
+
 private:
-    void parseMesh(aiMesh* assimp_mesh);
+    void parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene);
     void generateMeshlets();
     void generateLoD(uint resolution_level);
 
     std::vector<unsigned int> m_indices;
+
+    void addVertexBoneData(CustomVertex& vertex, int boneID, float weight);
+    void extractAssimpBoneData(std::vector<CustomVertex>& vertices, aiMesh* mesh, const aiScene* scene);
 };

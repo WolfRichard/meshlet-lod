@@ -11,6 +11,7 @@
 #include <CommandQueue.h>
 #include <Helpers.h>
 #include <Window.h>
+#include <sstream>
 
 #include <imgui.h>
 #include "imgui_impl_win32.h"
@@ -198,9 +199,90 @@ void MeshletLoD::CreateCullingPSO()
 }
 
 
+void recursiveTestHelper(aiNode* currentNode, float4x4 parentTransform, std::map<std::string, float4x4>* boneMap, uint recusrionCounter)
+{
+    std::string nodeName = currentNode->mName.data;
+    float4x4 currentTransform = MeshletMesh::assimpToFloat4x4Matrix(currentNode->mTransformation);
+    OutputDebugStringA((std::string("\nRecursion Depth: ") + std::to_string(recusrionCounter)).c_str());
+    OutputDebugStringA((std::string("\nCurrent Node: ") + nodeName).c_str());
+    OutputDebugStringA((std::string("\nLocal Transform:\n") + MatrixToString(currentTransform)).c_str());
+    currentTransform = currentTransform * parentTransform;
+    
+
+    if (boneMap->find(nodeName) != boneMap->end())
+    {
+        OutputDebugStringA((std::string("Is a Bone!")).c_str());
+        OutputDebugStringA((std::string("\nBone Space Transform (local * parent):\n") + MatrixToString(currentTransform)).c_str());
+        float4x4 offset = (*boneMap)[nodeName];
+        OutputDebugStringA((std::string("Inverse Bind Pose Transform:\n") + MatrixToString(offset)).c_str());
+        OutputDebugStringA((std::string("Offset * globalTransform:\n") + MatrixToString(offset * currentTransform)).c_str());
+    }
+
+    recusrionCounter++;
+    for (uint i = 0; i < currentNode->mNumChildren; i++)
+    {
+        recursiveTestHelper(currentNode->mChildren[i], currentTransform, boneMap, recusrionCounter);
+    }
+}
+
+
 bool MeshletLoD::LoadContent()
 {
+    // transformation testing
+    
+    Assimp::Importer importer;
+    const aiScene* scene = importer.ReadFile(m_model_file_path, aiProcess_Triangulate);// | aiProcess_MakeLeftHanded | aiProcess_FlipWindingOrder);
+    scene->mMeshes[0]->mBones;
+
+    scene->mRootNode;
+    
+    std::map<std::string, float4x4> boneMap;
+
+    for (int b = 0; b < scene->mMeshes[0]->mNumBones; b++)
+    {
+        std::string boneName = scene->mMeshes[0]->mBones[b]->mName.C_Str();
+        float4x4 transform_matrix = MeshletMesh::assimpToFloat4x4Matrix(scene->mMeshes[0]->mBones[b]->mOffsetMatrix);
+        boneMap[boneName] = transform_matrix;
+    }
+
+
+    //recursiveTestHelper(scene->mRootNode, XMMatrixIdentity(), &boneMap, 0);
+    
+    
+
+    //OutputDebugStringA((std::string("Test Transform:\n") + MatrixToString(XMMatrixTranslation(10, 2, 0))).c_str());
+    //OutputDebugStringA((std::string("Test Transform:\n") + MatrixToString(XMMatrixRotationQuaternion(XMVectorSet(0, 0, 0, 1)))).c_str());
+    //OutputDebugStringA((std::string("Test Transform2:\n") + MatrixToString(XMMatrixRotationQuaternion(XMVectorSet(0.707107, 0, 0, 0.707107)))).c_str());
+    //OutputDebugStringA((std::string("Test Transform3:\n") + MatrixToString(XMMatrixRotationQuaternion(XMVectorSet(-0.325058, -0.000000, -0.325058, 0.888074)))).c_str());
+    
+    float3 p1(0, 0, 0);
+    float3 p2(1, 1, 1);
+    float scaleFactor = -0.2;
+
+    XMVECTOR vecTest = XMVectorLerp(DirectX::XMLoadFloat3(&(p1)), DirectX::XMLoadFloat3(&(p2)), scaleFactor);
+    OutputDebugStringA(("\nTest VEC LERP" + MatrixToString(XMMatrixTranslationFromVector(vecTest))).c_str());
+
     m_scene.init(m_model_file_path, 0);
+
+    /*
+    OutputDebugStringA((std::string("\nBone Location Keyframes:\n")).c_str());
+
+    for (auto bone : m_scene.animator.m_CurrentAnimation->m_Bones)
+    {
+        OutputDebugStringA(("\nBone Name: \"" + bone.m_Name + "\" contains " + std::to_string(bone.m_Positions.size()) + " position keyframes").c_str());
+        for (auto key : bone.m_Positions)
+        {
+            OutputDebugStringA(("\nAnimation time: " + std::to_string(key.timeStamp)).c_str());
+            OutputDebugStringA(("\nOffset: (" + std::to_string(key.position.x) + ", " + std::to_string(key.position.y) + ", " + std::to_string(key.position.x) + ")\n").c_str());
+        }
+        OutputDebugStringA(("\nBone Name: \"" + bone.m_Name + "\" contains " + std::to_string(bone.m_Positions.size()) + " rotation keyframes").c_str());
+        for (auto key : bone.m_Rotations)
+        {
+            OutputDebugStringA(("\nAnimation time: " + std::to_string(key.timeStamp)).c_str());
+            OutputDebugStringA(("\nOrientation: (" + std::to_string(XMVectorGetX(key.orientation)) + ", " + std::to_string(XMVectorGetY(key.orientation)) + ", " + std::to_string(XMVectorGetZ(key.orientation)) + ", " + std::to_string(XMVectorGetW(key.orientation)) + ")\n").c_str());
+        }
+    }
+    */
 
     auto device = Application::Get().GetDevice();
     auto commandQueue = Application::Get().GetCommandQueue(D3D12_COMMAND_LIST_TYPE_COPY);
@@ -209,7 +291,7 @@ bool MeshletLoD::LoadContent()
 
 
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-    heapDesc.NumDescriptors = (uint)m_scene.m_meshes.size() * 4 + 3;
+    heapDesc.NumDescriptors = (uint)m_scene.m_meshes.size() * 5 + 3;
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     heapDesc.NodeMask = 0;
@@ -378,7 +460,7 @@ bool MeshletLoD::LoadContent()
     // visible object count buffer
     m_visibleObjectCountSrvHandle = m_meshletCountsSrvHandle;
     m_visibleObjectCountSrvHandle.ptr += descriptorSize;
-    uint initialObjectCount = m_scene.m_scene_objects.size();
+    uint initialObjectCount = (uint)m_scene.m_scene_objects.size();
 
     ComPtr<ID3D12Resource> visibleObjectCountCopyBuffer;
     UpdateBufferResource(commandList, m_objectCountBuffer.GetAddressOf(), visibleObjectCountCopyBuffer.GetAddressOf(),
@@ -396,6 +478,33 @@ bool MeshletLoD::LoadContent()
     srvHandle.Offset(1, descriptorSize);
 
 
+    // bone transformation matrices buffers
+    m_boneMatricesSrvHandle = m_visibleObjectCountSrvHandle;
+    m_boneMatricesSrvHandle.ptr += descriptorSize;
+
+    for (int i = 0; i < m_scene.m_meshes.size(); i++)
+    {
+        // setup buffer
+        ComPtr<ID3D12Resource> buffer;
+        ComPtr<ID3D12Resource> copyBuffer;
+
+        copyBuffers.push_back(copyBuffer);
+        m_BoneMatricesBuffers.push_back(buffer);
+
+        UpdateBufferResource(commandList, m_BoneMatricesBuffers.back().GetAddressOf(), copyBuffers.back().GetAddressOf(),
+            (uint)m_scene.animator.m_FinalBoneMatrices.size(), sizeof(float4x4), m_scene.animator.m_FinalBoneMatrices.data());//(uint)m_scene.m_meshes[i]->m_draw_tasks.size(), sizeof(DrawTask), m_scene.m_meshes[i]->m_draw_tasks.data());
+
+        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srvDesc.Buffer.FirstElement = 0;
+        srvDesc.Buffer.NumElements = (uint)m_scene.animator.m_FinalBoneMatrices.size();
+        srvDesc.Buffer.StructureByteStride = sizeof(float4x4);
+        srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+
+        device->CreateShaderResourceView(m_BoneMatricesBuffers.back().Get(), &srvDesc, srvHandle);
+        srvHandle.Offset(1, descriptorSize);
+    }
 
 
     // Create the descriptor heap for the depth-stencil view.
@@ -432,7 +541,7 @@ bool MeshletLoD::LoadContent()
         D3D12_ROOT_SIGNATURE_FLAG_NONE;
 
 
-    CD3DX12_ROOT_PARAMETER1 rootParameters[8];
+    CD3DX12_ROOT_PARAMETER1 rootParameters[9];
     // constants
     rootParameters[0].InitAsConstants(sizeof(Constants) / 4, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
 
@@ -464,6 +573,12 @@ bool MeshletLoD::LoadContent()
     
     // indirect draw id
     rootParameters[3].InitAsConstants(1, 1, 0, D3D12_SHADER_VISIBILITY_ALL);
+
+
+    // skeletal animation bone matrices
+    CD3DX12_DESCRIPTOR_RANGE1 srvBoneMatricesRange;
+    srvBoneMatricesRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_meshes.size(), 0, 5);
+    rootParameters[8].InitAsDescriptorTable(1, &srvBoneMatricesRange, D3D12_SHADER_VISIBILITY_MESH);
     
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDescription;
@@ -661,10 +776,28 @@ void MeshletLoD::OnUpdate(UpdateEventArgs& e)
     if (totalTime > 1.0)
     {
         m_fps = frameCount / totalTime;
+        //OutputDebugString(MatrixToString(m_scene.animator.m_FinalBoneMatrices[1]).c_str());
+        
 
         char buffer[512];
         sprintf_s(buffer, "FPS: %f\n", m_fps);
         OutputDebugStringA(buffer);
+        sprintf_s(buffer, "Animator time: %f\n", (double)m_scene.animator.m_CurrentTime);
+        OutputDebugStringA(buffer);
+        sprintf_s(buffer, "Animaton Duration: %f\n", (double)m_scene.animator.m_CurrentAnimation->m_Duration);
+        OutputDebugStringA(buffer);
+        //OutputDebugStringA(MatrixToString(m_scene.animator.m_CurrentAnimation->m_RootNode.children[1].children[0].transformation).c_str());
+        //OutputDebugStringA(MatrixToString(m_scene.animator.m_CurrentAnimation->FindBone(m_scene.animator.m_CurrentAnimation->m_RootNode.children[1].children[0].name)->m_LocalTransform).c_str());
+        //OutputDebugStringA(MatrixToString(DirectX::XMMatrixTranslation(0, 1, 0) * DirectX::XMMatrixTranslation(0, 1, 0)).c_str());
+
+        
+
+        for (int i = 0; i < 0; i++) 
+        {
+            OutputDebugStringA(MatrixToString(m_scene.animator.m_FinalBoneMatrices[i]).c_str());
+            OutputDebugStringA("\n");
+        }
+        OutputDebugStringA("\n\n");
 
         frameCount = 0;
         totalTime = 0.0;
@@ -678,11 +811,7 @@ void MeshletLoD::OnUpdate(UpdateEventArgs& e)
     m_ViewMatrix = XMMatrixLookAtLH(eyePosition, focusPoint, upDirection);
     
     // Camera Controll
-    if (!m_freeCamera)
-    {
-        m_autoCameraDistance = std::clamp(m_autoCameraDistance - ImGui::GetIO().MouseWheel, 5.0f, 200.0f);
-    }
-    else
+    if (m_freeCamera)
     {
         float4x4 RotationMatrix = XMMatrixTranspose(XMMatrixRotationY(m_CameraYaw + m_autoRotationOffset) * XMMatrixRotationX(m_CameraRoll));
 
@@ -749,6 +878,48 @@ void MeshletLoD::OnUpdate(UpdateEventArgs& e)
     m_ProjectionMatrix = XMMatrixPerspectiveFovLH(XMConvertToRadians(m_FoV), aspectRatio, 0.1f, 100000.0f);
 
     updateImGui();
+
+    m_scene.animator.UpdateAnimation((float)m_frameTime);
+
+    //Application::Get().Flush();
+    auto device = Application::Get().GetDevice();
+    auto commandQueue = Application::Get().GetCommandQueue(D3D12_COMMAND_LIST_TYPE_COPY);
+    auto commandList = commandQueue->GetCommandList();
+    std::vector<ComPtr<ID3D12Resource>> copyBuffers;
+
+    for (int i = 0; i < m_scene.m_meshes.size(); i++)
+    {
+        // setup buffer
+        ComPtr<ID3D12Resource> copyBuffer;
+
+        copyBuffers.push_back(copyBuffer);
+
+        //UpdateBufferResource(commandList, m_BoneMatricesBuffers[i].GetAddressOf(), copyBuffers.back().GetAddressOf(),
+        //    (uint)m_scene.animator.m_FinalBoneMatrices.size(), sizeof(float4x4), m_scene.animator.m_FinalBoneMatrices.data());//(uint)m_scene.m_meshes[i]->m_draw_tasks.size(), sizeof(DrawTask), m_scene.m_meshes[i]->m_draw_tasks.data());
+    
+        size_t bufferSize = (uint)m_scene.animator.m_FinalBoneMatrices.size() * sizeof(float4x4);
+
+        ThrowIfFailed(device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+            D3D12_HEAP_FLAG_NONE,
+            &CD3DX12_RESOURCE_DESC::Buffer(bufferSize),
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(copyBuffers.back().GetAddressOf())));
+
+        D3D12_SUBRESOURCE_DATA subresourceData = {};
+        subresourceData.pData = m_scene.animator.m_FinalBoneMatrices.data();
+        subresourceData.RowPitch = bufferSize;
+        subresourceData.SlicePitch = subresourceData.RowPitch;
+
+        UpdateSubresources(commandList.Get(),
+            *m_BoneMatricesBuffers[i].GetAddressOf(), *copyBuffers.back().GetAddressOf(),
+            0, 0, 1, &subresourceData);
+    }
+
+    auto fenceValue = commandQueue->ExecuteCommandList(commandList);
+    commandQueue->WaitForFenceValue(fenceValue);
+
 }
 
 // Transition a resource
@@ -790,7 +961,7 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
 
 
     // Update the MVP matrix
-    XMMATRIX mvpMatrix = XMMatrixTranspose(XMMatrixMultiply(m_ViewMatrix, m_ProjectionMatrix));
+    XMMATRIX mvpMatrix = XMMatrixTranspose(m_ViewMatrix * m_ProjectionMatrix);
     Constants constants;
 
     constants.ViewProjMat = mvpMatrix;
@@ -844,6 +1015,7 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
     commandList->SetComputeRootUnorderedAccessView(3, m_objectCountBuffer.Get()->GetGPUVirtualAddress());
     // set indirect arguments buffer
     commandList->SetComputeRootUnorderedAccessView(4, m_indirectArgumentBuffer.Get()->GetGPUVirtualAddress());
+    
 
     uint32_t groupCountX = (maxObjectCount + GROUP_SIZE - 1) / GROUP_SIZE;
     if (m_objectCulling)
@@ -881,6 +1053,8 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
     commandList->SetGraphicsRootShaderResourceView(6, m_ObjectsBuffer.Get()->GetGPUVirtualAddress());
     // set meshlet counts buffer
     commandList->SetGraphicsRootShaderResourceView(7, m_MeshletCountsBuffer.Get()->GetGPUVirtualAddress());
+    // set bone matrices buffers
+    commandList->SetGraphicsRootDescriptorTable(8, m_boneMatricesSrvHandle);
     
     
 
@@ -941,7 +1115,7 @@ void MeshletLoD::OnKeyPressed(KeyEventArgs& e)
 
 void MeshletLoD::OnMouseWheel(MouseWheelEventArgs& e)
 {
-    m_autoCameraDistance = std::clamp(m_autoCameraDistance - e.WheelDelta, 5.0f, 200.0f);
+    m_autoCameraDistance = std::clamp(m_autoCameraDistance - e.WheelDelta, 1.0f, 200.0f);
 }
 
 void MeshletLoD::initImGui() 

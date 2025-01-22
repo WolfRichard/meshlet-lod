@@ -12,6 +12,10 @@
 #    define MAX_MESHLET_PRIMITIVE_COUNT 124
 #endif
 
+
+#define MAX_BONES_PER_VERTEX 4
+#define MAX_BONES_PER_MESH 100
+
 #define PI 3.1415927
 
 struct CullingInfo // culling data is presented in object space
@@ -76,6 +80,9 @@ struct CustomVertex
     float4 uv;
     float4 normal;
     float4 color;
+    
+    int bones[MAX_BONES_PER_VERTEX];
+    float bone_weights[MAX_BONES_PER_VERTEX];
 };
 
 struct SceneObject

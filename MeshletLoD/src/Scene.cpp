@@ -83,7 +83,7 @@ void Scene::loadScene(std::string file_path, uint selectedLoD)
     // try to load the model via assimp
     auto benchmark_time_start = std::chrono::high_resolution_clock::now();
     Assimp::Importer importer;
-    const aiScene* scene = importer.ReadFile(file_path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals); // | aiProcess_RemoveRedundantMaterials | aiProcess_OptimizeMeshes | aiProcess_OptimizeGraph | aiProcess_JoinIdenticalVertices);
+    const aiScene* scene = importer.ReadFile(file_path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals | aiProcess_MakeLeftHanded | aiProcess_FlipWindingOrder); // | aiProcess_RemoveRedundantMaterials | aiProcess_OptimizeMeshes | aiProcess_OptimizeGraph | aiProcess_JoinIdenticalVertices);
 
     // verify that loading was successfull + error handeling
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
@@ -97,13 +97,17 @@ void Scene::loadScene(std::string file_path, uint selectedLoD)
     // load meshes
     for (uint m = 0; m < scene->mNumMeshes; m++)
     {
-        m_meshes.push_back(new MeshletMesh(scene->mMeshes[m]));
+        m_meshes.push_back(new MeshletMesh(scene->mMeshes[m], scene));
 
         m_meshlet_counts.push_back((uint)m_meshes.back()->m_draw_tasks.size());
 
         m_totalLoDGenTime += m_meshes.back()->m_LoDGenTime;
         m_totalMeshletGenTime += m_meshes.back()->m_meshletGenTime;
     }
+
+    testAnimation.init(file_path, m_meshes[0]);
+    animator.init(&testAnimation);
+    //animator.PlayAnimation(&testAnimation);
 
     // process scene tree
     float4x4 base_transform = float4x4(1, 0, 0, 0,

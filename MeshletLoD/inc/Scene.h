@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MeshletMesh.h"
+#include "Animator.h"
 
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
@@ -35,9 +36,14 @@ public:
     std::chrono::duration<double> m_totalLoDGenTime;
     std::chrono::duration<double> m_totalMeshletGenTime;
     std::chrono::duration<double> m_totalTime;
+    
+    
+    Animator animator;
 
 private:
     void loadScene(std::string file_path, uint selectedLoD);
     void processSceneNode(aiNode* node, const aiScene* scene, float4x4 parent_transform);
+
+    Animation testAnimation;
 };
 
