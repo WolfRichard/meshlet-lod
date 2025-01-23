@@ -782,10 +782,6 @@ void MeshletLoD::OnUpdate(UpdateEventArgs& e)
         char buffer[512];
         sprintf_s(buffer, "FPS: %f\n", m_fps);
         OutputDebugStringA(buffer);
-        sprintf_s(buffer, "Animator time: %f\n", (double)m_scene.animator.m_CurrentTime);
-        OutputDebugStringA(buffer);
-        sprintf_s(buffer, "Animaton Duration: %f\n", (double)m_scene.animator.m_CurrentAnimation->m_Duration);
-        OutputDebugStringA(buffer);
         //OutputDebugStringA(MatrixToString(m_scene.animator.m_CurrentAnimation->m_RootNode.children[1].children[0].transformation).c_str());
         //OutputDebugStringA(MatrixToString(m_scene.animator.m_CurrentAnimation->FindBone(m_scene.animator.m_CurrentAnimation->m_RootNode.children[1].children[0].name)->m_LocalTransform).c_str());
         //OutputDebugStringA(MatrixToString(DirectX::XMMatrixTranslation(0, 1, 0) * DirectX::XMMatrixTranslation(0, 1, 0)).c_str());

@@ -105,8 +105,13 @@ void Scene::loadScene(std::string file_path, uint selectedLoD)
         m_totalMeshletGenTime += m_meshes.back()->m_meshletGenTime;
     }
 
-    testAnimation.init(file_path, m_meshes[0]);
-    animator.init(&testAnimation);
+    if (scene->HasAnimations())
+    {
+        testAnimation.init(file_path, m_meshes[0]);
+        animator.init(&testAnimation);
+    }
+    else
+        animator.init(nullptr);
     //animator.PlayAnimation(&testAnimation);
 
     // process scene tree
