@@ -1119,11 +1119,59 @@ void MeshletLoD::initImGui()
     static bool alreadyInitialized = false;
     if (alreadyInitialized) return;
 
+    // Simple free list based allocator
+    struct ExampleDescriptorHeapAllocator
+    {
+        ID3D12DescriptorHeap* Heap = nullptr;
+        D3D12_DESCRIPTOR_HEAP_TYPE  HeapType = D3D12_DESCRIPTOR_HEAP_TYPE_NUM_TYPES;
+        D3D12_CPU_DESCRIPTOR_HANDLE HeapStartCpu;
+        D3D12_GPU_DESCRIPTOR_HANDLE HeapStartGpu;
+        UINT                        HeapHandleIncrement;
+        ImVector<int>               FreeIndices;
+
+        void Create(ID3D12Device* device, ID3D12DescriptorHeap* heap)
+        {
+            IM_ASSERT(Heap == nullptr && FreeIndices.empty());
+            Heap = heap;
+            D3D12_DESCRIPTOR_HEAP_DESC desc = heap->GetDesc();
+            HeapType = desc.Type;
+            HeapStartCpu = Heap->GetCPUDescriptorHandleForHeapStart();
+            HeapStartGpu = Heap->GetGPUDescriptorHandleForHeapStart();
+            HeapHandleIncrement = device->GetDescriptorHandleIncrementSize(HeapType);
+            FreeIndices.reserve((int)desc.NumDescriptors);
+            for (int n = desc.NumDescriptors; n > 0; n--)
+                FreeIndices.push_back(n);
+        }
+        void Destroy()
+        {
+            Heap = nullptr;
+            FreeIndices.clear();
+        }
+        void Alloc(D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_desc_handle)
+        {
+            IM_ASSERT(FreeIndices.Size > 0);
+            int idx = FreeIndices.back();
+            FreeIndices.pop_back();
+            out_cpu_desc_handle->ptr = HeapStartCpu.ptr + (idx * HeapHandleIncrement);
+            out_gpu_desc_handle->ptr = HeapStartGpu.ptr + (idx * HeapHandleIncrement);
+        }
+        void Free(D3D12_CPU_DESCRIPTOR_HANDLE out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE out_gpu_desc_handle)
+        {
+            int cpu_idx = (int)((out_cpu_desc_handle.ptr - HeapStartCpu.ptr) / HeapHandleIncrement);
+            int gpu_idx = (int)((out_gpu_desc_handle.ptr - HeapStartGpu.ptr) / HeapHandleIncrement);
+            IM_ASSERT(cpu_idx == gpu_idx);
+            FreeIndices.push_back(cpu_idx);
+        }
+    };
+
+
+
+
+
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
@@ -1134,7 +1182,7 @@ void MeshletLoD::initImGui()
 
     D3D12_DESCRIPTOR_HEAP_DESC descHeap = {};
     descHeap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    descHeap.NumDescriptors = 1;
+    descHeap.NumDescriptors = 64;
     descHeap.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     descHeap.NodeMask = 0;
 
@@ -1145,11 +1193,25 @@ void MeshletLoD::initImGui()
     
     // Setup Platform/Renderer backends
     ImGui_ImplWin32_Init(m_pWindow->GetWindowHandle());
-    ImGui_ImplDX12_Init(Application::Get().GetDevice().Get(), 3,
-        DXGI_FORMAT_R8G8B8A8_UNORM, m_ImGuiDescriptorHeap.Get(),
-        m_ImGuiDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
-        m_ImGuiDescriptorHeap->GetGPUDescriptorHandleForHeapStart()
-    );   
+
+    static std::shared_ptr<CommandQueue> commandQueue = Application::Get().GetCommandQueue(D3D12_COMMAND_LIST_TYPE_DIRECT);
+    static ExampleDescriptorHeapAllocator g_pd3dSrvDescHeapAlloc;
+    g_pd3dSrvDescHeapAlloc.Create(Application::Get().GetDevice().Get(), m_ImGuiDescriptorHeap.Get());
+    
+
+    ImGui_ImplDX12_InitInfo init_info = {};
+    init_info.Device = Application::Get().GetDevice().Get();
+    init_info.CommandQueue = commandQueue->GetD3D12CommandQueue().Get();
+    init_info.NumFramesInFlight = 3;
+    init_info.RTVFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+    init_info.DSVFormat = DXGI_FORMAT_UNKNOWN;
+    // Allocating SRV descriptors (for textures) is up to the application, so we provide callbacks.
+    // (current version of the backend will only allocate one descriptor, future versions will need to allocate more)
+    init_info.SrvDescriptorHeap = m_ImGuiDescriptorHeap.Get();
+    init_info.SrvDescriptorAllocFn = [](ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_handle) { return g_pd3dSrvDescHeapAlloc.Alloc(out_cpu_handle, out_gpu_handle); };
+    init_info.SrvDescriptorFreeFn = [](ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE cpu_handle, D3D12_GPU_DESCRIPTOR_HANDLE gpu_handle) { return g_pd3dSrvDescHeapAlloc.Free(cpu_handle, gpu_handle); };
+    ImGui_ImplDX12_Init(&init_info);
+
 
     alreadyInitialized = true;
 }
@@ -1180,8 +1242,9 @@ void MeshletLoD::updateImGui()
 
 
     // Start the Dear ImGui frame
-    ImGui_ImplDX12_NewFrame();
+    
     ImGui_ImplWin32_NewFrame();
+    ImGui_ImplDX12_NewFrame();
     ImGui::NewFrame();
 
 

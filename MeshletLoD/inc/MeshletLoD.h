@@ -173,5 +173,5 @@ private:
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
 
     Scene m_scene;
-    char  m_model_file_path[1024] = "./assets/TestScene.glb";
+    char  m_model_file_path[1024] = "./assets/SkeletalTestScene.glb";
 };
