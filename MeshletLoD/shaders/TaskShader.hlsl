@@ -9,11 +9,10 @@ StructuredBuffer<uint> meshletCountsBuffer      : register(t1, space0);
 StructuredBuffer<DrawTask> drawTaskBuffers[]    : register(t0, space4);
 
 
-cbuffer InstanceIDBuffer                        : register(b0, space0)
+cbuffer ConstantsBuffer                         : register(b0, space0)
 {
     Constants constantsBuffer;
 };
-
 
 cbuffer InstanceIDBuffer                        : register(b1, space0)
 {

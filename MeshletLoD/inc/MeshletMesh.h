@@ -24,6 +24,14 @@ struct BoneInfo
     float4x4 transform_matrix; // transformation matrix from model to bone space
 };
 
+struct PreBakedAnimation
+{
+    uint totalAnimationIndex;
+    uint boneCount;
+    uint frameCount;
+    std::vector<float4x4> matrices;
+};
+
 class MeshletMesh
 {
 public:
@@ -31,10 +39,10 @@ public:
     static float4x4 assimpToFloat4x4Matrix(const aiMatrix4x4& assimpMatrix)
     {
         return XMMatrixTranspose(DirectX::XMMATRIX(
-            assimpMatrix.a1, assimpMatrix.a2, assimpMatrix.a3, assimpMatrix.a4,  // Row 0
-            assimpMatrix.b1, assimpMatrix.b2, assimpMatrix.b3, assimpMatrix.b4,  // Row 1
-            assimpMatrix.c1, assimpMatrix.c2, assimpMatrix.c3, assimpMatrix.c4,  // Row 2
-            assimpMatrix.d1, assimpMatrix.d2, assimpMatrix.d3, assimpMatrix.d4   // Row 3
+            assimpMatrix.a1, assimpMatrix.a2, assimpMatrix.a3, assimpMatrix.a4,  
+            assimpMatrix.b1, assimpMatrix.b2, assimpMatrix.b3, assimpMatrix.b4,  
+            assimpMatrix.c1, assimpMatrix.c2, assimpMatrix.c3, assimpMatrix.c4,  
+            assimpMatrix.d1, assimpMatrix.d2, assimpMatrix.d3, assimpMatrix.d4   
         ));
     }
 
@@ -54,6 +62,8 @@ public:
 
     std::map<std::string, BoneInfo> m_BoneInfoMap;
     int m_BoneCounter = 0;
+
+    std::vector<PreBakedAnimation> m_animations;
 
 private:
     void parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene);

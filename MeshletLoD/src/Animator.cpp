@@ -36,9 +36,9 @@ void Animator::init(Animation* animation)
 {
     m_CurrentTime = 0.0;
     m_CurrentAnimation = animation;
-
-    m_FinalBoneMatrices.reserve(MAX_BONES_PER_MESH);
-    for (int i = 0; i < MAX_BONES_PER_MESH; i++)
+   
+    m_FinalBoneMatrices.reserve(animation->m_Bones.size());
+    for (int i = 0; i < animation->m_Bones.size(); i++)
         m_FinalBoneMatrices.push_back(DirectX::XMMatrixIdentity());
 
     //recalibrateOffsets(&m_CurrentAnimation->m_RootNode, DirectX::XMMatrixIdentity());
@@ -51,6 +51,7 @@ void Animator::UpdateAnimation(float dt)
     {
         m_CurrentTime += m_CurrentAnimation->m_TicksPerSecond * dt;
         m_CurrentTime = fmod(m_CurrentTime, m_CurrentAnimation->m_Duration);
+
         CalculateBoneTransform(&m_CurrentAnimation->m_RootNode, DirectX::XMMatrixIdentity());
     }
 }

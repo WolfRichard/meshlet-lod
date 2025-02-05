@@ -139,6 +139,7 @@ void MeshletLoD::CreateBufferResource(
 
 void MeshletLoD::CreatePSO()
 {
+    Application::Get().Flush();
     m_PipelineState.Reset();
     auto device = Application::Get().GetDevice();
 
@@ -245,7 +246,10 @@ bool MeshletLoD::LoadContent()
         boneMap[boneName] = transform_matrix;
     }
 
+    //OutputDebugStringA(("\n\nMesh NumBones: " + std::to_string(scene->mMeshes[0]->mNumBones) + " Animation NumChannels: " + std::to_string(scene->mAnimations[0]->mChannels[0]. ->mNumMeshChannels) + "\n\n").c_str());
+    //OutputDebugStringA(("\n\nMesh Name: " + std::string(scene->mMeshes[0]->mName.C_Str()) + " Animation Channel 0 name: " + std::string(scene->mAnimations[0]->mMeshChannels[0]->mName.C_Str()) + "\n\n").c_str());
 
+   
     //recursiveTestHelper(scene->mRootNode, XMMatrixIdentity(), &boneMap, 0);
     
     
@@ -255,14 +259,18 @@ bool MeshletLoD::LoadContent()
     //OutputDebugStringA((std::string("Test Transform2:\n") + MatrixToString(XMMatrixRotationQuaternion(XMVectorSet(0.707107, 0, 0, 0.707107)))).c_str());
     //OutputDebugStringA((std::string("Test Transform3:\n") + MatrixToString(XMMatrixRotationQuaternion(XMVectorSet(-0.325058, -0.000000, -0.325058, 0.888074)))).c_str());
     
+    /*
     float3 p1(0, 0, 0);
     float3 p2(1, 1, 1);
     float scaleFactor = -0.2;
 
     XMVECTOR vecTest = XMVectorLerp(DirectX::XMLoadFloat3(&(p1)), DirectX::XMLoadFloat3(&(p2)), scaleFactor);
     OutputDebugStringA(("\nTest VEC LERP" + MatrixToString(XMMatrixTranslationFromVector(vecTest))).c_str());
+    */
 
     m_scene.init(m_model_file_path, 0);
+
+    
 
     /*
     OutputDebugStringA((std::string("\nBone Location Keyframes:\n")).c_str());
@@ -291,7 +299,7 @@ bool MeshletLoD::LoadContent()
 
 
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-    heapDesc.NumDescriptors = (uint)m_scene.m_meshes.size() * 5 + 3;
+    heapDesc.NumDescriptors = (uint)m_scene.m_meshes.size() * 5 + 4; // 5 bindless buffers that scale with mesh count + 4 single buffers
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     heapDesc.NodeMask = 0;
@@ -506,6 +514,27 @@ bool MeshletLoD::LoadContent()
         srvHandle.Offset(1, descriptorSize);
     }
 
+    // animations meta data buffer
+    m_animationMetaDataSrvHandle = m_boneMatricesSrvHandle;
+    m_animationMetaDataSrvHandle.ptr += m_scene.m_meshes.size() * descriptorSize;
+
+    assert((uint)m_scene.m_animationMetaData.size() == (uint)m_scene.m_preBakedAnimations.size());
+
+    ComPtr<ID3D12Resource> animationMetaDataCopyBuffer;
+    UpdateBufferResource(commandList, m_AnimationMetaDataBuffer.GetAddressOf(), animationMetaDataCopyBuffer.GetAddressOf(),
+        (uint)m_scene.m_animationMetaData.size(), sizeof(AnimationMetaData), m_scene.m_animationMetaData.data());
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC animationMetaDataSrvDesc = {};
+    animationMetaDataSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    animationMetaDataSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    animationMetaDataSrvDesc.Buffer.FirstElement = 0;
+    animationMetaDataSrvDesc.Buffer.NumElements = (uint)m_scene.m_animationMetaData.size();
+    animationMetaDataSrvDesc.Buffer.StructureByteStride = sizeof(AnimationMetaData);
+    animationMetaDataSrvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+
+    device->CreateShaderResourceView(m_AnimationMetaDataBuffer.Get(), &animationMetaDataSrvDesc, srvHandle);
+    srvHandle.Offset(1, descriptorSize);
+
 
     // Create the descriptor heap for the depth-stencil view.
     D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
@@ -541,7 +570,7 @@ bool MeshletLoD::LoadContent()
         D3D12_ROOT_SIGNATURE_FLAG_NONE;
 
 
-    CD3DX12_ROOT_PARAMETER1 rootParameters[9];
+    CD3DX12_ROOT_PARAMETER1 rootParameters[10];
     // constants
     rootParameters[0].InitAsConstants(sizeof(Constants) / 4, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
 
@@ -574,11 +603,13 @@ bool MeshletLoD::LoadContent()
     // indirect draw id
     rootParameters[3].InitAsConstants(1, 1, 0, D3D12_SHADER_VISIBILITY_ALL);
 
-
     // skeletal animation bone matrices
     CD3DX12_DESCRIPTOR_RANGE1 srvBoneMatricesRange;
     srvBoneMatricesRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_meshes.size(), 0, 5);
     rootParameters[8].InitAsDescriptorTable(1, &srvBoneMatricesRange, D3D12_SHADER_VISIBILITY_MESH);
+
+    // animation meta data
+    rootParameters[9].InitAsShaderResourceView(2, 0);
     
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDescription;
@@ -1051,6 +1082,8 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
     commandList->SetGraphicsRootShaderResourceView(7, m_MeshletCountsBuffer.Get()->GetGPUVirtualAddress());
     // set bone matrices buffers
     commandList->SetGraphicsRootDescriptorTable(8, m_boneMatricesSrvHandle);
+    // set animation meta data buffer
+    commandList->SetGraphicsRootShaderResourceView(9, m_AnimationMetaDataBuffer.Get()->GetGPUVirtualAddress());
     
     
 

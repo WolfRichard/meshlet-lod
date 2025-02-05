@@ -1,4 +1,5 @@
 #include "MeshletMesh.h"
+#include "Animator.h"
 
 using namespace DirectX;
 
@@ -84,7 +85,7 @@ void MeshletMesh::parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
 
         raw_vertices.push_back(new_vert);
 
-    // calc bounding sphere 
+        // calc bounding sphere 
         m_boundingSphereCentre.x += new_vert.position.x;
         m_boundingSphereCentre.y += new_vert.position.y;
         m_boundingSphereCentre.z += new_vert.position.z;
@@ -118,6 +119,44 @@ void MeshletMesh::parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
     meshopt_remapIndexBuffer(m_indices.data(), raw_indices.data(), m_index_count, &remap[0]);
     meshopt_remapVertexBuffer(m_vertices.data(), raw_vertices.data(), raw_vertices.size(), sizeof(CustomVertex), &remap[0]);
     meshopt_optimizeVertexCache(m_indices.data(), m_indices.data(), m_index_count, m_vertex_count);
+
+    // check what animations are influencing this mesh
+    for (uint a = 0; a < assimp_scene->mNumAnimations; a++)
+    {
+        bool animationIsCompatibleWithMesh = true;
+        if (assimp_mesh->mNumBones >= assimp_scene->mAnimations[a]->mNumChannels)
+        {
+            for (uint c = 0; c < assimp_scene->mAnimations[a]->mNumChannels; c++)
+            {
+                std::string boneName = assimp_scene->mAnimations[a]->mChannels[c]->mNodeName.C_Str();
+                if (m_BoneInfoMap.find(boneName) == m_BoneInfoMap.end())
+                {
+                    animationIsCompatibleWithMesh = false;
+                }
+            }
+        }
+
+        if (animationIsCompatibleWithMesh)
+        {
+            Animator animator;
+            Animation animation;
+            animation.init(assimp_scene, a, this);
+            animator.init(&animation);
+            animator.UpdateAnimation(0);
+
+            m_animations.push_back(PreBakedAnimation());
+            m_animations.back().boneCount = animator.m_FinalBoneMatrices.size();
+            m_animations.back().frameCount = (animation.m_Duration / animation.m_TicksPerSecond) * ANIMATION_FPS;
+            m_animations.back().matrices.reserve(m_animations.back().boneCount* m_animations.back().frameCount);
+            for (uint f = 0; f < m_animations.back().frameCount; f++)
+            {
+                m_animations.back().matrices.insert(m_animations.back().matrices.end(), animator.m_FinalBoneMatrices.begin(), animator.m_FinalBoneMatrices.end());
+                animator.UpdateAnimation(0.033333333333f);
+            }
+        }
+    }
+
+    
 }
 
 void MeshletMesh::generateMeshlets()

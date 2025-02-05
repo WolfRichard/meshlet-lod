@@ -13,8 +13,6 @@
 
 #include <chrono>
 
-
-
 class Scene
 {
 public:
@@ -37,6 +35,8 @@ public:
     std::chrono::duration<double> m_totalMeshletGenTime;
     std::chrono::duration<double> m_totalTime;
     
+    std::vector<PreBakedAnimation*> m_preBakedAnimations;
+    std::vector<AnimationMetaData> m_animationMetaData;
     
     Animator animator;
 

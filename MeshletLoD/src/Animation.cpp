@@ -2,13 +2,11 @@
 
 using namespace DirectX;
 
-void Animation::init(const std::string& animationPath, MeshletMesh* mesh)
+void Animation::init(const aiScene* scene, uint animationIndex, MeshletMesh* mesh)
 {
-    Assimp::Importer importer;
-    const aiScene* scene = importer.ReadFile(animationPath, aiProcess_Triangulate | aiProcess_MakeLeftHanded | aiProcess_FlipWindingOrder);
     assert(scene && scene->mRootNode);
-    auto animation = scene->mAnimations[0];
-    m_Duration = (float)animation->mDuration;
+    auto animation = scene->mAnimations[animationIndex];
+    m_Duration = (float)(animation->mDuration);
     m_TicksPerSecond = (float)animation->mTicksPerSecond;
     ReadHeirarchyData(m_RootNode, scene->mRootNode);
     ReadMissingBones(animation, *mesh);

@@ -69,6 +69,17 @@ void Scene::processSceneNode(aiNode* node, const aiScene* scene, float4x4 parent
         m_indirect_attributes.back().dispatchArguments.x = thread_count;
         m_indirect_attributes.back().dispatchArguments.y = 1u;
         m_indirect_attributes.back().dispatchArguments.z = 1u;
+
+        // animation data
+        so.animation_id = -1;
+        so.animation_speed = 1;
+        so.animation_time_offset = 0;
+
+        if (m_meshes[node->mMeshes[i]]->m_animations.size() > 0)
+        {
+            so.animation_id = m_meshes[node->mMeshes[i]]->m_animations[0].totalAnimationIndex;
+
+        }
     }
 
     for (uint i = 0; i < node->mNumChildren; i++)
@@ -99,6 +110,18 @@ void Scene::loadScene(std::string file_path, uint selectedLoD)
     {
         m_meshes.push_back(new MeshletMesh(scene->mMeshes[m], scene));
 
+        // animation 
+        for (auto a = 0; a < m_meshes.back()->m_animations.size(); a++)
+        {
+            m_meshes.back()->m_animations[a].totalAnimationIndex = m_preBakedAnimations.size();
+            m_preBakedAnimations.push_back(&(m_meshes.back()->m_animations[a]));
+            AnimationMetaData amd;
+            amd.bone_count = m_meshes.back()->m_animations[a].boneCount;
+            amd.frame_count = m_meshes.back()->m_animations[a].frameCount;
+            amd.duration = (float)(m_meshes.back()->m_animations[a].frameCount - 1) / (float)ANIMATION_FPS;
+            m_animationMetaData.push_back(amd);
+        }
+
         m_meshlet_counts.push_back((uint)m_meshes.back()->m_draw_tasks.size());
 
         m_totalLoDGenTime += m_meshes.back()->m_LoDGenTime;
@@ -107,7 +130,7 @@ void Scene::loadScene(std::string file_path, uint selectedLoD)
 
     if (scene->HasAnimations())
     {
-        testAnimation.init(file_path, m_meshes[0]);
+        testAnimation.init(scene, 0, m_meshes[0]);
         animator.init(&testAnimation);
     }
     else

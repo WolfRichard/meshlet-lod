@@ -6,7 +6,7 @@ struct PixelShaderInput
     float4 Color : COLOR;
 };
 
-cbuffer InstanceIDBuffer                          : register(b0, space0)
+cbuffer ConstantsBuffer                           : register(b0, space0)
 {
     Constants constantsBuffer;
 };
@@ -18,6 +18,9 @@ cbuffer InstanceIDBuffer                          : register(b1, space0)
 
 // Objects Buffer
 StructuredBuffer<SceneObject> objectsBuffer       : register(t0, space0);
+
+// Animation Meta Data Buffer
+StructuredBuffer<AnimationMetaData> AMDBuffer     : register(t2, space0);
 
 // bindless buffers
 StructuredBuffer<CustomVertex> verticesBuffers[]  : register(t0, space1);
@@ -100,12 +103,6 @@ void main(in uint I : SV_GroupIndex,
         {
             if (vertex.bones[i] == -1)
                 continue;
-            if (vertex.bones[i] >= MAX_BONES_PER_MESH)
-            {
-                localPosition = vertex.position;
-                localNormal = vertex.normal;
-                break;
-            }
             boneTransform += bonesMatricesBuffers[mesh_id][vertex.bones[i]] * vertex.bone_weights[i];
             bone_counter++;
             total_weight += vertex.bone_weights[i];

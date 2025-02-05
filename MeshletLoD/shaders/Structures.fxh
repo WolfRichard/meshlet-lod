@@ -14,7 +14,15 @@
 
 
 #define MAX_BONES_PER_VERTEX 4
-#define MAX_BONES_PER_MESH 100
+#define ANIMATION_FPS 30
+//#define MAX_BONES_PER_MESH 100
+
+struct AnimationMetaData
+{
+    uint bone_count;
+    uint frame_count;
+    float duration; // in seconds
+};
 
 #define PI 3.1415927
 
@@ -94,7 +102,11 @@ struct SceneObject
     
     uint mesh_id;
     
-    float3 byte_allignement; // used to keep 16 byte allignement for structured buffer
+    uint animation_id;
+    float animation_speed;
+    float animation_time_offset;
+    
+    //float3 byte_allignement; // used to keep 16 byte allignement for structured buffer
 };
 
 struct CommandStructure
@@ -102,3 +114,4 @@ struct CommandStructure
     uint instanceID;
     uint3 dispatchArguments;
 };
+

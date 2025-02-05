@@ -159,6 +159,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> m_indirectArgumentBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_objectCountBuffer;
     std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_BoneMatricesBuffers;
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_AnimationMetaDataBuffer;
 
     // gpu handles
     D3D12_GPU_DESCRIPTOR_HANDLE m_indexSrvHandle;
@@ -169,6 +170,8 @@ private:
     D3D12_GPU_DESCRIPTOR_HANDLE m_meshletCountsSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_visibleObjectCountSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_boneMatricesSrvHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_animationMetaDataSrvHandle;
+
 
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
 

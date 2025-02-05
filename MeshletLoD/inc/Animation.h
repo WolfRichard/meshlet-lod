@@ -23,7 +23,7 @@ class Animation
 {
 public:
     Animation() {}
-    void init(const std::string& animationPath, MeshletMesh* mesh);
+    void init(const aiScene* scene, uint animationIndex, MeshletMesh* mesh);
     ~Animation() {}
     Bone* FindBone(const std::string& name);
 
