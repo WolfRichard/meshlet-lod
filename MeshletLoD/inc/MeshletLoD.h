@@ -120,6 +120,7 @@ private:
     float m_ClearColor[4] = {23.0f / 255.0f, 23.0f / 255.0f, 31.0f / 255.0f, 1.0f};
     double m_fps = 0;
     double m_frameTime = 0;
+    double m_totalRunTime = 0.0;
     bool m_wireframe = false;
     bool m_backFaceCulling = true;
     bool m_frustumCulling = false;

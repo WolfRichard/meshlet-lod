@@ -85,6 +85,15 @@ void main(in uint I : SV_GroupIndex,
     const uint vertexLoops = (MAX_MESHLET_VERTEX_COUNT + GROUP_SIZE - 1) / GROUP_SIZE;
     uint mesh_id = objectsBuffer[meshPayload.object_id[gid]].mesh_id;
     
+    // animation meta data
+    uint animation_id = objectsBuffer[meshPayload.object_id[gid]].animation_id;
+    float animation_speed = objectsBuffer[meshPayload.object_id[gid]].animation_speed;
+    float animation_offset = objectsBuffer[meshPayload.object_id[gid]].animation_time_offset;
+    uint animation_bone_count = AMDBuffer[animation_id].bone_count;
+    float animation_duration = AMDBuffer[animation_id].duration;
+    uint animation_frame_count = AMDBuffer[animation_id].frame_count;
+    uint current_animation_frame = uint(fmod(constantsBuffer.CurrTime * animation_speed + animation_offset, animation_duration) * ANIMATION_FPS) % animation_frame_count;
+    
     for (uint v_loop = 0; v_loop < vertexLoops; v_loop++)
     {
         uint v = I + v_loop * GROUP_SIZE;
@@ -103,7 +112,7 @@ void main(in uint I : SV_GroupIndex,
         {
             if (vertex.bones[i] == -1)
                 continue;
-            boneTransform += bonesMatricesBuffers[mesh_id][vertex.bones[i]] * vertex.bone_weights[i];
+            boneTransform += bonesMatricesBuffers[animation_id][current_animation_frame * animation_bone_count + vertex.bones[i]] * vertex.bone_weights[i];
             bone_counter++;
             total_weight += vertex.bone_weights[i];
       

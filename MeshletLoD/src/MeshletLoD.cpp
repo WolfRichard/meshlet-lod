@@ -269,8 +269,12 @@ bool MeshletLoD::LoadContent()
     */
 
     m_scene.init(m_model_file_path, 0);
-
     
+    OutputDebugStringA(("\nanimation count: " + std::to_string(m_scene.m_preBakedAnimations.size())).c_str());
+    OutputDebugStringA(("\nanimation length: " + std::to_string(m_scene.m_preBakedAnimations[1]->frameCount)).c_str());
+    OutputDebugStringA(("\ncurrent object animation: " + std::to_string(m_scene.m_scene_objects[0].animation_id)).c_str());
+
+
 
     /*
     OutputDebugStringA((std::string("\nBone Location Keyframes:\n")).c_str());
@@ -299,7 +303,7 @@ bool MeshletLoD::LoadContent()
 
 
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-    heapDesc.NumDescriptors = (uint)m_scene.m_meshes.size() * 5 + 4; // 5 bindless buffers that scale with mesh count + 4 single buffers
+    heapDesc.NumDescriptors = (uint)m_scene.m_meshes.size() * 4 + 4 + (uint)m_scene.m_preBakedAnimations.size(); // 4 bindless buffers that scale with mesh count + 1 bindless with animations + 4 single buffers
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     heapDesc.NodeMask = 0;
@@ -490,7 +494,7 @@ bool MeshletLoD::LoadContent()
     m_boneMatricesSrvHandle = m_visibleObjectCountSrvHandle;
     m_boneMatricesSrvHandle.ptr += descriptorSize;
 
-    for (int i = 0; i < m_scene.m_meshes.size(); i++)
+    for (int i = 0; i < m_scene.m_preBakedAnimations.size(); i++)
     {
         // setup buffer
         ComPtr<ID3D12Resource> buffer;
@@ -500,13 +504,13 @@ bool MeshletLoD::LoadContent()
         m_BoneMatricesBuffers.push_back(buffer);
 
         UpdateBufferResource(commandList, m_BoneMatricesBuffers.back().GetAddressOf(), copyBuffers.back().GetAddressOf(),
-            (uint)m_scene.animator.m_FinalBoneMatrices.size(), sizeof(float4x4), m_scene.animator.m_FinalBoneMatrices.data());//(uint)m_scene.m_meshes[i]->m_draw_tasks.size(), sizeof(DrawTask), m_scene.m_meshes[i]->m_draw_tasks.data());
+            (uint)m_scene.m_preBakedAnimations[i]->matrices.size(), sizeof(float4x4), m_scene.m_preBakedAnimations[i]->matrices.data());
 
         D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
         srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         srvDesc.Buffer.FirstElement = 0;
-        srvDesc.Buffer.NumElements = (uint)m_scene.animator.m_FinalBoneMatrices.size();
+        srvDesc.Buffer.NumElements = (uint)m_scene.m_preBakedAnimations[i]->matrices.size();
         srvDesc.Buffer.StructureByteStride = sizeof(float4x4);
         srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
 
@@ -516,7 +520,7 @@ bool MeshletLoD::LoadContent()
 
     // animations meta data buffer
     m_animationMetaDataSrvHandle = m_boneMatricesSrvHandle;
-    m_animationMetaDataSrvHandle.ptr += m_scene.m_meshes.size() * descriptorSize;
+    m_animationMetaDataSrvHandle.ptr += m_scene.m_preBakedAnimations.size() * descriptorSize;
 
     assert((uint)m_scene.m_animationMetaData.size() == (uint)m_scene.m_preBakedAnimations.size());
 
@@ -802,6 +806,7 @@ void MeshletLoD::OnUpdate(UpdateEventArgs& e)
     super::OnUpdate(e);
 
     totalTime += e.ElapsedTime;
+    m_totalRunTime += e.ElapsedTime;
     frameCount++;
 
     if (totalTime > 1.0)
@@ -816,15 +821,6 @@ void MeshletLoD::OnUpdate(UpdateEventArgs& e)
         //OutputDebugStringA(MatrixToString(m_scene.animator.m_CurrentAnimation->m_RootNode.children[1].children[0].transformation).c_str());
         //OutputDebugStringA(MatrixToString(m_scene.animator.m_CurrentAnimation->FindBone(m_scene.animator.m_CurrentAnimation->m_RootNode.children[1].children[0].name)->m_LocalTransform).c_str());
         //OutputDebugStringA(MatrixToString(DirectX::XMMatrixTranslation(0, 1, 0) * DirectX::XMMatrixTranslation(0, 1, 0)).c_str());
-
-        
-
-        for (int i = 0; i < 0; i++) 
-        {
-            OutputDebugStringA(MatrixToString(m_scene.animator.m_FinalBoneMatrices[i]).c_str());
-            OutputDebugStringA("\n");
-        }
-        OutputDebugStringA("\n\n");
 
         frameCount = 0;
         totalTime = 0.0;
@@ -906,8 +902,8 @@ void MeshletLoD::OnUpdate(UpdateEventArgs& e)
 
     updateImGui();
 
-    m_scene.animator.UpdateAnimation((float)m_frameTime);
 
+    /*
     //Application::Get().Flush();
     auto device = Application::Get().GetDevice();
     auto commandQueue = Application::Get().GetCommandQueue(D3D12_COMMAND_LIST_TYPE_COPY);
@@ -946,7 +942,7 @@ void MeshletLoD::OnUpdate(UpdateEventArgs& e)
 
     auto fenceValue = commandQueue->ExecuteCommandList(commandList);
     commandQueue->WaitForFenceValue(fenceValue);
-
+    */
 }
 
 // Transition a resource
@@ -1004,7 +1000,7 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
     constants.Frustum[5] = float4(m._14 - m._13, m._24 - m._23, m._34 - m._33, m._44 - m._43); // far
 
     constants.CameraWorldPos = m_cameraPos;
-    constants.CurrTime = 0.0f;
+    constants.CurrTime = m_totalRunTime;
     constants.BoolConstants = 0;
     if (m_frustumCulling) constants.BoolConstants |= FRUSTUM_CULLING_BIT_POS;
     if (m_coneCulling) constants.BoolConstants |= CONE_CULLING_BIT_POS;

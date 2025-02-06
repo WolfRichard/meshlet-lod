@@ -1,4 +1,8 @@
 #include "Scene.h"
+#include "Windows.h"
+#if defined(max)
+#undef max
+#endif
 
 using namespace DirectX;
 
@@ -57,6 +61,13 @@ void Scene::processSceneNode(aiNode* node, const aiScene* scene, float4x4 parent
         float maxScale = std::max({ XMVectorGetX(scaleX), XMVectorGetX(scaleY), XMVectorGetX(scaleZ) });
         so.bounding_sphere_radius = m_meshes[so.mesh_id]->m_boundingSphereRadius * maxScale;
 
+        // animation data
+        so.animation_id = -1;
+        so.animation_speed = 1;
+        so.animation_time_offset = 0;
+        if (m_meshes[node->mMeshes[i]]->m_animations.size() > 0)
+            so.animation_id = m_meshes[node->mMeshes[i]]->m_animations[0].totalAnimationIndex;
+
         m_scene_objects.push_back(so);
         m_draw_task_count += m_meshlet_counts[node->mMeshes[i]];
         m_vertex_count += (uint)m_meshes[node->mMeshes[i]]->m_vertex_count;
@@ -70,16 +81,9 @@ void Scene::processSceneNode(aiNode* node, const aiScene* scene, float4x4 parent
         m_indirect_attributes.back().dispatchArguments.y = 1u;
         m_indirect_attributes.back().dispatchArguments.z = 1u;
 
-        // animation data
-        so.animation_id = -1;
-        so.animation_speed = 1;
-        so.animation_time_offset = 0;
+        
+            
 
-        if (m_meshes[node->mMeshes[i]]->m_animations.size() > 0)
-        {
-            so.animation_id = m_meshes[node->mMeshes[i]]->m_animations[0].totalAnimationIndex;
-
-        }
     }
 
     for (uint i = 0; i < node->mNumChildren; i++)
@@ -113,7 +117,7 @@ void Scene::loadScene(std::string file_path, uint selectedLoD)
         // animation 
         for (auto a = 0; a < m_meshes.back()->m_animations.size(); a++)
         {
-            m_meshes.back()->m_animations[a].totalAnimationIndex = m_preBakedAnimations.size();
+            m_meshes.back()->m_animations[a].totalAnimationIndex = (uint)m_preBakedAnimations.size();
             m_preBakedAnimations.push_back(&(m_meshes.back()->m_animations[a]));
             AnimationMetaData amd;
             amd.bone_count = m_meshes.back()->m_animations[a].boneCount;
@@ -128,14 +132,6 @@ void Scene::loadScene(std::string file_path, uint selectedLoD)
         m_totalMeshletGenTime += m_meshes.back()->m_meshletGenTime;
     }
 
-    if (scene->HasAnimations())
-    {
-        testAnimation.init(scene, 0, m_meshes[0]);
-        animator.init(&testAnimation);
-    }
-    else
-        animator.init(nullptr);
-    //animator.PlayAnimation(&testAnimation);
 
     // process scene tree
     float4x4 base_transform = float4x4(1, 0, 0, 0,

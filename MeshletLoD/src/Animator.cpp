@@ -73,7 +73,7 @@ void Animator::CalculateBoneTransform(const AssimpNodeData* node, float4x4 paren
     {
         Bone->Update(m_CurrentTime);
         nodeTransform = Bone->m_LocalTransform;
-        OutputDebugStringA((nodeName + " local matrix (" + std::to_string(m_CurrentTime) + ") \n" + MatrixToString(nodeTransform)).c_str());
+        //OutputDebugStringA((nodeName + " local matrix (" + std::to_string(m_CurrentTime) + ") \n" + MatrixToString(nodeTransform)).c_str());
     }
     //else OutputDebugString((std::string("Did not find:") + nodeName + std::string("\n")).c_str());
 

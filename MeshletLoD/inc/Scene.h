@@ -38,12 +38,9 @@ public:
     std::vector<PreBakedAnimation*> m_preBakedAnimations;
     std::vector<AnimationMetaData> m_animationMetaData;
     
-    Animator animator;
 
 private:
     void loadScene(std::string file_path, uint selectedLoD);
     void processSceneNode(aiNode* node, const aiScene* scene, float4x4 parent_transform);
-
-    Animation testAnimation;
 };
 
