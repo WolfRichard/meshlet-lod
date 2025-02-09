@@ -120,6 +120,10 @@ void MeshletMesh::parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
     meshopt_remapVertexBuffer(m_vertices.data(), raw_vertices.data(), raw_vertices.size(), sizeof(CustomVertex), &remap[0]);
     meshopt_optimizeVertexCache(m_indices.data(), m_indices.data(), m_index_count, m_vertex_count);
 
+    //default option whith disabled animation:
+    m_animationNames.push_back(std::string("- No Animation -"));
+    m_animationNamesCharP.push_back(m_animationNames.back().c_str());
+
     // check what animations are influencing this mesh
     for (uint a = 0; a < assimp_scene->mNumAnimations; a++)
     {
@@ -153,6 +157,12 @@ void MeshletMesh::parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
                 m_animations.back().matrices.insert(m_animations.back().matrices.end(), animator.m_FinalBoneMatrices.begin(), animator.m_FinalBoneMatrices.end());
                 animator.UpdateAnimation(0.033333333333f);
             }
+
+            std::string nodeName = std::string("Animation_" + std::to_string(m_animationNames.size() - 1));
+            if (assimp_scene->mAnimations[a]->mName.length)
+                nodeName = std::string(assimp_scene->mAnimations[a]->mName.C_Str());
+            m_animationNames.push_back(nodeName);
+            m_animationNamesCharP.push_back(m_animationNames.back().c_str());
         }
     }
 

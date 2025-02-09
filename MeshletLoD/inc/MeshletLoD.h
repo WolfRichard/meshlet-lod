@@ -55,6 +55,7 @@ private:
     void updateImGui();
     void CreatePSO();
     void CreateCullingPSO();
+    void UpdateObjectsBuffer();
 
     // Helper functions
     // Transition a resource

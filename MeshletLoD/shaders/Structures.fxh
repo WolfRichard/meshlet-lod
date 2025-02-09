@@ -102,7 +102,7 @@ struct SceneObject
     
     uint mesh_id;
     
-    uint animation_id;
+    int animation_id;
     float animation_speed;
     float animation_time_offset;
     

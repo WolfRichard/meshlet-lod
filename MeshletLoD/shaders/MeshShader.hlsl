@@ -87,12 +87,29 @@ void main(in uint I : SV_GroupIndex,
     
     // animation meta data
     uint animation_id = objectsBuffer[meshPayload.object_id[gid]].animation_id;
-    float animation_speed = objectsBuffer[meshPayload.object_id[gid]].animation_speed;
-    float animation_offset = objectsBuffer[meshPayload.object_id[gid]].animation_time_offset;
-    uint animation_bone_count = AMDBuffer[animation_id].bone_count;
-    float animation_duration = AMDBuffer[animation_id].duration;
-    uint animation_frame_count = AMDBuffer[animation_id].frame_count;
-    uint current_animation_frame = uint(fmod(constantsBuffer.CurrTime * animation_speed + animation_offset, animation_duration) * ANIMATION_FPS) % animation_frame_count;
+    float animation_speed, animation_offset, animation_duration, animation_frame_lerp;
+    uint animation_bone_count, animation_frame_count, current_animation_frame, next_animation_frame;
+    if (animation_id != -1)
+    {
+        animation_speed = objectsBuffer[meshPayload.object_id[gid]].animation_speed;
+        animation_offset = objectsBuffer[meshPayload.object_id[gid]].animation_time_offset;
+        animation_bone_count = AMDBuffer[animation_id].bone_count;
+        animation_duration = AMDBuffer[animation_id].duration;
+        animation_frame_count = AMDBuffer[animation_id].frame_count;
+        
+        
+        current_animation_frame = uint(fmod(constantsBuffer.CurrTime * abs(animation_speed) + animation_offset, animation_duration) * ANIMATION_FPS) % animation_frame_count;
+        next_animation_frame = (current_animation_frame + 1) % animation_frame_count;
+        animation_frame_lerp = fmod((constantsBuffer.CurrTime * abs(animation_speed) + animation_offset) * ANIMATION_FPS, 1.0);
+        
+        if (animation_speed < 0)
+        {
+            current_animation_frame = animation_frame_count - current_animation_frame - 1;
+            next_animation_frame = animation_frame_count - next_animation_frame - 1;
+            
+        }
+
+    }
     
     for (uint v_loop = 0; v_loop < vertexLoops; v_loop++)
     {
@@ -106,25 +123,25 @@ void main(in uint I : SV_GroupIndex,
         float4 localPosition;
         float4 localNormal;
         float4x4 boneTransform = float4x4(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-        uint bone_counter = 0;
-        float total_weight = 0;
-        for (int i = 0; i < MAX_BONES_PER_VERTEX; i++)
+        
+        if (animation_id != -1)
         {
-            if (vertex.bones[i] == -1)
-                continue;
-            boneTransform += bonesMatricesBuffers[animation_id][current_animation_frame * animation_bone_count + vertex.bones[i]] * vertex.bone_weights[i];
-            bone_counter++;
-            total_weight += vertex.bone_weights[i];
-      
-            // TODO: proper normal adjustment for skeletal animation!!!!!
+            for (int i = 0; i < MAX_BONES_PER_VERTEX; i++)
+            {
+                if (vertex.bones[i] == -1)
+                    continue;
+                float4x4 frame_lerped_transform = lerp(bonesMatricesBuffers[animation_id][current_animation_frame * animation_bone_count + vertex.bones[i]],
+                                                       bonesMatricesBuffers[animation_id][next_animation_frame * animation_bone_count + vertex.bones[i]],
+                                                       animation_frame_lerp);
+                boneTransform += frame_lerped_transform * vertex.bone_weights[i];
+            }
             localPosition = mul(float4(vertex.position.xyz, 1.0), boneTransform);
             localNormal = mul(vertex.normal, boneTransform);
-            
         }
-        if (!bone_counter || total_weight < 0.9 || false)
+        else
         {
-            localPosition = vertex.position;
-            localNormal = vertex.normal;
+            localPosition = float4(vertex.position.xyz, 1.0);
+            localNormal = float4(vertex.normal.xyz, 0);
         }
         // skeletal animation*
         

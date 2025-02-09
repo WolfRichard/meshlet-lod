@@ -65,6 +65,9 @@ public:
 
     std::vector<PreBakedAnimation> m_animations;
 
+    std::vector<std::string> m_animationNames;
+    std::vector<const char*> m_animationNamesCharP;
+
 private:
     void parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene);
     void generateMeshlets();

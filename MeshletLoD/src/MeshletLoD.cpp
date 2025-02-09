@@ -270,9 +270,9 @@ bool MeshletLoD::LoadContent()
 
     m_scene.init(m_model_file_path, 0);
     
-    OutputDebugStringA(("\nanimation count: " + std::to_string(m_scene.m_preBakedAnimations.size())).c_str());
-    OutputDebugStringA(("\nanimation length: " + std::to_string(m_scene.m_preBakedAnimations[1]->frameCount)).c_str());
-    OutputDebugStringA(("\ncurrent object animation: " + std::to_string(m_scene.m_scene_objects[0].animation_id)).c_str());
+ 
+
+    
 
 
 
@@ -525,8 +525,9 @@ bool MeshletLoD::LoadContent()
     assert((uint)m_scene.m_animationMetaData.size() == (uint)m_scene.m_preBakedAnimations.size());
 
     ComPtr<ID3D12Resource> animationMetaDataCopyBuffer;
-    UpdateBufferResource(commandList, m_AnimationMetaDataBuffer.GetAddressOf(), animationMetaDataCopyBuffer.GetAddressOf(),
-        (uint)m_scene.m_animationMetaData.size(), sizeof(AnimationMetaData), m_scene.m_animationMetaData.data());
+    if ((uint)m_scene.m_animationMetaData.size())
+        UpdateBufferResource(commandList, m_AnimationMetaDataBuffer.GetAddressOf(), animationMetaDataCopyBuffer.GetAddressOf(),
+            (uint)m_scene.m_animationMetaData.size(), sizeof(AnimationMetaData), m_scene.m_animationMetaData.data());
 
     D3D12_SHADER_RESOURCE_VIEW_DESC animationMetaDataSrvDesc = {};
     animationMetaDataSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
@@ -903,46 +904,48 @@ void MeshletLoD::OnUpdate(UpdateEventArgs& e)
     updateImGui();
 
 
-    /*
-    //Application::Get().Flush();
+    
+}
+
+void MeshletLoD::UpdateObjectsBuffer()
+{
+    Application::Get().Flush();
     auto device = Application::Get().GetDevice();
     auto commandQueue = Application::Get().GetCommandQueue(D3D12_COMMAND_LIST_TYPE_COPY);
     auto commandList = commandQueue->GetCommandList();
-    std::vector<ComPtr<ID3D12Resource>> copyBuffers;
-
-    for (int i = 0; i < m_scene.m_meshes.size(); i++)
-    {
-        // setup buffer
-        ComPtr<ID3D12Resource> copyBuffer;
-
-        copyBuffers.push_back(copyBuffer);
-
-        //UpdateBufferResource(commandList, m_BoneMatricesBuffers[i].GetAddressOf(), copyBuffers.back().GetAddressOf(),
-        //    (uint)m_scene.animator.m_FinalBoneMatrices.size(), sizeof(float4x4), m_scene.animator.m_FinalBoneMatrices.data());//(uint)m_scene.m_meshes[i]->m_draw_tasks.size(), sizeof(DrawTask), m_scene.m_meshes[i]->m_draw_tasks.data());
     
-        size_t bufferSize = (uint)m_scene.animator.m_FinalBoneMatrices.size() * sizeof(float4x4);
 
-        ThrowIfFailed(device->CreateCommittedResource(
-            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-            D3D12_HEAP_FLAG_NONE,
-            &CD3DX12_RESOURCE_DESC::Buffer(bufferSize),
-            D3D12_RESOURCE_STATE_GENERIC_READ,
-            nullptr,
-            IID_PPV_ARGS(copyBuffers.back().GetAddressOf())));
+    
+    
+    ComPtr<ID3D12Resource> copyBuffer;
 
-        D3D12_SUBRESOURCE_DATA subresourceData = {};
-        subresourceData.pData = m_scene.animator.m_FinalBoneMatrices.data();
-        subresourceData.RowPitch = bufferSize;
-        subresourceData.SlicePitch = subresourceData.RowPitch;
+    
 
-        UpdateSubresources(commandList.Get(),
-            *m_BoneMatricesBuffers[i].GetAddressOf(), *copyBuffers.back().GetAddressOf(),
-            0, 0, 1, &subresourceData);
-    }
+    //UpdateBufferResource(commandList, m_BoneMatricesBuffers[i].GetAddressOf(), copyBuffers.back().GetAddressOf(),
+    //    (uint)m_scene.animator.m_FinalBoneMatrices.size(), sizeof(float4x4), m_scene.animator.m_FinalBoneMatrices.data());//(uint)m_scene.m_meshes[i]->m_draw_tasks.size(), sizeof(DrawTask), m_scene.m_meshes[i]->m_draw_tasks.data());
+
+    size_t bufferSize = (uint)m_scene.m_scene_objects.size() * sizeof(SceneObject);
+
+    ThrowIfFailed(device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+        D3D12_HEAP_FLAG_NONE,
+        &CD3DX12_RESOURCE_DESC::Buffer(bufferSize),
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(copyBuffer.GetAddressOf())));
+
+    D3D12_SUBRESOURCE_DATA subresourceData = {};
+    subresourceData.pData = m_scene.m_scene_objects.data();
+    subresourceData.RowPitch = bufferSize;
+    subresourceData.SlicePitch = subresourceData.RowPitch;
+
+    UpdateSubresources(commandList.Get(),
+        *m_ObjectsBuffer.GetAddressOf(), *copyBuffer.GetAddressOf(),
+        0, 0, 1, &subresourceData);
+    
 
     auto fenceValue = commandQueue->ExecuteCommandList(commandList);
     commandQueue->WaitForFenceValue(fenceValue);
-    */
 }
 
 // Transition a resource
@@ -1079,7 +1082,8 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
     // set bone matrices buffers
     commandList->SetGraphicsRootDescriptorTable(8, m_boneMatricesSrvHandle);
     // set animation meta data buffer
-    commandList->SetGraphicsRootShaderResourceView(9, m_AnimationMetaDataBuffer.Get()->GetGPUVirtualAddress());
+    if ((uint)m_scene.m_animationMetaData.size())
+        commandList->SetGraphicsRootShaderResourceView(9, m_AnimationMetaDataBuffer.Get()->GetGPUVirtualAddress());
     
     
 
@@ -1277,21 +1281,11 @@ void MeshletLoD::updateImGui()
     ImGui::NewFrame();
 
 
-    ImGui::SetNextWindowSize(ImVec2(450, 0));
-    ImGui::SetNextWindowPos(ImVec2(12, 12), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(375, 0));
+    ImGui::SetNextWindowPos(ImVec2(275, 12), ImGuiCond_Always);
     ImGui::Begin("Settings");                           
 
-    if (!ImGui::CollapsingHeader("Perfromance Statistics"))
-    {
-        ImGui::Text("%.1f FPS", m_fps);
-        ImGui::Text("%.2fms Frame Time", m_frameTime * 1000);
-        ImGui::SameLine();
-        ImGui::PlotLines("##IDfix", fpsHistory, fpsHistorySize);
-        if (GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&memoryInfo, sizeof(memoryInfo))) 
-            ImGui::Text("%.3fGB RAM Usage", (memoryInfo.WorkingSetSize) / 1073741824.0f);
-        ImGui::Text("%.3fGB VRAM Usage", videoMemoryInfo.CurrentUsage / 1000000000.0f);   
-    }
-    ImGui::Spacing();
+    
 
     if (!ImGui::CollapsingHeader("Render Settings"))
     {
@@ -1356,9 +1350,111 @@ void MeshletLoD::updateImGui()
 
     ImGui::End();
 
-
+    // Animation Window
     ImGui::SetNextWindowSize(ImVec2(275, 0));
     ImGui::SetNextWindowPos(ImVec2((float)(GetClientWidth() - 275 - 12), 12.0f), ImGuiCond_Always);
+    ImGui::Begin("Animation");
+
+    if (!ImGui::CollapsingHeader("General Animation Settings"))
+    {
+        if (ImGui::Button("Reset All"));
+        if (ImGui::Button("Randomize Offsets"));
+    }
+
+    ImGui::Dummy(ImVec2(0.0f, 7.0f));
+
+    if (!ImGui::CollapsingHeader("Individual Object Animation"))
+    {
+        static int currentObjectSelection = 0; // Currently selected object index
+        ImGui::Text("Current Object Selection:");
+        ImGui::SetNextItemWidth(260);
+        ImGui::Combo("", &currentObjectSelection, m_scene.m_sceneObjectNamesCharP.data(), m_scene.m_sceneObjectNamesCharP.size());
+
+        int currentAnimationSelection = m_scene.m_scene_objects[currentObjectSelection].animation_id;
+        for (uint a = 0; a < m_scene.m_meshes[m_scene.m_scene_objects[currentObjectSelection].mesh_id]->m_animations.size(); a++)
+        {
+            if (m_scene.m_scene_objects[currentObjectSelection].animation_id == m_scene.m_meshes[m_scene.m_scene_objects[currentObjectSelection].mesh_id]->m_animations[a].totalAnimationIndex)
+                currentAnimationSelection = a;
+        }
+        
+        currentAnimationSelection++;
+
+        ImGui::Text("Set Animation:");
+        ImGui::SetNextItemWidth(260);
+        ImGui::Combo("##xx", &currentAnimationSelection,
+            m_scene.m_meshes[m_scene.m_scene_objects[currentObjectSelection].mesh_id]->m_animationNamesCharP.data(),
+            m_scene.m_meshes[m_scene.m_scene_objects[currentObjectSelection].mesh_id]->m_animationNamesCharP.size());
+
+        if (currentAnimationSelection == 0)
+            m_scene.m_scene_objects[currentObjectSelection].animation_id = -1;
+        else
+            m_scene.m_scene_objects[currentObjectSelection].animation_id = m_scene.m_meshes[m_scene.m_scene_objects[currentObjectSelection].mesh_id]->m_animations[currentAnimationSelection - 1].totalAnimationIndex;
+
+        if (ImGui::Button("Disable Animation"))
+        {
+            m_scene.m_scene_objects[currentObjectSelection].animation_id = -1;
+        }
+
+        ImGui::Text("Animation Time Offset:");
+        ImGui::SetNextItemWidth(160);
+        ImGui::InputFloat("(ctrl) - 0.01s", &m_scene.m_scene_objects[currentObjectSelection].animation_time_offset, 1.0f, 0.01f, "%.2f");
+
+        ImGui::Text("Animation Speed:");
+        ImGui::SetNextItemWidth(160);
+        ImGui::InputFloat("(ctrl) - 1%", &m_scene.m_scene_objects[currentObjectSelection].animation_speed, 1.0f, 0.01f, "%.2f");
+    }
+    
+    ImGui::Dummy(ImVec2(0.0f, 7.0f));
+    ImGui::Separator();
+    ImGui::Dummy(ImVec2(0.0f, 3.0f));
+    ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - ImGui::CalcTextSize("Apply Changes").x - ImGui::GetStyle().FramePadding.x * 2);
+    if (ImGui::Button("Apply Changes")) 
+    {
+        UpdateObjectsBuffer();
+    }
+
+    ImGui::End();
+
+    // Performance Statistics
+    ImGui::SetNextWindowSize(ImVec2(260, 0));
+    ImGui::SetNextWindowPos(ImVec2(12.0f, 12.0f), ImGuiCond_Always);
+    ImGui::Begin("Performance Statistics");
+
+    if (!ImGui::CollapsingHeader("Run-Time Perfromance Statistics"))
+    {
+        ImGui::Text("%.1f FPS", m_fps);
+        ImGui::Text("%.2fms  ", m_frameTime * 1000);
+        ImGui::SameLine();
+        ImGui::PlotLines("##IDfix", fpsHistory, fpsHistorySize);
+        if (GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&memoryInfo, sizeof(memoryInfo)))
+            ImGui::Text("%.3fGB RAM Usage", (memoryInfo.WorkingSetSize) / 1073741824.0f);
+        ImGui::Text("%.3fGB VRAM Usage", videoMemoryInfo.CurrentUsage / 1000000000.0f);
+    }
+    if (!ImGui::CollapsingHeader("Scene Stats"))
+    {
+        ImGui::Text("scene  objects count: %d", (unsigned int)m_scene.m_scene_objects.size());
+        ImGui::Text("unique  meshes count: %d", (unsigned int)m_scene.m_meshes.size());
+        ImGui::Text("total  meshlet count: %d", (unsigned int)m_scene.m_draw_task_count);
+        ImGui::Text("total   vertex count: %d", (unsigned int)m_scene.m_vertex_count);
+        ImGui::Text("total triangle count: %d", (unsigned int)m_scene.m_triangles_count);
+
+        if (!ImGui::CollapsingHeader("Scene Processing Times"))
+        {
+            ImGui::Text("model load time:         %.4f sec", m_scene.m_modelLoadTime.count());
+            ImGui::Text("LoD generation time:     %.4f sec", m_scene.m_totalLoDGenTime.count());
+            ImGui::Text("meshlet generation time: %.4f sec", m_scene.m_totalMeshletGenTime.count());
+            ImGui::Separator();
+            ImGui::Text("total load time:         %.4f sec", m_scene.m_totalTime.count());
+        }
+
+    }
+
+    ImGui::End();
+
+
+    // Help Window
+    ImGui::SetNextWindowSize(ImVec2(275, 0));
+    ImGui::SetNextWindowPos(ImVec2((float)(GetClientWidth() - 275 - 275 - 12 - 3), 12.0f), ImGuiCond_Always);
     ImGui::Begin("Help");
 
     if (!ImGui::CollapsingHeader("Controls"))
@@ -1370,26 +1466,7 @@ void MeshletLoD::updateImGui()
         ImGui::Text("esc     - close application");
         ImGui::Text("F11     - toggle fullscreen");
         ImGui::Text("V       - toggle v-sync");
-    }
-    if (!ImGui::CollapsingHeader("Scene Stats"))
-    {
-        ImGui::Text("scene  objects count: %d", (unsigned int)m_scene.m_scene_objects.size());
-        ImGui::Text("unique  meshes count: %d", (unsigned int)m_scene.m_meshes.size());
-        ImGui::Text("total  meshlet count: %d", (unsigned int)m_scene.m_draw_task_count);
-        ImGui::Text("total   vertex count: %d", (unsigned int)m_scene.m_vertex_count);
-        ImGui::Text("total triangle count: %d", (unsigned int)m_scene.m_triangles_count);
-       
-        if (!ImGui::CollapsingHeader("Scene Processing Times"))
-        {
-            ImGui::Text("model load time:         %.4f sec", m_scene.m_modelLoadTime.count());
-            ImGui::Text("LoD generation time:     %.4f sec", m_scene.m_totalLoDGenTime.count());
-            ImGui::Text("meshlet generation time: %.4f sec", m_scene.m_totalMeshletGenTime.count());
-            ImGui::Separator();
-            ImGui::Text("total load time:         %.4f sec", m_scene.m_totalTime.count());
-        }
-
-    }
-    
+    } 
     ImGui::End();
 
     ImGui::Render(); 

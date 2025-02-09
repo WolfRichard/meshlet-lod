@@ -82,7 +82,11 @@ void Scene::processSceneNode(aiNode* node, const aiScene* scene, float4x4 parent
         m_indirect_attributes.back().dispatchArguments.z = 1u;
 
         
-            
+        std::string nodeName = std::string("Object_" + std::to_string(m_scene_objects.size() - 1));
+        if (node->mName.length)
+            nodeName = std::string(node->mName.C_Str());
+        m_sceneObjectNames.push_back(nodeName);
+        m_sceneObjectNamesCharP.push_back(m_sceneObjectNames.back().c_str());
 
     }
 

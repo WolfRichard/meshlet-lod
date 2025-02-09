@@ -38,6 +38,8 @@ public:
     std::vector<PreBakedAnimation*> m_preBakedAnimations;
     std::vector<AnimationMetaData> m_animationMetaData;
     
+    std::vector<std::string> m_sceneObjectNames;
+    std::vector<const char*> m_sceneObjectNamesCharP;
 
 private:
     void loadScene(std::string file_path, uint selectedLoD);
