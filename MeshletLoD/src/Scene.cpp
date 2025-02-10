@@ -1,5 +1,6 @@
 #include "Scene.h"
 #include "Windows.h"
+#include <random>
 #if defined(max)
 #undef max
 #endif
@@ -20,6 +21,10 @@ void Scene::init(std::string file_path, uint selectedLoD)
     m_triangles_count = 0;
     m_meshlet_counts.clear();
     m_indirect_attributes.clear();
+    m_preBakedAnimations.clear();
+    m_animationMetaData.clear();
+    m_sceneObjectNames.clear();
+    m_sceneObjectNamesCharP.clear();
 
     m_modelLoadTime = m_modelLoadTime.zero();
     m_totalLoDGenTime = m_totalLoDGenTime.zero();
@@ -28,6 +33,7 @@ void Scene::init(std::string file_path, uint selectedLoD)
 
     auto benchmark_time_start = std::chrono::high_resolution_clock::now();
     loadScene(file_path, selectedLoD);
+    
     auto benchmark_time_end = std::chrono::high_resolution_clock::now();
     m_totalTime = benchmark_time_end - benchmark_time_start;
     
@@ -88,6 +94,8 @@ void Scene::processSceneNode(aiNode* node, const aiScene* scene, float4x4 parent
         m_sceneObjectNames.push_back(nodeName);
         m_sceneObjectNamesCharP.push_back(m_sceneObjectNames.back().c_str());
 
+
+        //genInstances((int)m_scene_objects.size() - 1, 5, 5);
     }
 
     for (uint i = 0; i < node->mNumChildren; i++)
@@ -145,4 +153,94 @@ void Scene::loadScene(std::string file_path, uint selectedLoD)
     processSceneNode(scene->mRootNode, scene, base_transform);
 }
 
+float GetRandomFloat(float min, float max) {
+    return min + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX / (max - min)));
+}
+
+int GetRandomInt(int min, int max) {
+    static std::random_device rd;
+    static std::mt19937 generator(rd());
+    std::uniform_int_distribution<int> distribution(min, max);
+    return distribution(generator);
+}
+
+void Scene::genInstances(uint objectIndex, uint gridSideCount, float spacing)
+{
+    SceneObject selectedObject = m_scene_objects[objectIndex];
+    std::string objectName = m_sceneObjectNames[objectIndex];
+
+    for (uint x = 0; x < gridSideCount; x++)
+    {
+        for (uint z = 0; z < gridSideCount; z++)
+        {
+            if (!x && !z)
+                continue;
+            SceneObject so;
+            so.object_matrix = DirectX::XMMatrixTranspose(DirectX::XMMatrixTranslation(x * spacing, 0, z * spacing)) * selectedObject.object_matrix;
+            so.mesh_id = selectedObject.mesh_id;
+            so.bounding_sphere_center = selectedObject.bounding_sphere_center;
+            so.bounding_sphere_radius = selectedObject.bounding_sphere_radius;
+
+            // animation data
+            so.animation_id = selectedObject.animation_id;
+            so.animation_speed = selectedObject.animation_speed;
+            so.animation_time_offset = selectedObject.animation_time_offset;
+
+            m_scene_objects.push_back(so);
+            m_draw_task_count += m_meshlet_counts[so.mesh_id];
+            m_vertex_count += (uint)m_meshes[so.mesh_id]->m_vertex_count;
+            m_triangles_count += (uint)m_meshes[so.mesh_id]->m_index_count / 3;
+
+            uint thread_count = ((m_meshlet_counts[so.mesh_id] + GROUP_SIZE - 1) / GROUP_SIZE) * GROUP_SIZE;
+
+            m_indirect_attributes.push_back(CommandStructure());
+            m_indirect_attributes.back().instanceID = (uint)(m_scene_objects.size() - 1u);
+            m_indirect_attributes.back().dispatchArguments.x = thread_count;
+            m_indirect_attributes.back().dispatchArguments.y = 1u;
+            m_indirect_attributes.back().dispatchArguments.z = 1u;
+
+            m_sceneObjectNames.push_back(std::string("Instance_" + std::to_string(x * gridSideCount + z)));
+            m_sceneObjectNamesCharP.push_back(m_sceneObjectNames.back().c_str());
+        }
+    }
+}
+
+void Scene::randomizeAnimationOffsets()
+{
+    for (uint o  = 0; o < (uint)m_scene_objects.size(); o++)
+        m_scene_objects[o].animation_time_offset = GetRandomFloat(0, 10.0f);
+}
+
+void Scene::randomizeAnimations()
+{
+    for (uint o = 0; o < (uint)m_scene_objects.size(); o++)
+    {
+        if (m_meshes[m_scene_objects[o].mesh_id]->m_animations.size())
+        {
+            m_scene_objects[o].animation_id = m_meshes[m_scene_objects[o].mesh_id]->m_animations[GetRandomInt(0, (int)m_meshes[m_scene_objects[o].mesh_id]->m_animations.size() - 1)].totalAnimationIndex;
+            m_scene_objects[o].animation_time_offset = GetRandomFloat(0, 10.0f);
+            m_scene_objects[o].animation_speed = GetRandomFloat(0.5f, 2.0f);
+        }
+    }
+
+}
+
+void Scene::resetAnimations()
+{
+    for (uint o = 0; o < (uint)m_scene_objects.size(); o++)
+    {
+        if (m_meshes[m_scene_objects[o].mesh_id]->m_animations.size())
+        {
+            m_scene_objects[o].animation_id = m_meshes[m_scene_objects[o].mesh_id]->m_animations[0].totalAnimationIndex;
+            m_scene_objects[o].animation_time_offset = 0;
+            m_scene_objects[o].animation_speed = 1;
+        }
+    }
+}
+
+void Scene::clearAnimations()
+{
+    for (uint o = 0; o < (uint)m_scene_objects.size(); o++)
+        m_scene_objects[o].animation_id = -1;
+}
 

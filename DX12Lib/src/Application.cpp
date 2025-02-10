@@ -134,7 +134,7 @@ Microsoft::WRL::ComPtr<IDXGIAdapter4> Application::GetAdapter(bool bUseWarp)
     }
     else
     {
-        SIZE_T maxDedicatedVideoMemory = SIZE_MAX; // changed to smallest VRAM to avoid integrated
+        SIZE_T maxDedicatedVideoMemory = 0;
         for (UINT i = 0; dxgiFactory->EnumAdapters1(i, &dxgiAdapter1) != DXGI_ERROR_NOT_FOUND; ++i)
         {
             DXGI_ADAPTER_DESC1 dxgiAdapterDesc1;
@@ -146,7 +146,7 @@ Microsoft::WRL::ComPtr<IDXGIAdapter4> Application::GetAdapter(bool bUseWarp)
             if ((dxgiAdapterDesc1.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) == 0 &&
                 SUCCEEDED(D3D12CreateDevice(dxgiAdapter1.Get(),
                     D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), nullptr)) &&
-                dxgiAdapterDesc1.DedicatedVideoMemory < maxDedicatedVideoMemory) // changed to smallest VRAM to avoid integrated
+                dxgiAdapterDesc1.DedicatedVideoMemory > maxDedicatedVideoMemory)
             {
                 maxDedicatedVideoMemory = dxgiAdapterDesc1.DedicatedVideoMemory;
                 ThrowIfFailed(dxgiAdapter1.As(&dxgiAdapter4));

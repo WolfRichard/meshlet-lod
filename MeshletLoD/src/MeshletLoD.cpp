@@ -51,6 +51,7 @@ MeshletLoD::MeshletLoD(const std::wstring& name, int width, int height, bool vSy
     , m_FoV(90.0)
     , m_ContentLoaded(false)
 {
+    m_scene.init(m_model_file_path, 0);
 }
 
 void MeshletLoD::UpdateBufferResource(
@@ -229,73 +230,6 @@ void recursiveTestHelper(aiNode* currentNode, float4x4 parentTransform, std::map
 
 bool MeshletLoD::LoadContent()
 {
-    // transformation testing
-    
-    Assimp::Importer importer;
-    const aiScene* scene = importer.ReadFile(m_model_file_path, aiProcess_Triangulate);// | aiProcess_MakeLeftHanded | aiProcess_FlipWindingOrder);
-    scene->mMeshes[0]->mBones;
-
-    scene->mRootNode;
-    
-    std::map<std::string, float4x4> boneMap;
-
-    for (int b = 0; b < scene->mMeshes[0]->mNumBones; b++)
-    {
-        std::string boneName = scene->mMeshes[0]->mBones[b]->mName.C_Str();
-        float4x4 transform_matrix = MeshletMesh::assimpToFloat4x4Matrix(scene->mMeshes[0]->mBones[b]->mOffsetMatrix);
-        boneMap[boneName] = transform_matrix;
-    }
-
-    //OutputDebugStringA(("\n\nMesh NumBones: " + std::to_string(scene->mMeshes[0]->mNumBones) + " Animation NumChannels: " + std::to_string(scene->mAnimations[0]->mChannels[0]. ->mNumMeshChannels) + "\n\n").c_str());
-    //OutputDebugStringA(("\n\nMesh Name: " + std::string(scene->mMeshes[0]->mName.C_Str()) + " Animation Channel 0 name: " + std::string(scene->mAnimations[0]->mMeshChannels[0]->mName.C_Str()) + "\n\n").c_str());
-
-   
-    //recursiveTestHelper(scene->mRootNode, XMMatrixIdentity(), &boneMap, 0);
-    
-    
-
-    //OutputDebugStringA((std::string("Test Transform:\n") + MatrixToString(XMMatrixTranslation(10, 2, 0))).c_str());
-    //OutputDebugStringA((std::string("Test Transform:\n") + MatrixToString(XMMatrixRotationQuaternion(XMVectorSet(0, 0, 0, 1)))).c_str());
-    //OutputDebugStringA((std::string("Test Transform2:\n") + MatrixToString(XMMatrixRotationQuaternion(XMVectorSet(0.707107, 0, 0, 0.707107)))).c_str());
-    //OutputDebugStringA((std::string("Test Transform3:\n") + MatrixToString(XMMatrixRotationQuaternion(XMVectorSet(-0.325058, -0.000000, -0.325058, 0.888074)))).c_str());
-    
-    /*
-    float3 p1(0, 0, 0);
-    float3 p2(1, 1, 1);
-    float scaleFactor = -0.2;
-
-    XMVECTOR vecTest = XMVectorLerp(DirectX::XMLoadFloat3(&(p1)), DirectX::XMLoadFloat3(&(p2)), scaleFactor);
-    OutputDebugStringA(("\nTest VEC LERP" + MatrixToString(XMMatrixTranslationFromVector(vecTest))).c_str());
-    */
-
-    m_scene.init(m_model_file_path, 0);
-    
- 
-
-    
-
-
-
-    /*
-    OutputDebugStringA((std::string("\nBone Location Keyframes:\n")).c_str());
-
-    for (auto bone : m_scene.animator.m_CurrentAnimation->m_Bones)
-    {
-        OutputDebugStringA(("\nBone Name: \"" + bone.m_Name + "\" contains " + std::to_string(bone.m_Positions.size()) + " position keyframes").c_str());
-        for (auto key : bone.m_Positions)
-        {
-            OutputDebugStringA(("\nAnimation time: " + std::to_string(key.timeStamp)).c_str());
-            OutputDebugStringA(("\nOffset: (" + std::to_string(key.position.x) + ", " + std::to_string(key.position.y) + ", " + std::to_string(key.position.x) + ")\n").c_str());
-        }
-        OutputDebugStringA(("\nBone Name: \"" + bone.m_Name + "\" contains " + std::to_string(bone.m_Positions.size()) + " rotation keyframes").c_str());
-        for (auto key : bone.m_Rotations)
-        {
-            OutputDebugStringA(("\nAnimation time: " + std::to_string(key.timeStamp)).c_str());
-            OutputDebugStringA(("\nOrientation: (" + std::to_string(XMVectorGetX(key.orientation)) + ", " + std::to_string(XMVectorGetY(key.orientation)) + ", " + std::to_string(XMVectorGetZ(key.orientation)) + ", " + std::to_string(XMVectorGetW(key.orientation)) + ")\n").c_str());
-        }
-    }
-    */
-
     auto device = Application::Get().GetDevice();
     auto commandQueue = Application::Get().GetCommandQueue(D3D12_COMMAND_LIST_TYPE_COPY);
     auto commandList = commandQueue->GetCommandList();
@@ -448,6 +382,7 @@ bool MeshletLoD::LoadContent()
     objectsSrvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
 
     device->CreateShaderResourceView(m_ObjectsBuffer.Get(), &objectsSrvDesc, srvHandle);
+    objectBufferSRVHandle = srvHandle;
     srvHandle.Offset(1, descriptorSize);
 
     // meshlet counts buffer
@@ -792,6 +727,8 @@ void MeshletLoD::UnloadContent()
     m_MeshletCountsBuffer.Reset();
     m_objectCountBuffer.Reset();
     m_indirectArgumentBuffer.Reset();
+    m_BoneMatricesBuffers.clear();
+    m_AnimationMetaDataBuffer.Reset();
 
     m_commandSignature.Reset();
 }
@@ -912,37 +849,12 @@ void MeshletLoD::UpdateObjectsBuffer()
     Application::Get().Flush();
     auto device = Application::Get().GetDevice();
     auto commandQueue = Application::Get().GetCommandQueue(D3D12_COMMAND_LIST_TYPE_COPY);
-    auto commandList = commandQueue->GetCommandList();
-    
-
-    
-    
+    auto commandList = commandQueue->GetCommandList(); 
     ComPtr<ID3D12Resource> copyBuffer;
 
-    
-
-    //UpdateBufferResource(commandList, m_BoneMatricesBuffers[i].GetAddressOf(), copyBuffers.back().GetAddressOf(),
-    //    (uint)m_scene.animator.m_FinalBoneMatrices.size(), sizeof(float4x4), m_scene.animator.m_FinalBoneMatrices.data());//(uint)m_scene.m_meshes[i]->m_draw_tasks.size(), sizeof(DrawTask), m_scene.m_meshes[i]->m_draw_tasks.data());
-
-    size_t bufferSize = (uint)m_scene.m_scene_objects.size() * sizeof(SceneObject);
-
-    ThrowIfFailed(device->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-        D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Buffer(bufferSize),
-        D3D12_RESOURCE_STATE_GENERIC_READ,
-        nullptr,
-        IID_PPV_ARGS(copyBuffer.GetAddressOf())));
-
-    D3D12_SUBRESOURCE_DATA subresourceData = {};
-    subresourceData.pData = m_scene.m_scene_objects.data();
-    subresourceData.RowPitch = bufferSize;
-    subresourceData.SlicePitch = subresourceData.RowPitch;
-
-    UpdateSubresources(commandList.Get(),
-        *m_ObjectsBuffer.GetAddressOf(), *copyBuffer.GetAddressOf(),
-        0, 0, 1, &subresourceData);
-    
+    UpdateBufferResource(commandList,
+        &m_ObjectsBuffer, &copyBuffer,
+        (uint)m_scene.m_scene_objects.size(), sizeof(SceneObject), m_scene.m_scene_objects.data());
 
     auto fenceValue = commandQueue->ExecuteCommandList(commandList);
     commandQueue->WaitForFenceValue(fenceValue);
@@ -1003,11 +915,12 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
     constants.Frustum[5] = float4(m._14 - m._13, m._24 - m._23, m._34 - m._33, m._44 - m._43); // far
 
     constants.CameraWorldPos = m_cameraPos;
-    constants.CurrTime = m_totalRunTime;
+    constants.CurrTime = (float)m_totalRunTime;
     constants.BoolConstants = 0;
     if (m_frustumCulling) constants.BoolConstants |= FRUSTUM_CULLING_BIT_POS;
     if (m_coneCulling) constants.BoolConstants |= CONE_CULLING_BIT_POS;
     if (m_debugVisuals) constants.BoolConstants |= DEBUG_VISUALS_BIT_POS;
+    if (m_debugVisualsShowBonesInsteadOfMeshlets) constants.BoolConstants |= DEBUG_BONES_INSTEAD_OF_MESHLETS;
 
 
     // Clear the render targets.
@@ -1080,7 +993,8 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
     // set meshlet counts buffer
     commandList->SetGraphicsRootShaderResourceView(7, m_MeshletCountsBuffer.Get()->GetGPUVirtualAddress());
     // set bone matrices buffers
-    commandList->SetGraphicsRootDescriptorTable(8, m_boneMatricesSrvHandle);
+    if ((uint)m_scene.m_animationMetaData.size())
+        commandList->SetGraphicsRootDescriptorTable(8, m_boneMatricesSrvHandle);
     // set animation meta data buffer
     if ((uint)m_scene.m_animationMetaData.size())
         commandList->SetGraphicsRootShaderResourceView(9, m_AnimationMetaDataBuffer.Get()->GetGPUVirtualAddress());
@@ -1249,6 +1163,7 @@ void MeshletLoD::initImGui()
     alreadyInitialized = true;
 }
 
+
 void MeshletLoD::updateImGui()
 {
     
@@ -1284,8 +1199,7 @@ void MeshletLoD::updateImGui()
     ImGui::SetNextWindowSize(ImVec2(375, 0));
     ImGui::SetNextWindowPos(ImVec2(275, 12), ImGuiCond_Always);
     ImGui::Begin("Settings");                           
-
-    
+   
 
     if (!ImGui::CollapsingHeader("Render Settings"))
     {
@@ -1327,6 +1241,7 @@ void MeshletLoD::updateImGui()
         {
             Application::Get().Flush();
             UnloadContent();
+            m_scene.init(m_model_file_path, 0);
             LoadContent();
         }
         static int lod = 0;
@@ -1342,13 +1257,24 @@ void MeshletLoD::updateImGui()
         ImGui::SameLine();
         if (ImGui::Checkbox("Debug Visuals", &m_debugVisuals)) CreatePSO();
         
+        static int selected = 0;  // Index of the selected option
+        const char* options[] = { "Meshlets", "Animation Bones" };
+        for (int i = 0; i < IM_ARRAYSIZE(options); i++) {
+            if (ImGui::RadioButton(options[i], selected == i)) {
+                selected = i;  // Update selection when clicked
+                m_debugVisualsShowBonesInsteadOfMeshlets = i;
+            }
+        }
+        
         if (ImGui::Button("Force Lag"))
             Sleep(1000);
+        
         
     }
     ImGui::Spacing();
 
     ImGui::End();
+
 
     // Animation Window
     ImGui::SetNextWindowSize(ImVec2(275, 0));
@@ -1357,8 +1283,26 @@ void MeshletLoD::updateImGui()
 
     if (!ImGui::CollapsingHeader("General Animation Settings"))
     {
-        if (ImGui::Button("Reset All"));
-        if (ImGui::Button("Randomize Offsets"));
+        if (ImGui::Button("Remove All Animations"))
+        {
+            m_scene.clearAnimations();
+            UpdateObjectsBuffer();
+        }
+        if (ImGui::Button("Reset All"))
+        {
+            m_scene.resetAnimations();
+            UpdateObjectsBuffer();
+        }
+        if (ImGui::Button("Randomize Offsets"))
+        {
+            m_scene.randomizeAnimationOffsets();
+            UpdateObjectsBuffer();
+        }
+        if (ImGui::Button("Randomize Animations"))
+        {
+            m_scene.randomizeAnimations();
+            UpdateObjectsBuffer();
+        }
     }
 
     ImGui::Dummy(ImVec2(0.0f, 7.0f));
@@ -1368,7 +1312,7 @@ void MeshletLoD::updateImGui()
         static int currentObjectSelection = 0; // Currently selected object index
         ImGui::Text("Current Object Selection:");
         ImGui::SetNextItemWidth(260);
-        ImGui::Combo("", &currentObjectSelection, m_scene.m_sceneObjectNamesCharP.data(), m_scene.m_sceneObjectNamesCharP.size());
+        (int)ImGui::Combo("", &currentObjectSelection, m_scene.m_sceneObjectNamesCharP.data(), m_scene.m_sceneObjectNamesCharP.size());
 
         int currentAnimationSelection = m_scene.m_scene_objects[currentObjectSelection].animation_id;
         for (uint a = 0; a < m_scene.m_meshes[m_scene.m_scene_objects[currentObjectSelection].mesh_id]->m_animations.size(); a++)
@@ -1383,7 +1327,7 @@ void MeshletLoD::updateImGui()
         ImGui::SetNextItemWidth(260);
         ImGui::Combo("##xx", &currentAnimationSelection,
             m_scene.m_meshes[m_scene.m_scene_objects[currentObjectSelection].mesh_id]->m_animationNamesCharP.data(),
-            m_scene.m_meshes[m_scene.m_scene_objects[currentObjectSelection].mesh_id]->m_animationNamesCharP.size());
+            (int)m_scene.m_meshes[m_scene.m_scene_objects[currentObjectSelection].mesh_id]->m_animationNamesCharP.size());
 
         if (currentAnimationSelection == 0)
             m_scene.m_scene_objects[currentObjectSelection].animation_id = -1;
@@ -1394,6 +1338,16 @@ void MeshletLoD::updateImGui()
         {
             m_scene.m_scene_objects[currentObjectSelection].animation_id = -1;
         }
+        ImGui::SameLine();
+        if (ImGui::Button("Gen. Instances"))
+        {
+            Application::Get().Flush();
+            //m_scene.init(m_model_file_path, 0);
+            UnloadContent();
+            m_scene.genInstances(currentObjectSelection, 5, 15);
+            LoadContent();
+            //UpdateObjectsBuffer();
+        }
 
         ImGui::Text("Animation Time Offset:");
         ImGui::SetNextItemWidth(160);
@@ -1403,6 +1357,7 @@ void MeshletLoD::updateImGui()
         ImGui::SetNextItemWidth(160);
         ImGui::InputFloat("(ctrl) - 1%", &m_scene.m_scene_objects[currentObjectSelection].animation_speed, 1.0f, 0.01f, "%.2f");
     }
+    
     
     ImGui::Dummy(ImVec2(0.0f, 7.0f));
     ImGui::Separator();

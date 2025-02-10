@@ -19,6 +19,11 @@ public:
     Scene();
 
     void init(std::string file_path, uint selectedLoD);
+    void genInstances(uint objectIndex, uint gridSideCount, float spacing);
+    void randomizeAnimationOffsets();
+    void randomizeAnimations();
+    void resetAnimations();
+    void clearAnimations();
 
     std::vector<SceneObject> m_scene_objects;
     std::vector<MeshletMesh*> m_meshes;

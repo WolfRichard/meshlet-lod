@@ -124,10 +124,11 @@ private:
     double m_totalRunTime = 0.0;
     bool m_wireframe = false;
     bool m_backFaceCulling = true;
-    bool m_frustumCulling = false;
-    bool m_coneCulling = false;
+    bool m_frustumCulling = true;
+    bool m_coneCulling = true;
     bool m_debugVisuals = true;
-    bool m_objectCulling = false;
+    bool m_debugVisualsShowBonesInsteadOfMeshlets = false;
+    bool m_objectCulling = true;
 
     // camera related variables
     float3 m_cameraPos = float3(0, 0, 0);
@@ -163,6 +164,8 @@ private:
     std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_BoneMatricesBuffers;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_AnimationMetaDataBuffer;
 
+    D3D12_CPU_DESCRIPTOR_HANDLE objectBufferSRVHandle;
+
     // gpu handles
     D3D12_GPU_DESCRIPTOR_HANDLE m_indexSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_vertexSrvHandle;
@@ -178,5 +181,5 @@ private:
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
 
     Scene m_scene;
-    char  m_model_file_path[1024] = "./assets/SkeletalTestScene.glb";
+    char  m_model_file_path[1024] = "./assets/TestScene.glb";
 };

@@ -87,18 +87,17 @@ void main(in uint I : SV_GroupIndex,
     
     // animation meta data
     uint animation_id = objectsBuffer[meshPayload.object_id[gid]].animation_id;
-    float animation_speed, animation_offset, animation_duration, animation_frame_lerp;
+    float animation_speed, animation_offset, animation_frame_lerp;
     uint animation_bone_count, animation_frame_count, current_animation_frame, next_animation_frame;
     if (animation_id != -1)
     {
         animation_speed = objectsBuffer[meshPayload.object_id[gid]].animation_speed;
         animation_offset = objectsBuffer[meshPayload.object_id[gid]].animation_time_offset;
         animation_bone_count = AMDBuffer[animation_id].bone_count;
-        animation_duration = AMDBuffer[animation_id].duration;
         animation_frame_count = AMDBuffer[animation_id].frame_count;
         
         
-        current_animation_frame = uint(fmod(constantsBuffer.CurrTime * abs(animation_speed) + animation_offset, animation_duration) * ANIMATION_FPS) % animation_frame_count;
+        current_animation_frame = uint((constantsBuffer.CurrTime * abs(animation_speed) + animation_offset) * ANIMATION_FPS) % animation_frame_count;
         next_animation_frame = (current_animation_frame + 1) % animation_frame_count;
         animation_frame_lerp = fmod((constantsBuffer.CurrTime * abs(animation_speed) + animation_offset) * ANIMATION_FPS, 1.0);
         
@@ -153,13 +152,19 @@ void main(in uint I : SV_GroupIndex,
         float brightness = clamp(clamp(dot(normalize(float3(1, 1, 1)), normal.xyz), 0, 1) + clamp(dot(normalize(float3(-2, 1, -1)), normal.xyz), 0, 0.6), 0.05, 1);
         if (constantsBuffer.BoolConstants & DEBUG_VISUALS_BIT_POS)
         {
-            //verts[v].Color = Rainbow(Random(gid)) * brightness;
-            float4 tempColor = float4(0, 0, 0, 0);
-            for (int b = 0; b < MAX_BONES_PER_VERTEX; b++)
+            if (constantsBuffer.BoolConstants & DEBUG_BONES_INSTEAD_OF_MESHLETS)
             {
-                tempColor += Rainbow(Random(vertex.bones[b] * 5.1236)) * vertex.bone_weights[b];
+                float4 tempColor = float4(0, 0, 0, 0);
+                for (int b = 0; b < MAX_BONES_PER_VERTEX; b++)
+                {
+                    tempColor += Rainbow(Random(vertex.bones[b] * 5.1236)) * vertex.bone_weights[b];
+                }
+                verts[v].Color = tempColor * brightness;
             }
-            verts[v].Color = tempColor * brightness;
+            else
+            {
+                verts[v].Color = Rainbow(Random(gid)) * brightness;
+            }           
         }    
         else
             verts[v].Color = brightness;
