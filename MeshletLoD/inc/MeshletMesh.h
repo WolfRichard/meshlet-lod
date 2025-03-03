@@ -68,6 +68,8 @@ public:
     std::vector<std::string> m_animationNames;
     std::vector<const char*> m_animationNamesCharP;
 
+    uint m_LoDCount;
+
 private:
     void parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene);
     void generateMeshlets();

@@ -5,11 +5,13 @@
 #endif
 
 #ifndef MAX_MESHLET_VERTEX_COUNT
-#    define MAX_MESHLET_VERTEX_COUNT 64
+//#    define MAX_MESHLET_VERTEX_COUNT 64
+#    define MAX_MESHLET_VERTEX_COUNT 128
 #endif
 
 #ifndef MAX_MESHLET_PRIMITIVE_COUNT
-#    define MAX_MESHLET_PRIMITIVE_COUNT 124
+//#    define MAX_MESHLET_PRIMITIVE_COUNT 124
+#    define MAX_MESHLET_PRIMITIVE_COUNT 254
 #endif
 
 
@@ -52,16 +54,23 @@ struct DrawTask
 // bit positions for constant bools
 #define FRUSTUM_CULLING_BIT_POS          1 // 00000000000000000000000000000001
 #define CONE_CULLING_BIT_POS             2 // 00000000000000000000000000000010
-#define DEBUG_VISUALS_BIT_POS            4 // 00000000000000000000000000000100
-#define DEBUG_BONES_INSTEAD_OF_MESHLETS 16 // 00000000000000000000000000001000
+#define ENABLE_DEBUG_VISUALS_BIT_POS     4 // 00000000000000000000000000000100
+#define DEBUG_MESHLETS                  16 // 00000000000000000000000000001000
+#define DEBUG_BONES                     32 // 00000000000000000000000000010000
+#define DEBUG_LOD                       64 // 00000000000000000000000000100000
+
+
+
 
 struct Constants
 {
     float4x4 ViewProjMat;
+    float4x4 ViewMat;
     float4 Frustum[6];
     
     float3 CameraWorldPos;
-
+    float CoTanHalfFoV;
+    
     float CurrTime;
     
     uint BoolConstants; // can hold up to 32 booleans but only uses the space of a single word in the root signature
@@ -110,9 +119,16 @@ struct SceneObject
     //float3 byte_allignement; // used to keep 16 byte allignement for structured buffer
 };
 
+struct MeshLoDStructure
+{
+    uint mesh_offset;
+    uint lod_count;
+};
+
 struct CommandStructure
 {
     uint instanceID;
+    float level_of_detail;
     uint3 dispatchArguments;
 };
 

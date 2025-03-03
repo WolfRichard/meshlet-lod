@@ -16,6 +16,11 @@ cbuffer InstanceIDBuffer                          : register(b1, space0)
     uint object_id;
 };
 
+cbuffer ObjectLoDBuffer                           : register(b2, space0)
+{
+    float object_LoD;
+};
+
 // Objects Buffer
 StructuredBuffer<SceneObject> objectsBuffer       : register(t0, space0);
 
@@ -150,9 +155,9 @@ void main(in uint I : SV_GroupIndex,
         
         float4 normal = mul(localNormal, objectsBuffer[meshPayload.object_id[gid]].object_matrix);
         float brightness = clamp(clamp(dot(normalize(float3(1, 1, 1)), normal.xyz), 0, 1) + clamp(dot(normalize(float3(-2, 1, -1)), normal.xyz), 0, 0.6), 0.05, 1);
-        if (constantsBuffer.BoolConstants & DEBUG_VISUALS_BIT_POS)
+        if (constantsBuffer.BoolConstants & ENABLE_DEBUG_VISUALS_BIT_POS)
         {
-            if (constantsBuffer.BoolConstants & DEBUG_BONES_INSTEAD_OF_MESHLETS)
+            if (constantsBuffer.BoolConstants & DEBUG_BONES)
             {
                 float4 tempColor = float4(0, 0, 0, 0);
                 for (int b = 0; b < MAX_BONES_PER_VERTEX; b++)
@@ -161,13 +166,24 @@ void main(in uint I : SV_GroupIndex,
                 }
                 verts[v].Color = tempColor * brightness;
             }
-            else
+            else if (constantsBuffer.BoolConstants & DEBUG_MESHLETS)
             {
                 verts[v].Color = Rainbow(Random(gid)) * brightness;
-            }           
+            }
+            else if (constantsBuffer.BoolConstants & DEBUG_LOD)
+            {
+                verts[v].Color = Rainbow(object_LoD) * brightness;
+            }
+            else
+            {
+                verts[v].Color = brightness;
+            }
         }    
         else
+        {
             verts[v].Color = brightness;
+        }
+           
 
     }
     

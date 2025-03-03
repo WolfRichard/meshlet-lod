@@ -9,7 +9,7 @@ MeshletMesh::MeshletMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
 
     // LoD
     auto benchmark_time_start = std::chrono::high_resolution_clock::now();
-    generateLoD(10);
+    generateLoD(7);
     auto benchmark_time_end = std::chrono::high_resolution_clock::now();
     m_LoDGenTime = benchmark_time_end - benchmark_time_start;
 
@@ -149,8 +149,8 @@ void MeshletMesh::parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
             animator.UpdateAnimation(0);
 
             m_animations.push_back(PreBakedAnimation());
-            m_animations.back().boneCount = animator.m_FinalBoneMatrices.size();
-            m_animations.back().frameCount = (animation.m_Duration / animation.m_TicksPerSecond) * ANIMATION_FPS;
+            m_animations.back().boneCount = (uint)animator.m_FinalBoneMatrices.size();
+            m_animations.back().frameCount = (uint)(animation.m_Duration / animation.m_TicksPerSecond) * ANIMATION_FPS;
             m_animations.back().matrices.reserve(m_animations.back().boneCount* m_animations.back().frameCount);
             for (uint f = 0; f < m_animations.back().frameCount; f++)
             {
@@ -209,25 +209,25 @@ void MeshletMesh::generateMeshlets()
     }
 }
 
-void MeshletMesh::generateLoD(uint number_of_levels) 
+void MeshletMesh::generateLoD(uint resolution_level)
 {
-    for (uint resolution_level = 1; resolution_level < number_of_levels; resolution_level++)
-    {
-        size_t target_index_count = static_cast<size_t>((uint)std::max(m_indices.size() / (uint)std::pow(2, resolution_level), 3ull));
-        std::vector<uint> simplified_indices(m_indices.size());
+    
+    size_t target_index_count = static_cast<size_t>((uint)std::max(m_indices.size() / (uint)std::pow(2, resolution_level), 64ull));
+    std::vector<uint> simplified_indices(m_indices.size());
 
-        // Simplify the mesh
-        float lod_error = 0.f;
-        size_t simplified_count = meshopt_simplifySloppy(
-            simplified_indices.data(), m_indices.data(), m_indices.size(),
-            reinterpret_cast<const float*>(m_vertices.data()), m_vertices.size(), sizeof(CustomVertex),
-            target_index_count, FLT_MAX, &lod_error
-        );
+    // Simplify the mesh
+    float lod_error = 0.f;
+    size_t simplified_count = meshopt_simplifySloppy(
+        simplified_indices.data(), m_indices.data(), m_indices.size(),
+        reinterpret_cast<const float*>(m_vertices.data()), m_vertices.size(), sizeof(CustomVertex),
+        target_index_count, FLT_MAX, &lod_error
+    );
 
-        // Resize the index vector to the actual simplified size
-        simplified_indices.resize(simplified_count);
-        //m_indices = simplified_indices;
-    }
+    // Resize the index vector to the actual simplified size
+    simplified_indices.resize(simplified_count);
+    m_indices = simplified_indices;
+    m_indices.resize(simplified_count);
+    m_index_count = simplified_count;
 }
 
 void MeshletMesh::addVertexBoneData(CustomVertex& vertex, int boneID, float weight)

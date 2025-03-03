@@ -235,6 +235,36 @@ bool MeshletLoD::LoadContent()
     auto commandList = commandQueue->GetCommandList();
 
 
+    // constants buffer
+    D3D12_HEAP_PROPERTIES heapProps = {};
+    heapProps.Type = D3D12_HEAP_TYPE_UPLOAD;
+   
+    D3D12_RESOURCE_DESC constBufferDesc = {};
+    constBufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    constBufferDesc.Width = (sizeof(Constants) + 255) & ~255; // allign to 256 bytes
+    constBufferDesc.Height = 1;
+    constBufferDesc.DepthOrArraySize = 1;
+    constBufferDesc.MipLevels = 1;
+    constBufferDesc.Format = DXGI_FORMAT_UNKNOWN;
+    constBufferDesc.SampleDesc.Count = 1;
+    constBufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    constBufferDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+    // Create the upload buffer
+    device->CreateCommittedResource(
+        &heapProps,
+        D3D12_HEAP_FLAG_NONE,
+        &constBufferDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&m_ConstantsBuffer)
+    );
+
+    // Map the buffer (persistent mapping)
+    m_ConstantsBuffer->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedConstantData));
+
+
+
 
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
     heapDesc.NumDescriptors = (uint)m_scene.m_meshes.size() * 4 + 4 + (uint)m_scene.m_preBakedAnimations.size(); // 4 bindless buffers that scale with mesh count + 1 bindless with animations + 4 single buffers
@@ -510,9 +540,10 @@ bool MeshletLoD::LoadContent()
         D3D12_ROOT_SIGNATURE_FLAG_NONE;
 
 
-    CD3DX12_ROOT_PARAMETER1 rootParameters[10];
+    CD3DX12_ROOT_PARAMETER1 rootParameters[11];
     // constants
-    rootParameters[0].InitAsConstants(sizeof(Constants) / 4, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
+    //rootParameters[0].InitAsConstants(sizeof(Constants) / 4, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
+    rootParameters[0].InitAsConstantBufferView(0);
 
     // vertices
     CD3DX12_DESCRIPTOR_RANGE1 srvVertexRange;
@@ -550,6 +581,9 @@ bool MeshletLoD::LoadContent()
 
     // animation meta data
     rootParameters[9].InitAsShaderResourceView(2, 0);
+
+    // object wide LoD
+    rootParameters[10].InitAsConstants(1, 2, 0, D3D12_SHADER_VISIBILITY_ALL);
     
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDescription;
@@ -572,7 +606,8 @@ bool MeshletLoD::LoadContent()
     CD3DX12_ROOT_PARAMETER1 objectCullingRootParameters[6];
 
     // constants
-    objectCullingRootParameters[0].InitAsConstants(sizeof(Constants) / 4, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
+    //objectCullingRootParameters[0].InitAsConstants(sizeof(Constants) / 4, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
+    objectCullingRootParameters[0].InitAsConstantBufferView(0);
     objectCullingRootParameters[5].InitAsConstants(sizeof(uint) / 4, 1, 0, D3D12_SHADER_VISIBILITY_ALL);
 
     // objects
@@ -620,14 +655,19 @@ bool MeshletLoD::LoadContent()
 
     // setup command signature
     D3D12_COMMAND_SIGNATURE_DESC commandSignatureDesc = {};
-    D3D12_INDIRECT_ARGUMENT_DESC argumentDescs[2] = {};
+    D3D12_INDIRECT_ARGUMENT_DESC argumentDescs[3] = {};
 
     argumentDescs[0].Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT;
     argumentDescs[0].Constant.RootParameterIndex = 3;
     argumentDescs[0].Constant.DestOffsetIn32BitValues = 0;
     argumentDescs[0].Constant.Num32BitValuesToSet = 1;
 
-    argumentDescs[1].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH_MESH;
+    argumentDescs[1].Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT;
+    argumentDescs[1].Constant.RootParameterIndex = 10;
+    argumentDescs[1].Constant.DestOffsetIn32BitValues = 0;
+    argumentDescs[1].Constant.Num32BitValuesToSet = 1;
+
+    argumentDescs[2].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH_MESH;
 
     commandSignatureDesc.pArgumentDescs = argumentDescs;
     commandSignatureDesc.NumArgumentDescs = _countof(argumentDescs);
@@ -903,6 +943,7 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
     Constants constants;
 
     constants.ViewProjMat = mvpMatrix;
+    constants.ViewMat = XMMatrixTranspose(m_ViewMatrix);
     // frustom planes from view-proj-matrix
     // http://gamedevs.org/uploads/fast-extraction-viewing-frustum-planes-from-world-view-projection-matrix.pdf)
     XMFLOAT4X4 m;
@@ -915,12 +956,35 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
     constants.Frustum[5] = float4(m._14 - m._13, m._24 - m._23, m._34 - m._33, m._44 - m._43); // far
 
     constants.CameraWorldPos = m_cameraPos;
+    constants.CoTanHalfFoV = m_LoDScale / std::tan(m_FoV / 2.0f);
     constants.CurrTime = (float)m_totalRunTime;
     constants.BoolConstants = 0;
     if (m_frustumCulling) constants.BoolConstants |= FRUSTUM_CULLING_BIT_POS;
     if (m_coneCulling) constants.BoolConstants |= CONE_CULLING_BIT_POS;
-    if (m_debugVisuals) constants.BoolConstants |= DEBUG_VISUALS_BIT_POS;
-    if (m_debugVisualsShowBonesInsteadOfMeshlets) constants.BoolConstants |= DEBUG_BONES_INSTEAD_OF_MESHLETS;
+    switch (m_debugMode)
+    {
+    case ShowMeshlets:
+        constants.BoolConstants |= ENABLE_DEBUG_VISUALS_BIT_POS;
+        constants.BoolConstants |= DEBUG_MESHLETS;
+        break;
+    case ShowBones:
+        constants.BoolConstants |= ENABLE_DEBUG_VISUALS_BIT_POS;
+        constants.BoolConstants |= DEBUG_BONES;
+        break;
+    
+    case ShowLoD:
+        constants.BoolConstants |= ENABLE_DEBUG_VISUALS_BIT_POS;
+        constants.BoolConstants |= DEBUG_LOD;
+        break;
+    default:
+        break;
+    }
+    
+
+
+
+    memcpy(m_mappedConstantData, &constants, sizeof(Constants));
+
 
 
     // Clear the render targets.
@@ -939,7 +1003,8 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
     commandList->SetPipelineState(m_ObjectCulling_PipelineState.Get());
     commandList->SetComputeRootSignature(m_ObjectCulling_RootSignature.Get());
 
-    commandList->SetComputeRoot32BitConstants(0, sizeof(Constants) / 4, &constants, 0);
+    //commandList->SetComputeRoot32BitConstants(0, sizeof(Constants) / 4, &constants, 0);
+    commandList->SetComputeRootConstantBufferView(0, m_ConstantsBuffer->GetGPUVirtualAddress());
     uint maxObjectCount = (uint)m_scene.m_scene_objects.size();
     commandList->SetComputeRoot32BitConstants(5, sizeof(uint) / 4, &maxObjectCount, 0);
 
@@ -971,7 +1036,8 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
 
     commandList->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
 
-    commandList->SetGraphicsRoot32BitConstants(0, sizeof(Constants) / 4, &constants, 0);
+    //commandList->SetGraphicsRoot32BitConstants(0, sizeof(Constants) / 4, &constants, 0);
+    commandList->SetGraphicsRootConstantBufferView(0, m_ConstantsBuffer->GetGPUVirtualAddress());
 
     //commandList->DrawIndexedInstanced(_countof(g_Indicies), 1, 0, 0, 0);
 
@@ -1206,6 +1272,7 @@ void MeshletLoD::updateImGui()
         ImGui::Checkbox("Meshlet based Frustum Culling", &m_frustumCulling);
         ImGui::Checkbox("Meshlet based Cone Culling", &m_coneCulling);
         ImGui::Checkbox("Object Culling", &m_objectCulling);
+        ImGui::SliderFloat("LoD Scale", &m_LoDScale, 0.01f, 10.0f);
         ImGui::ColorEdit4("Clear Color", m_ClearColor);
         if (ImGui::Button("Toggle Fullscreen"))
         {
@@ -1254,15 +1321,14 @@ void MeshletLoD::updateImGui()
         if (ImGui::Checkbox("Wireframe", &m_wireframe)) CreatePSO();
         ImGui::SameLine();
         if (ImGui::Checkbox("Back Face Culling", &m_backFaceCulling)) CreatePSO();
-        ImGui::SameLine();
-        if (ImGui::Checkbox("Debug Visuals", &m_debugVisuals)) CreatePSO();
+        
         
         static int selected = 0;  // Index of the selected option
-        const char* options[] = { "Meshlets", "Animation Bones" };
+        const char* options[] = { "Disable Debug Visals", "Show Meshlets", "Show Bones", "Show LoD Selection"};
         for (int i = 0; i < IM_ARRAYSIZE(options); i++) {
             if (ImGui::RadioButton(options[i], selected == i)) {
                 selected = i;  // Update selection when clicked
-                m_debugVisualsShowBonesInsteadOfMeshlets = i;
+                m_debugMode = static_cast<DebugVisualsSelection>(i);
             }
         }
         
@@ -1312,7 +1378,7 @@ void MeshletLoD::updateImGui()
         static int currentObjectSelection = 0; // Currently selected object index
         ImGui::Text("Current Object Selection:");
         ImGui::SetNextItemWidth(260);
-        (int)ImGui::Combo("", &currentObjectSelection, m_scene.m_sceneObjectNamesCharP.data(), m_scene.m_sceneObjectNamesCharP.size());
+        ImGui::Combo("", &currentObjectSelection, m_scene.m_sceneObjectNamesCharP.data(), (int)m_scene.m_sceneObjectNamesCharP.size());
 
         int currentAnimationSelection = m_scene.m_scene_objects[currentObjectSelection].animation_id;
         for (uint a = 0; a < m_scene.m_meshes[m_scene.m_scene_objects[currentObjectSelection].mesh_id]->m_animations.size(); a++)

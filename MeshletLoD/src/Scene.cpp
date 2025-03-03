@@ -83,6 +83,7 @@ void Scene::processSceneNode(aiNode* node, const aiScene* scene, float4x4 parent
 
         m_indirect_attributes.push_back(CommandStructure());
         m_indirect_attributes.back().instanceID = (uint)(m_scene_objects.size() - 1u);
+        m_indirect_attributes.back().level_of_detail = 0;
         m_indirect_attributes.back().dispatchArguments.x = thread_count;
         m_indirect_attributes.back().dispatchArguments.y = 1u;
         m_indirect_attributes.back().dispatchArguments.z = 1u;

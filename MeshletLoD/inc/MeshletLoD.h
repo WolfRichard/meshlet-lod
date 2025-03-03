@@ -8,6 +8,13 @@
 
 #include "Scene.h"
 
+enum DebugVisualsSelection {
+    ShowNoDebug,
+    ShowMeshlets,
+    ShowBones,
+    ShowLoD
+};
+
 
 class MeshletLoD : public Game
 {
@@ -126,8 +133,7 @@ private:
     bool m_backFaceCulling = true;
     bool m_frustumCulling = true;
     bool m_coneCulling = true;
-    bool m_debugVisuals = true;
-    bool m_debugVisualsShowBonesInsteadOfMeshlets = false;
+    DebugVisualsSelection m_debugMode = ShowNoDebug;
     bool m_objectCulling = true;
 
     // camera related variables
@@ -143,6 +149,7 @@ private:
     bool m_autoRotateScene = true;
     float m_autoCameraDistance = 4.0f;
     float m_autoRotationOffset = 4;
+    float m_LoDScale = 1;
     
     
 
@@ -163,6 +170,11 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> m_objectCountBuffer;
     std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_BoneMatricesBuffers;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_AnimationMetaDataBuffer;
+    
+    
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_ConstantsBuffer;
+    UINT8* m_mappedConstantData = nullptr;
+
 
     D3D12_CPU_DESCRIPTOR_HANDLE objectBufferSRVHandle;
 
