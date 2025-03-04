@@ -5,19 +5,38 @@ using namespace DirectX;
 
 MeshletMesh::MeshletMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
 {
+    m_meshlet_vertices.push_back(std::vector<unsigned int>());
+    m_meshlet_triangles.push_back(std::vector<unsigned char>());
+    m_draw_tasks.push_back(std::vector<DrawTask>());
+    m_LoDGenTime = std::chrono::high_resolution_clock::now() - std::chrono::high_resolution_clock::now();
+    
     parseMesh(assimp_mesh, assimp_scene);
 
-    // LoD
-    auto benchmark_time_start = std::chrono::high_resolution_clock::now();
-    generateLoD(7);
-    auto benchmark_time_end = std::chrono::high_resolution_clock::now();
-    m_LoDGenTime = benchmark_time_end - benchmark_time_start;
-
     // Meshlets
-    benchmark_time_start = std::chrono::high_resolution_clock::now();
+    auto benchmark_time_start = std::chrono::high_resolution_clock::now();
     generateMeshlets();
-    benchmark_time_end = std::chrono::high_resolution_clock::now();
+    auto benchmark_time_end = std::chrono::high_resolution_clock::now();
     m_meshletGenTime = benchmark_time_end - benchmark_time_start;
+
+    m_LoDCount = (uint)log2(m_vertex_count / 16);
+    for (uint i = 1; i < m_LoDCount; i++)
+    {
+        m_meshlet_vertices.push_back(std::vector<unsigned int>());
+        m_meshlet_triangles.push_back(std::vector<unsigned char>());
+        m_draw_tasks.push_back(std::vector<DrawTask>());
+
+        // LoD
+        benchmark_time_start = std::chrono::high_resolution_clock::now();
+        generateLoD(i);
+        benchmark_time_end = std::chrono::high_resolution_clock::now();
+        m_LoDGenTime += benchmark_time_end - benchmark_time_start;
+
+        // Meshlets
+        benchmark_time_start = std::chrono::high_resolution_clock::now();
+        generateMeshlets();
+        benchmark_time_end = std::chrono::high_resolution_clock::now();
+        m_meshletGenTime += benchmark_time_end - benchmark_time_start;
+    }
 }
 
 
@@ -119,6 +138,7 @@ void MeshletMesh::parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
     meshopt_remapIndexBuffer(m_indices.data(), raw_indices.data(), m_index_count, &remap[0]);
     meshopt_remapVertexBuffer(m_vertices.data(), raw_vertices.data(), raw_vertices.size(), sizeof(CustomVertex), &remap[0]);
     meshopt_optimizeVertexCache(m_indices.data(), m_indices.data(), m_index_count, m_vertex_count);
+    m_simplifiedIndices = m_indices;
 
     //default option whith disabled animation:
     m_animationNames.push_back(std::string("- No Animation -"));
@@ -172,29 +192,29 @@ void MeshletMesh::parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
 void MeshletMesh::generateMeshlets()
 {
     const float cone_weight  = 0.0f;
-    size_t      max_meshlets = meshopt_buildMeshletsBound(m_indices.size(), MAX_MESHLET_VERTEX_COUNT, MAX_MESHLET_PRIMITIVE_COUNT);
-    std::vector<meshopt_Meshlet> m_meshlets(max_meshlets);
-    m_meshlet_vertices.resize(max_meshlets * MAX_MESHLET_VERTEX_COUNT);
-    m_meshlet_triangles.resize(max_meshlets * MAX_MESHLET_PRIMITIVE_COUNT * 3);
+    size_t      max_meshlets = meshopt_buildMeshletsBound(m_simplifiedIndices.size(), MAX_MESHLET_VERTEX_COUNT, MAX_MESHLET_PRIMITIVE_COUNT);
+    std::vector<meshopt_Meshlet> meshlets(max_meshlets);
+    m_meshlet_vertices.back().resize(max_meshlets * MAX_MESHLET_VERTEX_COUNT);
+    m_meshlet_triangles.back().resize(max_meshlets * MAX_MESHLET_PRIMITIVE_COUNT * 3);
 
-    uint meshlet_count = (uint)meshopt_buildMeshlets(m_meshlets.data(), m_meshlet_vertices.data(), m_meshlet_triangles.data(), m_indices.data(), m_indices.size(), &m_vertices[0].position.x, m_vertices.size(), sizeof(CustomVertex), MAX_MESHLET_VERTEX_COUNT, MAX_MESHLET_PRIMITIVE_COUNT, cone_weight);
-    m_meshlets.resize(meshlet_count);
+    uint meshlet_count = (uint)meshopt_buildMeshlets(meshlets.data(), m_meshlet_vertices.back().data(), m_meshlet_triangles.back().data(), m_simplifiedIndices.data(), m_simplifiedIndices.size(), &m_vertices[0].position.x, m_vertices.size(), sizeof(CustomVertex), MAX_MESHLET_VERTEX_COUNT, MAX_MESHLET_PRIMITIVE_COUNT, cone_weight);
+    meshlets.resize(meshlet_count);
 
     for (uint i = 0; i < meshlet_count; i++)
     {
-        meshopt_Bounds bounds = meshopt_computeMeshletBounds(&m_meshlet_vertices[m_meshlets[i].vertex_offset],
-                                                             &m_meshlet_triangles[m_meshlets[i].triangle_offset],
-                                                             m_meshlets[i].triangle_count,
+        meshopt_Bounds bounds = meshopt_computeMeshletBounds(&m_meshlet_vertices.back()[meshlets[i].vertex_offset],
+                                                             &m_meshlet_triangles.back()[meshlets[i].triangle_offset],
+                                                             meshlets[i].triangle_count,
                                                              &m_vertices[0].position.x,
                                                              m_vertices.size(),
                                                              sizeof(CustomVertex));
 
 
         DrawTask newTask;
-        newTask.triangle_count  = m_meshlets[i].triangle_count;
-        newTask.triangle_offset = m_meshlets[i].triangle_offset;
-        newTask.vertex_count    = m_meshlets[i].vertex_count;
-        newTask.vertex_offset   = m_meshlets[i].vertex_offset;
+        newTask.triangle_count  = meshlets[i].triangle_count;
+        newTask.triangle_offset = meshlets[i].triangle_offset;
+        newTask.vertex_count    = meshlets[i].vertex_count;
+        newTask.vertex_offset   = meshlets[i].vertex_offset;
 
 
         newTask.culling_info.bounding_sphere_center = float3(bounds.center[0], bounds.center[1], bounds.center[2]);
@@ -205,7 +225,7 @@ void MeshletMesh::generateMeshlets()
         newTask.culling_info.byte_alignement        = 0.f;
 
 
-        m_draw_tasks.push_back(newTask);
+        m_draw_tasks.back().push_back(newTask);
     }
 }
 
@@ -225,8 +245,8 @@ void MeshletMesh::generateLoD(uint resolution_level)
 
     // Resize the index vector to the actual simplified size
     simplified_indices.resize(simplified_count);
-    m_indices = simplified_indices;
-    m_indices.resize(simplified_count);
+    m_simplifiedIndices = simplified_indices;
+    m_simplifiedIndices.resize(simplified_count);
     m_index_count = simplified_count;
 }
 

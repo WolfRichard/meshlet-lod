@@ -133,7 +133,7 @@ private:
     bool m_backFaceCulling = true;
     bool m_frustumCulling = true;
     bool m_coneCulling = true;
-    DebugVisualsSelection m_debugMode = ShowNoDebug;
+    DebugVisualsSelection m_debugMode = ShowLoD;
     bool m_objectCulling = true;
 
     // camera related variables
@@ -170,6 +170,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> m_objectCountBuffer;
     std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_BoneMatricesBuffers;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_AnimationMetaDataBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_MeshLoDStructureBuffer;
     
     
     Microsoft::WRL::ComPtr<ID3D12Resource> m_ConstantsBuffer;
@@ -188,6 +189,7 @@ private:
     D3D12_GPU_DESCRIPTOR_HANDLE m_visibleObjectCountSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_boneMatricesSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_animationMetaDataSrvHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_meshLoDStructureSrvHandle;
 
 
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;

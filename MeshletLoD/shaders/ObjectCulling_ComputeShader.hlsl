@@ -18,6 +18,8 @@ cbuffer InstanceIDBuffer : register(b1, space0)
 StructuredBuffer<SceneObject> objectsBuffer : register(t0, space0);
 // Per Mesh: Meshlet Counts Buffer
 StructuredBuffer<uint> meshletCountsBuffer : register(t1, space0);
+// Mesh LoD Structure
+StructuredBuffer<MeshLoDStructure> meshLoDStructure : register(t2, space0);
 
 
 // Output buffer (read-write)
@@ -55,8 +57,8 @@ float CalcDetailLevel(float3 center, float radius)
     float size = constantsBuffer.CoTanHalfFoV * radius / sqrt(dist2 - radius * radius);
     
     // Calculate detail level
-    float level = clamp(1.0 - size, 0.0, 1.0);
-    return level;
+    float level = clamp(1.0 - size, 0.0, 0.999); //1.0);
+    return level * level;
 }
 
 
@@ -80,12 +82,15 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     SceneObject object = objectsBuffer[objectID];
     if (IsInFrustum(object.bounding_sphere_center, object.bounding_sphere_radius))
     {
+        float lod = CalcDetailLevel(object.bounding_sphere_center, object.bounding_sphere_radius);
+        uint mesh_lod_index = meshLoDStructure[objectsBuffer[objectID].mesh_id].mesh_offset + lod * meshLoDStructure[objectsBuffer[objectID].mesh_id].lod_count;
+        
         uint argumentBufferID;
         InterlockedAdd(visibleObjectCount[0], 1, argumentBufferID);
-        uint thread_count = ((meshletCountsBuffer[object.mesh_id] + GROUP_SIZE - 1) / GROUP_SIZE) * GROUP_SIZE;
+        uint thread_count = ((meshletCountsBuffer[mesh_lod_index] + GROUP_SIZE - 1) / GROUP_SIZE) * GROUP_SIZE;
         
         indirectArgumentBuffer[argumentBufferID].instanceID = objectID;
-        indirectArgumentBuffer[argumentBufferID].level_of_detail = CalcDetailLevel(object.bounding_sphere_center, object.bounding_sphere_radius);
+        indirectArgumentBuffer[argumentBufferID].level_of_detail = lod;
         indirectArgumentBuffer[argumentBufferID].dispatchArguments = uint3(thread_count, 1, 1);       
     }
 }

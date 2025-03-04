@@ -6,31 +6,34 @@ struct PixelShaderInput
     float4 Color : COLOR;
 };
 
-cbuffer ConstantsBuffer                           : register(b0, space0)
+cbuffer ConstantsBuffer                             : register(b0, space0)
 {
     Constants constantsBuffer;
 };
 
-cbuffer InstanceIDBuffer                          : register(b1, space0)
+cbuffer InstanceIDBuffer                            : register(b1, space0)
 {
     uint object_id;
 };
 
-cbuffer ObjectLoDBuffer                           : register(b2, space0)
+cbuffer ObjectLoDBuffer                             : register(b2, space0)
 {
     float object_LoD;
 };
 
 // Objects Buffer
-StructuredBuffer<SceneObject> objectsBuffer       : register(t0, space0);
+StructuredBuffer<SceneObject> objectsBuffer         : register(t0, space0);
 
 // Animation Meta Data Buffer
-StructuredBuffer<AnimationMetaData> AMDBuffer     : register(t2, space0);
+StructuredBuffer<AnimationMetaData> AMDBuffer       : register(t2, space0);
+
+// Mesh LoD Structure
+StructuredBuffer<MeshLoDStructure> meshLoDStructure : register(t3, space0);
 
 // bindless buffers
-StructuredBuffer<CustomVertex> verticesBuffers[]  : register(t0, space1);
-StructuredBuffer<uint> indicesBuffers[]           : register(t0, space2);
-StructuredBuffer<uint> trianglesBuffers[]         : register(t0, space3);
+StructuredBuffer<CustomVertex> verticesBuffers[]    : register(t0, space1);
+StructuredBuffer<uint> indicesBuffers[]             : register(t0, space2);
+StructuredBuffer<uint> trianglesBuffers[]           : register(t0, space3);
 
 StructuredBuffer<float4x4> bonesMatricesBuffers[] : register(t0, space5);
 
@@ -89,6 +92,7 @@ void main(in uint I : SV_GroupIndex,
     
     const uint vertexLoops = (MAX_MESHLET_VERTEX_COUNT + GROUP_SIZE - 1) / GROUP_SIZE;
     uint mesh_id = objectsBuffer[meshPayload.object_id[gid]].mesh_id;
+    uint mesh_lod_index = meshLoDStructure[mesh_id].mesh_offset + object_LoD * meshLoDStructure[mesh_id].lod_count;
     
     // animation meta data
     uint animation_id = objectsBuffer[meshPayload.object_id[gid]].animation_id;
@@ -120,7 +124,7 @@ void main(in uint I : SV_GroupIndex,
         uint v = I + v_loop * GROUP_SIZE;
         v = min(v, meshPayload.vertex_count[gid] - 1);
         
-        int vertexIndex = indicesBuffers[mesh_id][meshPayload.vertex_offset[gid] + v];
+        int vertexIndex = indicesBuffers[mesh_lod_index][meshPayload.vertex_offset[gid] + v];
         CustomVertex vertex = verticesBuffers[mesh_id][vertexIndex];
         
         // skeletal animation
@@ -194,9 +198,9 @@ void main(in uint I : SV_GroupIndex,
         uint p = I + p_loop * GROUP_SIZE;
         p = min(p, meshPayload.triangle_count[gid] - 1);
 
-        tris[p] = uint3(SampleTriangleBufferAsCharArray(meshPayload.triangle_offset[gid] + p * 3 + 0, mesh_id),
-                        SampleTriangleBufferAsCharArray(meshPayload.triangle_offset[gid] + p * 3 + 1, mesh_id),
-                        SampleTriangleBufferAsCharArray(meshPayload.triangle_offset[gid] + p * 3 + 2, mesh_id));
+        tris[p] = uint3(SampleTriangleBufferAsCharArray(meshPayload.triangle_offset[gid] + p * 3 + 0, mesh_lod_index),
+                        SampleTriangleBufferAsCharArray(meshPayload.triangle_offset[gid] + p * 3 + 1, mesh_lod_index),
+                        SampleTriangleBufferAsCharArray(meshPayload.triangle_offset[gid] + p * 3 + 2, mesh_lod_index));
     }
 
     

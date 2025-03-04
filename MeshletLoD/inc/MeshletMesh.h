@@ -47,9 +47,9 @@ public:
     }
 
     std::vector<CustomVertex>   m_vertices;
-    std::vector<unsigned int>   m_meshlet_vertices;
-    std::vector<unsigned char>  m_meshlet_triangles;
-    std::vector<DrawTask>       m_draw_tasks;
+    std::vector<std::vector<unsigned int>>   m_meshlet_vertices;
+    std::vector<std::vector<unsigned char>>  m_meshlet_triangles;
+    std::vector<std::vector<DrawTask>>       m_draw_tasks;
 
     float3                      m_boundingSphereCentre;
     float                       m_boundingSphereRadius;
@@ -76,6 +76,7 @@ private:
     void generateLoD(uint resolution_level);
 
     std::vector<unsigned int> m_indices;
+    std::vector<unsigned int> m_simplifiedIndices;
 
     void addVertexBoneData(CustomVertex& vertex, int boneID, float weight);
     void extractAssimpBoneData(std::vector<CustomVertex>& vertices, aiMesh* mesh, const aiScene* scene);

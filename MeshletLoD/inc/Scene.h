@@ -31,6 +31,7 @@ public:
     uint m_draw_task_count = 0;
     uint m_vertex_count = 0;
     uint m_triangles_count = 0;
+    uint m_mesh_lod_count = 0;
 
     std::vector<uint> m_meshlet_counts;
     std::vector<CommandStructure> m_indirect_attributes;
@@ -42,6 +43,7 @@ public:
     
     std::vector<PreBakedAnimation*> m_preBakedAnimations;
     std::vector<AnimationMetaData> m_animationMetaData;
+    std::vector<MeshLoDStructure> m_meshLoDBufferStructure;
     
     std::vector<std::string> m_sceneObjectNames;
     std::vector<const char*> m_sceneObjectNamesCharP;

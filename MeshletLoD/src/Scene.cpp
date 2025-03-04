@@ -19,12 +19,14 @@ void Scene::init(std::string file_path, uint selectedLoD)
     m_draw_task_count = 0;
     m_vertex_count = 0;
     m_triangles_count = 0;
+    m_mesh_lod_count = 0;
     m_meshlet_counts.clear();
     m_indirect_attributes.clear();
     m_preBakedAnimations.clear();
     m_animationMetaData.clear();
     m_sceneObjectNames.clear();
     m_sceneObjectNamesCharP.clear();
+    m_meshLoDBufferStructure.clear();
 
     m_modelLoadTime = m_modelLoadTime.zero();
     m_totalLoDGenTime = m_totalLoDGenTime.zero();
@@ -75,9 +77,9 @@ void Scene::processSceneNode(aiNode* node, const aiScene* scene, float4x4 parent
             so.animation_id = m_meshes[node->mMeshes[i]]->m_animations[0].totalAnimationIndex;
 
         m_scene_objects.push_back(so);
-        m_draw_task_count += m_meshlet_counts[node->mMeshes[i]];
+        m_draw_task_count += m_meshlet_counts[m_meshLoDBufferStructure[node->mMeshes[i]].mesh_offset];
         m_vertex_count += (uint)m_meshes[node->mMeshes[i]]->m_vertex_count;
-        m_triangles_count += (uint)m_meshes[node->mMeshes[i]]->m_index_count / 3;
+        m_triangles_count += (uint)m_meshes[node->mMeshes[i]]->m_meshlet_triangles.size() / 3;
 
         uint thread_count = ((m_meshlet_counts[node->mMeshes[i]] + GROUP_SIZE - 1) / GROUP_SIZE) * GROUP_SIZE;
 
@@ -139,7 +141,17 @@ void Scene::loadScene(std::string file_path, uint selectedLoD)
             m_animationMetaData.push_back(amd);
         }
 
-        m_meshlet_counts.push_back((uint)m_meshes.back()->m_draw_tasks.size());
+        m_mesh_lod_count += m_meshes.back()->m_LoDCount;
+
+        MeshLoDStructure mls;
+        mls.lod_count = m_meshes.back()->m_LoDCount;
+        mls.mesh_offset = (uint)m_meshlet_counts.size();
+        m_meshLoDBufferStructure.push_back(mls);
+
+        for (uint i = 0; i < (uint)m_meshes.back()->m_LoDCount; i++)
+        {
+            m_meshlet_counts.push_back((uint)m_meshes.back()->m_draw_tasks[i].size());
+        }
 
         m_totalLoDGenTime += m_meshes.back()->m_LoDGenTime;
         m_totalMeshletGenTime += m_meshes.back()->m_meshletGenTime;
@@ -188,14 +200,15 @@ void Scene::genInstances(uint objectIndex, uint gridSideCount, float spacing)
             so.animation_time_offset = selectedObject.animation_time_offset;
 
             m_scene_objects.push_back(so);
-            m_draw_task_count += m_meshlet_counts[so.mesh_id];
+            m_draw_task_count += m_meshlet_counts[m_meshLoDBufferStructure[so.mesh_id].mesh_offset];
             m_vertex_count += (uint)m_meshes[so.mesh_id]->m_vertex_count;
-            m_triangles_count += (uint)m_meshes[so.mesh_id]->m_index_count / 3;
+            m_triangles_count += (uint)m_meshes[so.mesh_id]->m_meshlet_triangles.size() / 3;
 
             uint thread_count = ((m_meshlet_counts[so.mesh_id] + GROUP_SIZE - 1) / GROUP_SIZE) * GROUP_SIZE;
 
             m_indirect_attributes.push_back(CommandStructure());
             m_indirect_attributes.back().instanceID = (uint)(m_scene_objects.size() - 1u);
+            m_indirect_attributes.back().level_of_detail = 0;
             m_indirect_attributes.back().dispatchArguments.x = thread_count;
             m_indirect_attributes.back().dispatchArguments.y = 1u;
             m_indirect_attributes.back().dispatchArguments.z = 1u;

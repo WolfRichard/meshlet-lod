@@ -2,21 +2,27 @@
 
 
 // Objects Buffer
-StructuredBuffer<SceneObject> objectsBuffer     : register(t0, space0);
+StructuredBuffer<SceneObject> objectsBuffer         : register(t0, space0);
 // Per Mesh: Meshlet Counts Buffer
-StructuredBuffer<uint> meshletCountsBuffer      : register(t1, space0);
+StructuredBuffer<uint> meshletCountsBuffer          : register(t1, space0);
+// Mesh LoD Structure
+StructuredBuffer<MeshLoDStructure> meshLoDStructure : register(t3, space0);
 // Draw task arguments
-StructuredBuffer<DrawTask> drawTaskBuffers[]    : register(t0, space4);
+StructuredBuffer<DrawTask> drawTaskBuffers[]        : register(t0, space4);
 
-
-cbuffer ConstantsBuffer                         : register(b0, space0)
+cbuffer ConstantsBuffer                             : register(b0, space0)
 {
     Constants constantsBuffer;
 };
 
-cbuffer InstanceIDBuffer                        : register(b1, space0)
+cbuffer InstanceIDBuffer                            : register(b1, space0)
 {
     uint object_id;
+};
+
+cbuffer ObjectLoDBuffer                             : register(b2, space0)
+{
+    float object_LoD;
 };
 
 // Payload will be used in the mesh shader.
@@ -64,10 +70,13 @@ void main(in uint I : SV_GroupIndex,
     
     //uint object_ID = 0; // incrementingConstant;
     
-    if (gid < meshletCountsBuffer[objectsBuffer[object_id].mesh_id])
+    uint mesh_lod_index = meshLoDStructure[objectsBuffer[object_id].mesh_id].mesh_offset + object_LoD * meshLoDStructure[objectsBuffer[object_id].mesh_id].lod_count;
+    
+    
+    if (gid < meshletCountsBuffer[mesh_lod_index])
     {
         
-        DrawTask task = drawTaskBuffers[objectsBuffer[object_id].mesh_id][gid];
+        DrawTask task = drawTaskBuffers[mesh_lod_index][gid];
         
         float3 bounding_sphere_center = mul(float4(task.culling_info.bounding_sphere_center, 1.0), objectsBuffer[object_id].object_matrix).xyz;
         float bounding_sphere_radius = length(mul(float4(task.culling_info.bounding_sphere_center + float3(task.culling_info.bounding_sphere_radius, 0, 0), 1.0), objectsBuffer[object_id].object_matrix).xyz - bounding_sphere_center);
