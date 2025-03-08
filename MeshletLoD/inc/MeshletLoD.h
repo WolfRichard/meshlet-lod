@@ -132,7 +132,7 @@ private:
     bool m_wireframe = false;
     bool m_backFaceCulling = true;
     bool m_frustumCulling = true;
-    bool m_coneCulling = true;
+    bool m_coneCulling = false;
     DebugVisualsSelection m_debugMode = ShowLoD;
     bool m_objectCulling = true;
 
@@ -195,5 +195,5 @@ private:
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
 
     Scene m_scene;
-    char  m_model_file_path[1024] = "./assets/TestScene.glb";
+    char  m_model_file_path[1024] = "./assets/Torus.glb";//"./assets/TestScene.glb";
 };

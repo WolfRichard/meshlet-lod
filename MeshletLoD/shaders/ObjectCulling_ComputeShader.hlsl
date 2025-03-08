@@ -47,17 +47,14 @@ bool IsInFrustum(float3 center, float radius)
 
 float CalcDetailLevel(float3 center, float radius)
 {
-    // vector from camera to object center
     float3 pos = mul(float4(center, 1.0), constantsBuffer.ViewMat).xyz;
-    
-    // Square of distance from camera to circumscribed sphere
     float dist2 = dot(pos, pos);
     
-    // Calculate the sphere size in screen space
+    // calculate the sphere size in screen space
     float size = constantsBuffer.CoTanHalfFoV * radius / sqrt(dist2 - radius * radius);
     
-    // Calculate detail level
-    float level = clamp(1.0 - size, 0.0, 0.999); //1.0);
+
+    float level = clamp(1.0 - size, 0.0, 0.999);
     return level * level;
 }
 

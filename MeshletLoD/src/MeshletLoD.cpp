@@ -1335,7 +1335,7 @@ void MeshletLoD::updateImGui()
         ImGui::Checkbox("Free Camera", &m_freeCamera);
         if (m_freeCamera)
         {
-            ImGui::SliderFloat("Camera speed", &m_cameraSpeed, 0.1f, 1000.0f);
+            ImGui::SliderFloat("Camera speed", &m_cameraSpeed, 0.1f, 100.0f);
         }
         else
         {

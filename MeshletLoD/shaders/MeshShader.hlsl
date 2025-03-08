@@ -35,7 +35,7 @@ StructuredBuffer<CustomVertex> verticesBuffers[]    : register(t0, space1);
 StructuredBuffer<uint> indicesBuffers[]             : register(t0, space2);
 StructuredBuffer<uint> trianglesBuffers[]           : register(t0, space3);
 
-StructuredBuffer<float4x4> bonesMatricesBuffers[] : register(t0, space5);
+StructuredBuffer<float4x4> bonesMatricesBuffers[]   : register(t0, space5);
 
 
 uint SampleTriangleBufferAsCharArray(uint i, uint mesh_id)
@@ -176,7 +176,7 @@ void main(in uint I : SV_GroupIndex,
             }
             else if (constantsBuffer.BoolConstants & DEBUG_LOD)
             {
-                verts[v].Color = Rainbow(object_LoD) * brightness;
+                verts[v].Color = Rainbow(uint(object_LoD * meshLoDStructure[mesh_id].lod_count) / float(meshLoDStructure[mesh_id].lod_count)) * brightness;
             }
             else
             {

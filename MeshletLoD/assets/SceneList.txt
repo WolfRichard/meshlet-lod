@@ -2,3 +2,4 @@
 ./assets/AnimatedShark.glb
 ./assets/AnimatedTestScene.glb
 ./assets/HumanMocap.glb
+./assets/Torus.glb

@@ -92,12 +92,14 @@ void main(in uint I : SV_GroupIndex,
         // Each thread gets a unique index.
             uint index = 0;
             InterlockedAdd(s_TaskCount, 1, index);
+            
+            uint meshlet_based_lod = 5;
     
-            s_Payload.vertex_count[index] = task.vertex_count;
-            s_Payload.triangle_count[index] = task.triangle_count;
+            s_Payload.vertex_count[index] = task.vertex_count[0];
+            s_Payload.triangle_count[index] = task.triangle_count[meshlet_based_lod];
     
-            s_Payload.vertex_offset[index] = task.vertex_offset;
-            s_Payload.triangle_offset[index] = task.triangle_offset;
+            s_Payload.vertex_offset[index] = task.vertex_offset[0];
+            s_Payload.triangle_offset[index] = task.triangle_offset[meshlet_based_lod];
             
             s_Payload.object_id[index] = object_id;
             //s_Payload.allignement[index] = float3(0, 0, 0);

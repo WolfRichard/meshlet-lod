@@ -1,23 +1,21 @@
 # pragma once
 
-#ifndef GROUP_SIZE
-#    define GROUP_SIZE 32
-#endif
 
-#ifndef MAX_MESHLET_VERTEX_COUNT
-//#    define MAX_MESHLET_VERTEX_COUNT 64
-#    define MAX_MESHLET_VERTEX_COUNT 128
-#endif
+#define GROUP_SIZE 32
 
-#ifndef MAX_MESHLET_PRIMITIVE_COUNT
-//#    define MAX_MESHLET_PRIMITIVE_COUNT 124
-#    define MAX_MESHLET_PRIMITIVE_COUNT 254
-#endif
+//#define MAX_MESHLET_VERTEX_COUNT 64
+#define MAX_MESHLET_VERTEX_COUNT 128
+
+//#define MAX_MESHLET_PRIMITIVE_COUNT 124
+#define MAX_MESHLET_PRIMITIVE_COUNT 254
+
+
+#define MESHLET_LOD_COUNT 6
 
 
 #define MAX_BONES_PER_VERTEX 4
 #define ANIMATION_FPS 30
-//#define MAX_BONES_PER_MESH 100
+
 
 struct AnimationMetaData
 {
@@ -42,11 +40,11 @@ struct CullingInfo // culling data is presented in object space
 
 struct DrawTask
 {
-    uint vertex_count;
-    uint triangle_count;
+    uint vertex_count[MESHLET_LOD_COUNT];
+    uint triangle_count[MESHLET_LOD_COUNT];
 
-    uint vertex_offset;
-    uint triangle_offset;
+    uint vertex_offset[MESHLET_LOD_COUNT];
+    uint triangle_offset[MESHLET_LOD_COUNT];
 
     CullingInfo culling_info;
 };

@@ -18,7 +18,7 @@ MeshletMesh::MeshletMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
     auto benchmark_time_end = std::chrono::high_resolution_clock::now();
     m_meshletGenTime = benchmark_time_end - benchmark_time_start;
 
-    m_LoDCount = (uint)log2(m_vertex_count / 16);
+    m_LoDCount = (uint)log2(m_vertex_count);
     for (uint i = 1; i < m_LoDCount; i++)
     {
         m_meshlet_vertices.push_back(std::vector<unsigned int>());
@@ -211,10 +211,10 @@ void MeshletMesh::generateMeshlets()
 
 
         DrawTask newTask;
-        newTask.triangle_count  = meshlets[i].triangle_count;
-        newTask.triangle_offset = meshlets[i].triangle_offset;
-        newTask.vertex_count    = meshlets[i].vertex_count;
-        newTask.vertex_offset   = meshlets[i].vertex_offset;
+        newTask.triangle_count[0] = meshlets[i].triangle_count;
+        newTask.triangle_offset[0] = meshlets[i].triangle_offset;
+        newTask.vertex_count[0] = meshlets[i].vertex_count;
+        newTask.vertex_offset[0] = meshlets[i].vertex_offset;
 
 
         newTask.culling_info.bounding_sphere_center = float3(bounds.center[0], bounds.center[1], bounds.center[2]);
@@ -225,6 +225,91 @@ void MeshletMesh::generateMeshlets()
         newTask.culling_info.byte_alignement        = 0.f;
 
 
+        
+
+
+        // meshlet LoDs
+        std::vector<float4> deduplicatedMeshletVertices;
+        for (uint j = 0; j < newTask.vertex_count[0]; j++)
+        {
+            deduplicatedMeshletVertices.push_back(m_vertices[m_meshlet_vertices.back()[newTask.vertex_offset[0] + j]].position);
+        }
+
+        std::vector<uint> deduplicatedMeshletIndices; //necessary because simplify functions opperates on uint and not char
+        for (uint j = 0; j < newTask.triangle_count[0] * 3; j++)
+        {
+            deduplicatedMeshletIndices.push_back(m_meshlet_triangles.back()[newTask.triangle_offset[0] + j]);
+        }
+
+        for (uint lod = 1; lod < MESHLET_LOD_COUNT; lod++)
+        {
+            std::vector<uint> simplified_indices(newTask.triangle_count[0] * 3);
+
+            size_t target_index_count = static_cast<size_t>((uint)std::max((newTask.triangle_count[0] * 3) / (uint)std::pow(2, lod), 3u));
+
+            float target_error = 0.01f;
+            size_t simplifiedMeshletIndexCount = meshopt_simplify(
+                simplified_indices.data(), deduplicatedMeshletIndices.data(), deduplicatedMeshletIndices.size(),
+                reinterpret_cast<const float*>(&deduplicatedMeshletVertices.data()[0].x), deduplicatedMeshletVertices.size(), sizeof(float4),
+                target_index_count, FLT_MAX, meshopt_SimplifyLockBorder, &target_error);
+            simplified_indices.resize(simplifiedMeshletIndexCount);
+            
+            /*
+            
+            std::vector<uint> simplifiedVertexIndices;
+            for (uint k = 0; k < newTask.vertex_count[0]; k++)
+            {
+                bool vertexIsPartOfSimplifiedMeshlet = false;
+                for (auto index : simplified_indices)
+                {
+                    if (index == k)
+                    {
+                        vertexIsPartOfSimplifiedMeshlet = true;
+                        break;
+                    }
+                }
+
+                if (!vertexIsPartOfSimplifiedMeshlet) {
+                    for (auto& index : simplified_indices)
+                    {
+                        if (index > k)
+                        {
+                            index--;
+                        }
+                    }
+                }
+                else 
+                {
+                    simplifiedVertexIndices.push_back(k);
+                }
+            }
+
+            */
+
+            newTask.triangle_count[lod] = (uint)simplified_indices.size() / 3;
+            newTask.triangle_offset[lod] = (uint)m_meshlet_triangles.back().size();
+            //newTask.vertex_count[lod] = (uint)simplifiedVertexIndices.size();
+            newTask.vertex_offset[lod] = (uint)m_meshlet_vertices.back().size();
+
+            /*
+            for (auto index : simplifiedVertexIndices)
+            {
+                m_meshlet_vertices.back().push_back(m_meshlet_vertices.back()[newTask.vertex_offset[0] + index]);
+            }
+            */
+
+            for (auto index : simplified_indices)
+            {
+                m_meshlet_triangles.back().push_back((char)index);
+            }
+            
+            
+            //m_meshlet_triangles.back().insert(m_meshlet_triangles.back().end(), simplified_indices.begin(), simplified_indices.end());
+            
+        }
+
+
+
         m_draw_tasks.back().push_back(newTask);
     }
 }
@@ -232,15 +317,15 @@ void MeshletMesh::generateMeshlets()
 void MeshletMesh::generateLoD(uint resolution_level)
 {
     
-    size_t target_index_count = static_cast<size_t>((uint)std::max(m_indices.size() / (uint)std::pow(2, resolution_level), 64ull));
+    size_t target_index_count = static_cast<size_t>((uint)std::max(m_indices.size() / (uint)std::pow(2, resolution_level), 3ull));
     std::vector<uint> simplified_indices(m_indices.size());
 
     // Simplify the mesh
-    float lod_error = 0.f;
-    size_t simplified_count = meshopt_simplifySloppy(
+    float target_error = 0.01f;
+    size_t simplified_count = meshopt_simplify(
         simplified_indices.data(), m_indices.data(), m_indices.size(),
         reinterpret_cast<const float*>(m_vertices.data()), m_vertices.size(), sizeof(CustomVertex),
-        target_index_count, FLT_MAX, &lod_error
+        target_index_count, FLT_MAX, 0, &target_error                                                           // meshopt_SimplifyPrune
     );
 
     // Resize the index vector to the actual simplified size
