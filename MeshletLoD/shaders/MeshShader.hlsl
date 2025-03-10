@@ -91,17 +91,17 @@ void main(in uint I : SV_GroupIndex,
     SetMeshOutputCounts(meshPayload.vertex_count[gid], meshPayload.triangle_count[gid]);
     
     const uint vertexLoops = (MAX_MESHLET_VERTEX_COUNT + GROUP_SIZE - 1) / GROUP_SIZE;
-    uint mesh_id = objectsBuffer[meshPayload.object_id[gid]].mesh_id;
+    uint mesh_id = objectsBuffer[meshPayload.object_id].mesh_id;
     uint mesh_lod_index = meshLoDStructure[mesh_id].mesh_offset + object_LoD * meshLoDStructure[mesh_id].lod_count;
     
     // animation meta data
-    uint animation_id = objectsBuffer[meshPayload.object_id[gid]].animation_id;
+    uint animation_id = objectsBuffer[meshPayload.object_id].animation_id;
     float animation_speed, animation_offset, animation_frame_lerp;
     uint animation_bone_count, animation_frame_count, current_animation_frame, next_animation_frame;
     if (animation_id != -1)
     {
-        animation_speed = objectsBuffer[meshPayload.object_id[gid]].animation_speed;
-        animation_offset = objectsBuffer[meshPayload.object_id[gid]].animation_time_offset;
+        animation_speed = objectsBuffer[meshPayload.object_id].animation_speed;
+        animation_offset = objectsBuffer[meshPayload.object_id].animation_time_offset;
         animation_bone_count = AMDBuffer[animation_id].bone_count;
         animation_frame_count = AMDBuffer[animation_id].frame_count;
         
@@ -154,10 +154,10 @@ void main(in uint I : SV_GroupIndex,
         // skeletal animation*
         
         
-        verts[v].Pos = mul(mul(localPosition, objectsBuffer[meshPayload.object_id[gid]].object_matrix), constantsBuffer.ViewProjMat);
+        verts[v].Pos = mul(mul(localPosition, objectsBuffer[meshPayload.object_id].object_matrix), constantsBuffer.ViewProjMat);
         //verts[v].UV = vertex.uv.xy;
         
-        float4 normal = mul(localNormal, objectsBuffer[meshPayload.object_id[gid]].object_matrix);
+        float4 normal = mul(localNormal, objectsBuffer[meshPayload.object_id].object_matrix);
         float brightness = clamp(clamp(dot(normalize(float3(1, 1, 1)), normal.xyz), 0, 1) + clamp(dot(normalize(float3(-2, 1, -1)), normal.xyz), 0, 0.6), 0.05, 1);
         if (constantsBuffer.BoolConstants & ENABLE_DEBUG_VISUALS_BIT_POS)
         {
@@ -176,7 +176,12 @@ void main(in uint I : SV_GroupIndex,
             }
             else if (constantsBuffer.BoolConstants & DEBUG_LOD)
             {
-                verts[v].Color = Rainbow(uint(object_LoD * meshLoDStructure[mesh_id].lod_count) / float(meshLoDStructure[mesh_id].lod_count)) * brightness;
+                if (constantsBuffer.BoolConstants & ENABLE_MESHLET_LOD)
+                {
+                    verts[v].Color = Rainbow(meshPayload.meshlet_LoD[gid] / float(MESHLET_LOD_COUNT)) * brightness;
+                }
+                else
+                    verts[v].Color = Rainbow(uint(object_LoD * meshLoDStructure[mesh_id].lod_count) / float(meshLoDStructure[mesh_id].lod_count)) * brightness;
             }
             else
             {

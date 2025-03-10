@@ -51,6 +51,19 @@ bool IsShowingBackside(float3 coneApex, float3 coneAxis, float coneCutoff)
     return (dot(directionConeCamera, coneAxis) >= coneCutoff);
 }
 
+float CalcDetailLevel(float3 center, float radius)
+{
+    float3 pos = mul(float4(center, 1.0), constantsBuffer.ViewMat).xyz;
+    float dist2 = dot(pos, pos);
+    
+    // calculate the sphere size in screen space
+    float size = 2 * constantsBuffer.CoTanHalfFoV * radius / sqrt(dist2 - radius * radius);
+    
+
+    float level = clamp(1.0 - size, 0.0, 0.999);
+    return level * level;
+}
+
 
 [numthreads(GROUP_SIZE, 1, 1)]
 void main(in uint I : SV_GroupIndex,
@@ -60,6 +73,7 @@ void main(in uint I : SV_GroupIndex,
     if (I == 0)
     {
         s_TaskCount = 0;
+        s_Payload.object_id = object_id;
     }
 
     GroupMemoryBarrierWithGroupSync();
@@ -93,7 +107,13 @@ void main(in uint I : SV_GroupIndex,
             uint index = 0;
             InterlockedAdd(s_TaskCount, 1, index);
             
-            uint meshlet_based_lod = 5;
+            
+            uint meshlet_based_lod = 0;
+            if (constantsBuffer.BoolConstants & ENABLE_MESHLET_LOD)
+            {
+                meshlet_based_lod = CalcDetailLevel(bounding_sphere_center, bounding_sphere_radius) * MESHLET_LOD_COUNT;
+            }
+            
     
             s_Payload.vertex_count[index] = task.vertex_count[meshlet_based_lod];
             s_Payload.triangle_count[index] = task.triangle_count[meshlet_based_lod];
@@ -101,8 +121,9 @@ void main(in uint I : SV_GroupIndex,
             s_Payload.vertex_offset[index] = task.vertex_offset[meshlet_based_lod];
             s_Payload.triangle_offset[index] = task.triangle_offset[meshlet_based_lod];
             
-            s_Payload.object_id[index] = object_id;
-            //s_Payload.allignement[index] = float3(0, 0, 0);
+            s_Payload.meshlet_LoD[index] = meshlet_based_lod;
+            
+            
         }
     
         

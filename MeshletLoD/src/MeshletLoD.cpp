@@ -894,7 +894,7 @@ void MeshletLoD::OnUpdate(UpdateEventArgs& e)
             if (m_autoRotationOffset > (float)PI * 2.f)
                 m_autoRotationOffset -= (float)PI * 2.f;
 
-            m_CameraRoll = lerp(m_CameraRoll, (float)-PI * 0.1f, 2.5f * static_cast<float>(e.ElapsedTime));
+            m_CameraRoll = lerp(m_CameraRoll, (float)-PI * 0.15f, 2.5f * static_cast<float>(e.ElapsedTime));
             m_CameraYaw = lerp(m_CameraYaw, 0.0f, 2.5f * static_cast<float>(e.ElapsedTime));
         }
 
@@ -1001,6 +1001,8 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
     constants.BoolConstants = 0;
     if (m_frustumCulling) constants.BoolConstants |= FRUSTUM_CULLING_BIT_POS;
     if (m_coneCulling) constants.BoolConstants |= CONE_CULLING_BIT_POS;
+    if (m_objectLoD) constants.BoolConstants |= ENABLE_OBJECT_LOD;
+    if (m_meshletLoD) constants.BoolConstants |= ENABLE_MESHLET_LOD;
     switch (m_debugMode)
     {
     case ShowMeshlets:
@@ -1169,7 +1171,7 @@ void MeshletLoD::OnKeyPressed(KeyEventArgs& e)
 
 void MeshletLoD::OnMouseWheel(MouseWheelEventArgs& e)
 {
-    m_autoCameraDistance = std::clamp(m_autoCameraDistance - e.WheelDelta, 1.0f, 200.0f);
+    m_autoCameraDistance = std::clamp(m_autoCameraDistance - e.WheelDelta * m_CameraScrollScale, 1.0f, 200.0f);
 }
 
 void MeshletLoD::initImGui() 
@@ -1316,7 +1318,9 @@ void MeshletLoD::updateImGui()
     {
         ImGui::Checkbox("Meshlet based Frustum Culling", &m_frustumCulling);
         ImGui::Checkbox("Meshlet based Cone Culling", &m_coneCulling);
-        ImGui::Checkbox("Object Culling & Object LoD", &m_objectCulling);
+        ImGui::Checkbox("Object Culling", &m_objectCulling);
+        ImGui::Checkbox("Object LoD", &m_objectLoD);
+        ImGui::Checkbox("Meshlet LoD", &m_meshletLoD);
         ImGui::SliderFloat("LoD Scale", &m_LoDScale, 0.01f, 10.0f);
         ImGui::ColorEdit4("Clear Color", m_ClearColor);
         if (ImGui::Button("Toggle Fullscreen"))
@@ -1335,10 +1339,11 @@ void MeshletLoD::updateImGui()
         ImGui::Checkbox("Free Camera", &m_freeCamera);
         if (m_freeCamera)
         {
-            ImGui::SliderFloat("Camera speed", &m_cameraSpeed, 0.1f, 100.0f);
+            ImGui::SliderFloat("Camera Speed", &m_cameraSpeed, 0.1f, 100.0f);
         }
         else
         {
+            ImGui::SliderFloat("Scroll Scale", &m_CameraScrollScale, 0.1f, 5.0f);
             ImGui::Checkbox("Auto Rotation", &m_autoRotateScene);
         }
         ImGui::SliderFloat("FoV", &m_FoV, 45.0f, 120.0f);
@@ -1356,8 +1361,6 @@ void MeshletLoD::updateImGui()
             m_scene.init(m_model_file_path, 0);
             LoadContent();
         }
-        static int lod = 0;
-        ImGui::SliderInt("Level of Detail", &lod, 0, 10);
     }
     ImGui::Spacing();
 

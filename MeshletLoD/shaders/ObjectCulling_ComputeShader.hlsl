@@ -79,7 +79,12 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     SceneObject object = objectsBuffer[objectID];
     if (IsInFrustum(object.bounding_sphere_center, object.bounding_sphere_radius))
     {
-        float lod = CalcDetailLevel(object.bounding_sphere_center, object.bounding_sphere_radius);
+        
+        float lod = 0;
+        if (constantsBuffer.BoolConstants & ENABLE_OBJECT_LOD)
+        {
+            lod = CalcDetailLevel(object.bounding_sphere_center, object.bounding_sphere_radius);
+        }
         uint mesh_lod_index = meshLoDStructure[objectsBuffer[objectID].mesh_id].mesh_offset + lod * meshLoDStructure[objectsBuffer[objectID].mesh_id].lod_count;
         
         uint argumentBufferID;

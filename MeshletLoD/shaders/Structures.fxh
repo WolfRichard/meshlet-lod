@@ -56,6 +56,8 @@ struct DrawTask
 #define DEBUG_MESHLETS                  16 // 00000000000000000000000000001000
 #define DEBUG_BONES                     32 // 00000000000000000000000000010000
 #define DEBUG_LOD                       64 // 00000000000000000000000000100000
+#define ENABLE_OBJECT_LOD              128 // 00000000000000000000000001000000
+#define ENABLE_MESHLET_LOD             256 // 00000000000000000000000010000000
 
 
 
@@ -85,9 +87,10 @@ struct Payload
     uint vertex_offset[GROUP_SIZE];
     uint triangle_offset[GROUP_SIZE];
     
-    float3 allignement[GROUP_SIZE];
+    uint meshlet_LoD[GROUP_SIZE];
     
-    uint object_id[GROUP_SIZE];
+    uint object_id;
+    
 };
 
 struct CustomVertex

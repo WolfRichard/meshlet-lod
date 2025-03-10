@@ -133,8 +133,10 @@ private:
     bool m_backFaceCulling = true;
     bool m_frustumCulling = true;
     bool m_coneCulling = false;
-    DebugVisualsSelection m_debugMode = ShowLoD;
+    DebugVisualsSelection m_debugMode = ShowNoDebug;
     bool m_objectCulling = true;
+    bool m_objectLoD = true;
+    bool m_meshletLoD = true;
 
     // camera related variables
     float3 m_cameraPos = float3(0, 0, 0);
@@ -147,9 +149,10 @@ private:
     
     bool m_freeCamera = false;
     bool m_autoRotateScene = true;
-    float m_autoCameraDistance = 4.0f;
+    float m_autoCameraDistance = 4.5f;
+    float m_CameraScrollScale = 0.25f;
     float m_autoRotationOffset = 4;
-    float m_LoDScale = 1;
+    float m_LoDScale = 2;
     
     
 

@@ -1,5 +1,6 @@
 #include "MeshletMesh.h"
 #include "Animator.h"
+#include <deque>
 
 using namespace DirectX;
 
@@ -256,8 +257,8 @@ void MeshletMesh::generateMeshlets()
             
             
             
-            std::vector<uint> simplifiedVertexIndices;
-            for (uint k = 0; k < newTask.vertex_count[0]; k++)
+            std::deque<uint> simplifiedVertexIndices;
+            for (int k = newTask.vertex_count[0] - 1; k >= 0; k--)
             {
                 bool vertexIsPartOfSimplifiedMeshlet = false;
                 for (uint index : simplified_indices)
@@ -265,7 +266,7 @@ void MeshletMesh::generateMeshlets()
                     if (true || index == k)
                     {
                         vertexIsPartOfSimplifiedMeshlet = true;
-                        simplifiedVertexIndices.push_back(k);
+                        simplifiedVertexIndices.push_front(k);
                         break;
                     }
                 }
@@ -282,11 +283,11 @@ void MeshletMesh::generateMeshlets()
             }
 
             
-
             newTask.triangle_count[lod] = (uint)simplified_indices.size() / 3;
             newTask.triangle_offset[lod] = (uint)m_meshlet_triangles.back().size();
             newTask.vertex_count[lod] = (uint)simplifiedVertexIndices.size();
             newTask.vertex_offset[lod] = (uint)m_meshlet_vertices.back().size();
+            
 
             
             for (auto index : simplifiedVertexIndices)
