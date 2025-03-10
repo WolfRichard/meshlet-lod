@@ -254,23 +254,24 @@ void MeshletMesh::generateMeshlets()
                 target_index_count, FLT_MAX, meshopt_SimplifyLockBorder, &target_error);
             simplified_indices.resize(simplifiedMeshletIndexCount);
             
-            /*
+            
             
             std::vector<uint> simplifiedVertexIndices;
             for (uint k = 0; k < newTask.vertex_count[0]; k++)
             {
                 bool vertexIsPartOfSimplifiedMeshlet = false;
-                for (auto index : simplified_indices)
+                for (uint index : simplified_indices)
                 {
-                    if (index == k)
+                    if (true || index == k)
                     {
                         vertexIsPartOfSimplifiedMeshlet = true;
+                        simplifiedVertexIndices.push_back(k);
                         break;
                     }
                 }
 
                 if (!vertexIsPartOfSimplifiedMeshlet) {
-                    for (auto& index : simplified_indices)
+                    for (uint& index : simplified_indices)
                     {
                         if (index > k)
                         {
@@ -278,25 +279,21 @@ void MeshletMesh::generateMeshlets()
                         }
                     }
                 }
-                else 
-                {
-                    simplifiedVertexIndices.push_back(k);
-                }
             }
 
-            */
+            
 
             newTask.triangle_count[lod] = (uint)simplified_indices.size() / 3;
             newTask.triangle_offset[lod] = (uint)m_meshlet_triangles.back().size();
-            //newTask.vertex_count[lod] = (uint)simplifiedVertexIndices.size();
+            newTask.vertex_count[lod] = (uint)simplifiedVertexIndices.size();
             newTask.vertex_offset[lod] = (uint)m_meshlet_vertices.back().size();
 
-            /*
+            
             for (auto index : simplifiedVertexIndices)
             {
                 m_meshlet_vertices.back().push_back(m_meshlet_vertices.back()[newTask.vertex_offset[0] + index]);
             }
-            */
+            
 
             for (auto index : simplified_indices)
             {
