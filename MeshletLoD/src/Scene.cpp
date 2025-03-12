@@ -79,7 +79,7 @@ void Scene::processSceneNode(aiNode* node, const aiScene* scene, float4x4 parent
         m_scene_objects.push_back(so);
         m_draw_task_count += m_meshlet_counts[m_meshLoDBufferStructure[node->mMeshes[i]].mesh_offset];
         m_vertex_count += (uint)m_meshes[node->mMeshes[i]]->m_vertex_count;
-        m_triangles_count += (uint)m_meshes[node->mMeshes[i]]->m_meshlet_triangles.size() / 3;
+        m_triangles_count += (uint)m_meshes[node->mMeshes[i]]->m_indices.size() / 3;
 
         uint thread_count = ((m_meshlet_counts[node->mMeshes[i]] + GROUP_SIZE - 1) / GROUP_SIZE) * GROUP_SIZE;
 

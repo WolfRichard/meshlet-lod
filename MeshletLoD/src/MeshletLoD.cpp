@@ -1505,7 +1505,7 @@ void MeshletLoD::updateImGui()
         ImGui::Text("unique  meshes count: %d", (unsigned int)m_scene.m_meshes.size());
         ImGui::Text("total  meshlet count: %d", (unsigned int)m_scene.m_draw_task_count);
         ImGui::Text("total   vertex count: %d", (unsigned int)m_scene.m_vertex_count);
-        ImGui::Text("total triangle count !!!!!!!!!!!!!!!!!!!!!!!: %d", (unsigned int)m_scene.m_triangles_count);
+        ImGui::Text("total triangle count: %d", (unsigned int)m_scene.m_triangles_count);
 
         if (!ImGui::CollapsingHeader("Scene Processing Times"))
         {

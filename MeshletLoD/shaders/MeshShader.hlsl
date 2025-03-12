@@ -178,10 +178,10 @@ void main(in uint I : SV_GroupIndex,
             {
                 if (constantsBuffer.BoolConstants & ENABLE_MESHLET_LOD)
                 {
-                    verts[v].Color = Rainbow(meshPayload.meshlet_LoD[gid] / float(MESHLET_LOD_COUNT)) * brightness;
+                    verts[v].Color = Rainbow(meshPayload.meshlet_LoD[gid] / float(MESHLET_LOD_COUNT - 1)) * brightness;
                 }
                 else
-                    verts[v].Color = Rainbow(uint(object_LoD * meshLoDStructure[mesh_id].lod_count) / float(meshLoDStructure[mesh_id].lod_count)) * brightness;
+                    verts[v].Color = Rainbow(uint(object_LoD * meshLoDStructure[mesh_id].lod_count) / float(meshLoDStructure[mesh_id].lod_count - 1)) * brightness;
             }
             else
             {

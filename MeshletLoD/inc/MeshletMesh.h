@@ -69,13 +69,14 @@ public:
     std::vector<const char*> m_animationNamesCharP;
 
     uint m_LoDCount;
+    std::vector<unsigned int> m_indices;
 
 private:
     void parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene);
     void generateMeshlets();
     void generateLoD(uint resolution_level);
 
-    std::vector<unsigned int> m_indices;
+    
     std::vector<unsigned int> m_simplifiedIndices;
 
     void addVertexBoneData(CustomVertex& vertex, int boneID, float weight);
