@@ -12,6 +12,7 @@ vcpkg install imgui[core,dx12-binding,win32-binding]:x64-windows
 vcpkg install directx-headers
 vcpkg install meshoptimizer
 vcpkg install assimp
+vcpkg install metis
 ```
 ### Generate visual studio project files via cmake:<be>
 ```
