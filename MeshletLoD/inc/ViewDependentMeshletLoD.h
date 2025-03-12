@@ -6,17 +6,17 @@
 
 #include <DirectXMath.h>
 
-#include "MeshletScene.h"
+#include "Scene.h"
 
 
 
 
-class MeshletLoD : public Game
+class ViewDependentMeshletLoD : public Game
 {
 public:
     using super = Game;
 
-    MeshletLoD(const std::wstring& name, int width, int height, bool vSync = false);
+    ViewDependentMeshletLoD(const std::wstring& name, int width, int height, bool vSync = false);
     /**
      *  Load content required for the demo.
      */
@@ -118,6 +118,7 @@ private:
     Microsoft::WRL::ComPtr<ID3DBlob> m_taskShaderBlob;
     Microsoft::WRL::ComPtr<ID3DBlob> m_objectCullingComputeShaderBlob;
 
+
     bool m_ContentLoaded;
 
     float m_ClearColor[4] = {23.0f / 255.0f, 23.0f / 255.0f, 31.0f / 255.0f, 1.0f};
@@ -192,6 +193,6 @@ private:
 
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
 
-    MeshletScene m_scene;
+    Scene m_scene;
     char  m_model_file_path[1024] = "./assets/Torus.glb";//"./assets/TestScene.glb";
 };

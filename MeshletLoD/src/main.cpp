@@ -4,6 +4,7 @@
 
 #include <Application.h>
 #include <MeshletLoD.h>
+#include <ViewDependentMeshletLoD.h>
 
 #include <dxgidebug.h>
 
@@ -31,7 +32,8 @@ int CALLBACK wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdL
 
     Application::Create(hInstance);
     {
-        std::shared_ptr<MeshletLoD> demo = std::make_shared<MeshletLoD>(L"Meshlet LoD", 1280, 720);
+        std::shared_ptr<MeshletLoD> demo = std::make_shared<MeshletLoD>(L"Meshlet_LoD", 1280, 720);
+        //std::shared_ptr<MeshletLoD> demo = std::make_shared<MeshletLoD>(L"ViewDependentMeshlet_LoD", 1280, 720);
         retCode = Application::Get().Run(demo);
     }
     Application::Destroy();

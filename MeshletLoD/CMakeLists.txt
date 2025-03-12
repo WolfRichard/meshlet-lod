@@ -26,24 +26,32 @@ add_custom_target(CopyAssets ALL
 # header files
 set( HEADER_FILES
     inc/MeshletLoD.h
-    inc/Scene.h
+    inc/MeshletScene.h
     inc/MeshletMesh.h
     inc/HLSLnames.h
     shaders/Structures.fxh
     inc/Bone.h
     inc/Animation.h
     inc/Animator.h
+    inc/Mesh.h
+    inc/Scene.h
+    inc/ViewDependentMeshletLoD.h
+    shaders/ViewDependentStructures.fxh
+
 )
 
 # source files
 set( SRC_FILES
     src/main.cpp
     src/MeshletLoD.cpp
-    src/Scene.cpp
+    src/MeshletScene.cpp
     src/MeshletMesh.cpp
     src/Bone.cpp
     src/Animation.cpp
     src/Animator.cpp
+    src/Mesh.cpp
+    src/Scene.cpp
+    src/ViewDependentMeshletLoD.cpp
 )
 
 # shaders
@@ -52,6 +60,9 @@ set( SHADER_FILES
     shaders/MeshShader.hlsl
     shaders/PixelShader.hlsl
     shaders/ObjectCulling_ComputeShader.hlsl
+    shaders/ViewDependentMeshShader.hlsl
+    shaders/ViewDependentTaskShader.hlsl
+    shaders/ViewDependentComputeShader.hlsl
 )
 
 source_group( "Resources\\Shaders" FILES ${SHADER_FILES} )
@@ -72,6 +83,21 @@ set_source_files_properties( shaders/PixelShader.hlsl PROPERTIES
 )
 
 set_source_files_properties( shaders/ObjectCulling_ComputeShader.hlsl PROPERTIES 
+    VS_SHADER_TYPE Compute
+    VS_SHADER_MODEL 6.5
+)
+
+set_source_files_properties( shaders/ViewDependentMeshShader.hlsl PROPERTIES 
+    VS_SHADER_TYPE Mesh
+    VS_SHADER_MODEL 6.5
+)
+
+set_source_files_properties( shaders/ViewDependentTaskShader.hlsl PROPERTIES 
+    VS_SHADER_TYPE Amplification
+    VS_SHADER_MODEL 6.5
+)
+
+set_source_files_properties( shaders/ViewDependentComputeShader.hlsl PROPERTIES 
     VS_SHADER_TYPE Compute
     VS_SHADER_MODEL 6.5
 )
