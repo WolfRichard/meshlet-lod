@@ -2,40 +2,40 @@
 
 struct PixelShaderInput
 {
-    float4 Pos   : SV_POSITION;
+    float4 Pos : SV_POSITION;
     float4 Color : COLOR;
 };
 
-cbuffer ConstantsBuffer                             : register(b0, space0)
+cbuffer ConstantsBuffer : register(b0, space0)
 {
     Constants constantsBuffer;
 };
 
-cbuffer InstanceIDBuffer                            : register(b1, space0)
+cbuffer InstanceIDBuffer : register(b1, space0)
 {
     uint object_id;
 };
 
-cbuffer ObjectLoDBuffer                             : register(b2, space0)
+cbuffer ObjectLoDBuffer : register(b2, space0)
 {
     float object_LoD;
 };
 
 // Objects Buffer
-StructuredBuffer<SceneObject> objectsBuffer         : register(t0, space0);
+StructuredBuffer<SceneObject> objectsBuffer : register(t0, space0);
 
 // Animation Meta Data Buffer
-StructuredBuffer<AnimationMetaData> AMDBuffer       : register(t2, space0);
+StructuredBuffer<AnimationMetaData> AMDBuffer : register(t2, space0);
 
 // Mesh LoD Structure
 StructuredBuffer<MeshLoDStructure> meshLoDStructure : register(t3, space0);
 
 // bindless buffers
-StructuredBuffer<CustomVertex> verticesBuffers[]    : register(t0, space1);
-StructuredBuffer<uint> indicesBuffers[]             : register(t0, space2);
-StructuredBuffer<uint> trianglesBuffers[]           : register(t0, space3);
+StructuredBuffer<CustomVertex> verticesBuffers[] : register(t0, space1);
+StructuredBuffer<uint> indicesBuffers[] : register(t0, space2);
+StructuredBuffer<uint> trianglesBuffers[] : register(t0, space3);
 
-StructuredBuffer<float4x4> bonesMatricesBuffers[]   : register(t0, space5);
+StructuredBuffer<float4x4> bonesMatricesBuffers[] : register(t0, space5);
 
 
 uint SampleTriangleBufferAsCharArray(uint i, uint mesh_id)
@@ -187,7 +187,7 @@ void main(in uint I : SV_GroupIndex,
             {
                 verts[v].Color = brightness;
             }
-        }    
+        }
         else
         {
             verts[v].Color = brightness;

@@ -62,7 +62,6 @@ set( SHADER_FILES
     shaders/ObjectCulling_ComputeShader.hlsl
     shaders/ViewDependentMeshShader.hlsl
     shaders/ViewDependentTaskShader.hlsl
-    shaders/ViewDependentComputeShader.hlsl
 )
 
 source_group( "Resources\\Shaders" FILES ${SHADER_FILES} )
@@ -94,11 +93,6 @@ set_source_files_properties( shaders/ViewDependentMeshShader.hlsl PROPERTIES
 
 set_source_files_properties( shaders/ViewDependentTaskShader.hlsl PROPERTIES 
     VS_SHADER_TYPE Amplification
-    VS_SHADER_MODEL 6.5
-)
-
-set_source_files_properties( shaders/ViewDependentComputeShader.hlsl PROPERTIES 
-    VS_SHADER_TYPE Compute
     VS_SHADER_MODEL 6.5
 )
 

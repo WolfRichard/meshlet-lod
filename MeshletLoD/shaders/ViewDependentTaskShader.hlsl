@@ -2,25 +2,25 @@
 
 
 // Objects Buffer
-StructuredBuffer<SceneObject> objectsBuffer         : register(t0, space0);
+StructuredBuffer<SceneObject> objectsBuffer : register(t0, space0);
 // Per Mesh: Meshlet Counts Buffer
-StructuredBuffer<uint> meshletCountsBuffer          : register(t1, space0);
+StructuredBuffer<uint> meshletCountsBuffer : register(t1, space0);
 // Mesh LoD Structure
 StructuredBuffer<MeshLoDStructure> meshLoDStructure : register(t3, space0);
 // Draw task arguments
-StructuredBuffer<DrawTask> drawTaskBuffers[]        : register(t0, space4);
+StructuredBuffer<DrawTask> drawTaskBuffers[] : register(t0, space4);
 
-cbuffer ConstantsBuffer                             : register(b0, space0)
+cbuffer ConstantsBuffer : register(b0, space0)
 {
     Constants constantsBuffer;
 };
 
-cbuffer InstanceIDBuffer                            : register(b1, space0)
+cbuffer InstanceIDBuffer : register(b1, space0)
 {
     uint object_id;
 };
 
-cbuffer ObjectLoDBuffer                             : register(b2, space0)
+cbuffer ObjectLoDBuffer : register(b2, space0)
 {
     float object_LoD;
 };

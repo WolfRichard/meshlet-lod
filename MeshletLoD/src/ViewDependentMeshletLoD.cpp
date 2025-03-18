@@ -349,10 +349,11 @@ bool ViewDependentMeshletLoD::LoadContent()
     // setup indirect draw attributes buffer
     ComPtr<ID3D12Resource> copy_indirectAtgumentBuffer;
 
+    /*
     UpdateBufferResource(commandList,
         &m_indirectArgumentBuffer, &copy_indirectAtgumentBuffer,
         (uint)m_scene.m_indirect_attributes.size(), sizeof(S_CommandStructure), m_scene.m_indirect_attributes.data());
-
+    */
 
     // transition to indirect argument state
     auto commandQueue2 = Application::Get().GetCommandQueue(D3D12_COMMAND_LIST_TYPE_DIRECT);
@@ -379,7 +380,7 @@ bool ViewDependentMeshletLoD::LoadContent()
 
     commandSignatureDesc.pArgumentDescs = argumentDescs;
     commandSignatureDesc.NumArgumentDescs = _countof(argumentDescs);
-    commandSignatureDesc.ByteStride = sizeof(S_CommandStructure);
+    //commandSignatureDesc.ByteStride = sizeof(S_CommandStructure);
     device->CreateCommandSignature(&commandSignatureDesc, m_RootSignature.Get(), IID_PPV_ARGS(&m_commandSignature));
 
     CreatePSO();
@@ -1072,9 +1073,7 @@ void ViewDependentMeshletLoD::updateImGui()
     {
         ImGui::Text("scene  objects count: %d", (unsigned int)m_scene.m_scene_objects.size());
         ImGui::Text("unique  meshes count: %d", (unsigned int)m_scene.m_meshes.size());
-        ImGui::Text("total  meshlet count: %d", (unsigned int)m_scene.m_draw_task_count);
-        ImGui::Text("total   vertex count: %d", (unsigned int)m_scene.m_vertex_count);
-        ImGui::Text("total triangle count: %d", (unsigned int)m_scene.m_triangles_count);
+
 
         if (!ImGui::CollapsingHeader("Scene Processing Times"))
         {

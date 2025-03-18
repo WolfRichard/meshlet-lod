@@ -12,7 +12,7 @@
 
 #include <chrono>
 
-#include <metis.h>
+
 
 class Scene
 {
@@ -23,13 +23,6 @@ public:
     
     std::vector<S_SceneObject> m_scene_objects;
     std::vector<Mesh*> m_meshes;
-
-    uint m_draw_task_count = 0;
-    uint m_vertex_count = 0;
-    uint m_triangles_count = 0;
-
-    std::vector<uint> m_meshlet_counts;
-    std::vector<S_CommandStructure> m_indirect_attributes;
    
 
 private:

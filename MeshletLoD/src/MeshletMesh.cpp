@@ -192,7 +192,7 @@ void MeshletMesh::parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
 
 void MeshletMesh::generateMeshlets()
 {
-    const float cone_weight  = 0.0f;
+    const float cone_weight  = 0.25f;
     size_t      max_meshlets = meshopt_buildMeshletsBound(m_simplifiedIndices.size(), MAX_MESHLET_VERTEX_COUNT, MAX_MESHLET_PRIMITIVE_COUNT);
     std::vector<meshopt_Meshlet> meshlets(max_meshlets);
     m_meshlet_vertices.back().resize(max_meshlets * MAX_MESHLET_VERTEX_COUNT);
