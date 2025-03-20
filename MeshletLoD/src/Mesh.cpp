@@ -141,20 +141,68 @@ void Mesh::generateLeafMeshlets()
 
 void Mesh::buildMeshletHierachy() 
 {
-    groupMeshlets();
-
+    while ((uint)m_current_hierarchy_top_level_meshlets.size() >= GROUP_MERGE_COUNT * 2)
+    {
+        groupMeshlets();
+        simplifiyTopLevelGroups();
+    }
+    
+    assert(m_current_hierarchy_top_level_groups.size() == 2);
+    OutputDebugString(("\n\n\nNumber of Top Level Meshlets at tree top: " + std::to_string(m_current_hierarchy_top_level_meshlets.size())).c_str());
+    finalTopLevelMeshletGrouping();
     simplifiyTopLevelGroups();
+
+    //clear uneeded data
+    m_current_hierarchy_top_level_groups.clear();
+    m_current_hierarchy_top_level_meshlets.clear();
+
+
+    // Check if one of a groups simplfied Meshlets is part of another groups base meshlets, if so declare it its parent
+    // with the limitation of only one parent and two children per group
+
+    OutputDebugString(("\n\nNumber of Groups: " + std::to_string(m_meshlet_groups.size()) + "\n\n").c_str());
+    OutputDebugString(("\nRecursion Tree Depth: " + std::to_string(m_hierarchy_per_level_group_count.size()) + "\n\n").c_str());
+    for (uint count : m_hierarchy_per_level_group_count) OutputDebugString((std::to_string(count) + ", ").c_str());
+    //findChildrenRecursive(m_hierarchy_root_group);
+    findParentsItterative();
+    OutputDebugString("\n\n");
+
+    /*
+    for (S_Meshlet_Group& current_group : m_meshlet_groups)
+    {
+        uint parentCount = 0;
+        for (uint simplified_meshlet : current_group.simplified_meshlets)
+        {
+            for (S_Meshlet_Group& comparing_group : m_meshlet_groups)
+            {
+                for (uint base_meshlet_index = 0; base_meshlet_index < comparing_group.meshlet_count; base_meshlet_index++)
+                {
+                    if ((simplified_meshlet == comparing_group.meshlets[base_meshlet_index])
+                        && (true))
+                    {
+                        parentCount++;
+                    }
+                }
+
+            }
+
+        }
+        OutputDebugString(("\nNumber of Parents: " + std::to_string(parentCount)).c_str());
+
+    }
+    */
 }
 
 
 
 void Mesh::groupMeshlets()
 {
-    while ((int)m_current_hierarchy_top_level_meshlets.size() % GROUP_MERGE_COUNT != 0)
-        m_current_hierarchy_top_level_meshlets.push_back(0); // fill with dummy meshlets until equal meshlet distribution is possible between all groups
+    //while ((int)m_current_hierarchy_top_level_meshlets.size() % GROUP_MERGE_COUNT != 0)
+    //    m_current_hierarchy_top_level_meshlets.push_back(0); // fill with dummy meshlets until equal meshlet distribution is possible between all groups
 
     // build METIS graph representation of meshlet connectivity to each other
     idx_t MATIS_numNodes = (int)m_current_hierarchy_top_level_meshlets.size();
+    std::vector<idx_t> MATIS_vertexWeights(MATIS_numNodes, 100);
     idx_t MATIS_numEdges = 0;
     std::vector<idx_t> MATIS_nodeAdjacencyOffsets;
     std::vector<idx_t> MATIS_adjacencyList;
@@ -199,18 +247,18 @@ void Mesh::groupMeshlets()
         }
     }
     MATIS_nodeAdjacencyOffsets.push_back((int)MATIS_adjacencyList.size());
-    idx_t MATIS_numPartitions = (uint)((m_current_hierarchy_top_level_meshlets.size() + GROUP_MERGE_COUNT - 1) / GROUP_MERGE_COUNT);
+    idx_t MATIS_numPartitions = (uint)((m_current_hierarchy_top_level_meshlets.size() / GROUP_MERGE_COUNT));// + GROUP_MERGE_COUNT - 1) / GROUP_MERGE_COUNT);
     std::vector<idx_t> MATIS_outputPartitionsArray(MATIS_numNodes);
     idx_t METIS_options[METIS_NOPTIONS];
     METIS_SetDefaultOptions(METIS_options); // Use default options
-    METIS_options[METIS_OPTION_UFACTOR] = 1;  // Strictest balance (but may increase edge cut)
+    METIS_options[METIS_OPTION_UFACTOR] = 100;  // Strictest balance (but may increase edge cut)
     idx_t MATIS_ncon = 1;
     idx_t MATIS_edgeCut;
     int result = METIS_PartGraphKway(&MATIS_numNodes,                           // number of nodes in the graph (= numbers of currently processed meshlets)
                                           &MATIS_ncon,                               // number of balancing constraints (not needed thus default = 1)
                                           MATIS_nodeAdjacencyOffsets.data(),         // offsets for each nodes neighbor list
                                           MATIS_adjacencyList.data(),                // list of edges of the graph represented as array of neighbors of each node (so basicly each edge is stored twice)
-                                          nullptr,                                   // vertex weights (not needed thus disabled = nullptr)
+                                          MATIS_vertexWeights.data(),                                   // vertex weights (not needed thus disabled = nullptr)
                                           nullptr,                                   // vertex sizes (also not necessary = nullptr)
                                           MATIS_edgeWeights.data(),                  // edge weights list (weight for each neighbor connection of the adjacencyList, so gain every weight s stored twice)
                                           &MATIS_numPartitions,                      // number of partitions that the graph should be devided in (how many groups of 4 meshlets we want)
@@ -240,8 +288,15 @@ void Mesh::groupMeshlets()
     for (auto& meshletSharedEdgesList : connectivity_matrix)
     {
         OutputDebugString(("\nMeshlet_" + std::to_string(debugCounter++) + ": ").c_str());
+        uint neighboringMeshletCount = 0;
         for (auto matrix_entry : meshletSharedEdgesList)
-            OutputDebugString((std::to_string(matrix_entry) + ", ").c_str());
+        {
+            OutputDebugString((std::to_string(matrix_entry) + ",").c_str());
+            if (matrix_entry) neighboringMeshletCount++;
+        }
+        if (neighboringMeshletCount) OutputDebugString(("\nMeshlet has " + std::to_string(neighboringMeshletCount) + " Neighbors").c_str());
+        else OutputDebugString("\nMeshlet shares no Edge!!!!!");
+
     }
 
     OutputDebugString("\nRESULT: ");
@@ -264,20 +319,21 @@ void Mesh::groupMeshlets()
     for (int k = 0; k < MATIS_numPartitions; k++)
     {
         m_current_hierarchy_top_level_groups.push_back((uint)m_meshlet_groups.size());
-        m_meshlet_groups.push_back(S_Meshlet_Group());
-        S_Meshlet_Group& current_group = m_meshlet_groups.back();
+        m_meshlet_groups.push_back(getDefaultMeshletGroup());
+        S_MeshletGroup& current_group = m_meshlet_groups.back();
         
         // set group child meshlets
-        uint child_meshlet_index = 0;
+        current_group.meshlet_count = 0;
         for (uint j = 0; j < MATIS_numNodes; j++)
         {
             if (k == MATIS_outputPartitionsArray[j])
             {
-                assert(child_meshlet_index < GROUP_MERGE_COUNT);
-                current_group.meshlets[child_meshlet_index++] = m_current_hierarchy_top_level_meshlets[j];
+                assert(current_group.meshlet_count < (sizeof(current_group.meshlets) / 4));
+                current_group.meshlets[current_group.meshlet_count++] = m_current_hierarchy_top_level_meshlets[j];
             }
         }
     }
+    m_hierarchy_per_level_group_count.push_back((uint)m_current_hierarchy_top_level_groups.size());
 }
 
 
@@ -295,9 +351,9 @@ std::unordered_set<std::pair<uint, uint>, PairHash> Mesh::extractEdges(S_Meshlet
 
     for (uint i = 0; i < meshlet.triangle_count; i++) 
     {
-        uint vertex_index_0 = m_primitive_indices[meshlet.vertex_offset + m_primitive_indices[meshlet.triangle_offset + i * 3 + 0]];
-        uint vertex_index_1 = m_primitive_indices[meshlet.vertex_offset + m_primitive_indices[meshlet.triangle_offset + i * 3 + 1]];
-        uint vertex_index_2 = m_primitive_indices[meshlet.vertex_offset + m_primitive_indices[meshlet.triangle_offset + i * 3 + 2]];
+        uint vertex_index_0 = m_vertex_indices[meshlet.vertex_offset + m_primitive_indices[meshlet.triangle_offset + i * 3 + 0]];
+        uint vertex_index_1 = m_vertex_indices[meshlet.vertex_offset + m_primitive_indices[meshlet.triangle_offset + i * 3 + 1]];
+        uint vertex_index_2 = m_vertex_indices[meshlet.vertex_offset + m_primitive_indices[meshlet.triangle_offset + i * 3 + 2]];
 
         edge_set.insert(sortEdgeIndices(vertex_index_0, vertex_index_1));
         edge_set.insert(sortEdgeIndices(vertex_index_1, vertex_index_2));
@@ -325,13 +381,14 @@ void Mesh::simplifiyTopLevelGroups()
 {
     m_current_hierarchy_top_level_meshlets.clear(); // clear the top level of meshlets as it will be replaced by their simplified version
 
+    OutputDebugString(("\n\nNumber of Top LEVEL GROUPS: " + std::to_string(m_current_hierarchy_top_level_groups.size())).c_str());
     for (uint g = 0; g < m_current_hierarchy_top_level_groups.size(); g++) 
     {
-        S_Meshlet_Group& current_group = m_meshlet_groups[m_current_hierarchy_top_level_groups[g]];
+        S_MeshletGroup& current_group = m_meshlet_groups[m_current_hierarchy_top_level_groups[g]];
         
         // combined triangles of all meshlets (in reference to the original vertex buffer)
         std::vector<uint> merged_deduplicated_indices; 
-        for (uint m = 0; m < GROUP_MERGE_COUNT; m++) 
+        for (uint m = 0; m < current_group.meshlet_count; m++)
         {
             S_Meshlet& current_meshlet = m_meshlets[current_group.meshlets[m]];
             for (uint i = 0; i < current_meshlet.triangle_count * 3; i++) 
@@ -342,7 +399,7 @@ void Mesh::simplifiyTopLevelGroups()
 
 
         // simplify the meshlet group to have enough space to hold 2 meshlets
-        size_t target_index_count = GROUP_SPLIT_COUNT * MAX_MESHLET_PRIMITIVE_COUNT * 3; //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! should be "GROUP_SPLIT_COUNT * MAX_MESHLET_PRIMITIVE_COUNT * 3", but that would blow past the vertex limit and generate to many meshlets
+        size_t target_index_count = GROUP_SPLIT_COUNT * MAX_MESHLET_VERTEX_COUNT * 3; //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! should be "GROUP_SPLIT_COUNT * MAX_MESHLET_PRIMITIVE_COUNT * 3", but that would blow past the vertex limit and generate to many meshlets
         std::vector<uint> simplified_indices(merged_deduplicated_indices.size());
         float lod_error = 0.0f;
         
@@ -372,19 +429,125 @@ void Mesh::simplifiyTopLevelGroups()
             OutputDebugString(("\n\tNumber of Vertices: " + std::to_string(meshlet.vertex_count) + " Number of Triangles: " + std::to_string(meshlet.triangle_count)).c_str());
 
 
+        //assert(meshlet_count == 2);
+
+        // add new vertex/primitive-indicesbuffers to the main buffer and offset meshlet meta data accordingly
         for (uint i = 0; i < meshlet_count; i++)
         {
             S_Meshlet newMeshlet;
             newMeshlet.triangle_count = meshlets[i].triangle_count;
-            newMeshlet.triangle_offset = meshlets[i].triangle_offset;
+            newMeshlet.triangle_offset = meshlets[i].triangle_offset + (uint)m_primitive_indices.size();
             newMeshlet.vertex_count = meshlets[i].vertex_count;
-            newMeshlet.vertex_offset = meshlets[i].vertex_offset;
+            newMeshlet.vertex_offset = meshlets[i].vertex_offset + (uint)m_vertex_indices.size();
 
-            m_current_hierarchy_top_level_meshlets.push_back((int)m_meshlets.size());
+            m_current_hierarchy_top_level_meshlets.push_back((uint)m_meshlets.size());
+            
+
+            current_group.simplified_meshlets[i] = (uint)m_meshlets.size();
+
             m_meshlets.push_back(newMeshlet);
         }
-
-
-        //// TODO !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        
+        m_vertex_indices.insert(m_vertex_indices.end(), vertex_indices.begin(), vertex_indices.end());
+        m_primitive_indices.insert(m_primitive_indices.end(), primitive_indices.begin(), primitive_indices.end());
+    
     }
 }
+
+void Mesh::finalTopLevelMeshletGrouping()
+{
+    m_current_hierarchy_top_level_groups.clear();
+    m_hierarchy_root_group = (uint)m_meshlet_groups.size();
+    m_current_hierarchy_top_level_groups.push_back((uint)m_meshlet_groups.size());
+    m_meshlet_groups.push_back(getDefaultMeshletGroup());
+    S_MeshletGroup& current_group = m_meshlet_groups.back();
+
+    // set group child meshlets
+    current_group.meshlet_count = 0;
+    for (uint m : m_current_hierarchy_top_level_meshlets)
+    {
+        assert(current_group.meshlet_count < (sizeof(current_group.meshlets) / 4));
+        current_group.meshlets[current_group.meshlet_count++] = m;
+    }
+    m_hierarchy_per_level_group_count.push_back((uint)m_current_hierarchy_top_level_groups.size());
+}
+
+void Mesh::findChildrenRecursive(uint current_group_index) {
+
+
+    OutputDebugString(("[" + std::to_string(current_group_index) + "](").c_str());
+
+
+
+    S_MeshletGroup& current_group = m_meshlet_groups[current_group_index];
+    for (uint comparing_group_index = 0; comparing_group_index < m_meshlet_groups.size(); comparing_group_index++)
+    {
+        S_MeshletGroup& comparing_group = m_meshlet_groups[comparing_group_index];
+        for (uint current_base_meshlet_index = 0; current_base_meshlet_index < current_group.meshlet_count; current_base_meshlet_index++)
+        {
+            uint current_base_meshlet = current_group.meshlets[current_base_meshlet_index];
+            for (uint comparing_simplified_meshlet : comparing_group.simplified_meshlets)
+            {
+                if (current_base_meshlet == comparing_simplified_meshlet && comparing_group.parent == -1 && current_group.childCount < 2)
+                {
+                    comparing_group.parent = current_group_index;
+                    current_group.children[current_group.childCount++] = comparing_group_index;
+                    findChildrenRecursive(comparing_group_index);
+                    if (current_group.childCount == 1) OutputDebugString(";");
+                }
+            }
+        }
+    }
+
+    OutputDebugString(")");
+}
+
+
+void Mesh::findParentsItterative()
+{
+    uint accumulated_offset = 0;
+    for (uint tree_level = 0; tree_level < m_hierarchy_per_level_group_count.size(); tree_level++)
+    {
+        OutputDebugString(("Current Tree Level - " + std::to_string(tree_level) + "\n").c_str());
+
+
+        for (uint i = 0; i < m_hierarchy_per_level_group_count[tree_level]; i++)
+        {
+            uint current_group_index = accumulated_offset + i;
+            S_MeshletGroup& current_group = m_meshlet_groups[current_group_index];
+            
+            uint possible_parent_with_least_children = -1;
+            // search every group to find where the base meshlets contain one of the simplified meshlets of the current group and make it its your parent
+            for (uint comparing_group_index = 0; comparing_group_index < m_meshlet_groups.size(); comparing_group_index++)
+            {
+                S_MeshletGroup& comparing_group = m_meshlet_groups[comparing_group_index];
+                
+                for (uint comparing_base_meshlet_index = 0; comparing_base_meshlet_index < comparing_group.meshlet_count; comparing_base_meshlet_index++)
+                {
+                    uint comparing_base_meshlet = comparing_group.meshlets[comparing_base_meshlet_index];
+                    for (uint current_simplified_meshlet : current_group.simplified_meshlets)
+                    {
+                        if (comparing_base_meshlet == current_simplified_meshlet && current_group.parent == -1)
+                        {
+                            if (possible_parent_with_least_children == -1) possible_parent_with_least_children = comparing_group_index;
+                            else if (comparing_group.childCount < m_meshlet_groups[possible_parent_with_least_children].childCount) possible_parent_with_least_children = comparing_group_index;
+                            
+
+                        }
+                    }
+                }
+            }
+
+            if (possible_parent_with_least_children != -1)
+            {
+                current_group.parent = possible_parent_with_least_children;
+                m_meshlet_groups[possible_parent_with_least_children].children[m_meshlet_groups[possible_parent_with_least_children].childCount++] = current_group_index;
+
+            }
+
+            OutputDebugString(("Group[" + std::to_string(current_group_index) + "] --> Parent[" + std::to_string(current_group.parent) + "]\n").c_str());
+        }
+        accumulated_offset += m_hierarchy_per_level_group_count[tree_level];
+    }
+}
+

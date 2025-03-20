@@ -3,6 +3,8 @@
 
 #define GROUP_SIZE 32
 
+#define MAXIMUM_GROUP_SIZE 1024
+
 //#define MAX_MESHLET_VERTEX_COUNT 64
 #define MAX_MESHLET_VERTEX_COUNT 128
 
@@ -30,17 +32,40 @@ struct S_Meshlet
 
 
 // node of the binary tree, each group consists of 2 Meshlets
-struct S_Meshlet_Group
+struct S_MeshletGroup
 {
-    S_BoundingSphere bounding_sphere;           // in object space
-    int parent;                                 // index to parent node, -1 if root
-    int children[2];                            // indices to child nodes -1 if no child
-    int isLeaf;                                 // = 0 means has children, != 0 means no children
-    int simplified_meshlets[GROUP_SPLIT_COUNT]; // indices to the simplified meshlets that are part of this group
-    int meshlets[GROUP_MERGE_COUNT];            // indices to the more granular meshlets that are part of this group 
-    
-    float2 byte_allignement;            // used to keep 16 byte allignement for structured buffer
+    S_BoundingSphere bounding_sphere;               // in object space
+    int parent;                                     // index to parent node, -1 if root
+    int children[GROUP_SPLIT_COUNT * 2];            // indices to child nodes -1 if no child
+    uint childCount;            // * 2 as buffer for partion imperfections 
+    uint simplified_meshlets[GROUP_SPLIT_COUNT];    // indices to the simplified meshlets that are part of this group 
+    uint meshlets[GROUP_MERGE_COUNT * 2];           // indices to the more granular meshlets that are part of this group (0 is a dummy meshlet with no content)
+                                 // * 2 as buffer for partion imperfections
+    uint meshlet_count;                             // allows up to merge count * 2 meshlets, this is necessary because graph partitioning wont always create perfect groups of 4
+    float2 byte_allignement;                        // used to keep 16 byte allignement for structured buffer
 };
+
+S_MeshletGroup getDefaultMeshletGroup()
+{
+    S_MeshletGroup ret;
+    ret.bounding_sphere.center = float3(0, 0, 0);
+    ret.bounding_sphere.radius = 0;
+    ret.children[0] = -1;
+    ret.children[1] = -1;
+    ret.childCount = 0;
+    for (uint i = 0; i < GROUP_MERGE_COUNT * 2; i++)
+    {
+        ret.meshlets[i] = 0;
+    }
+    for (uint j = 0; j < GROUP_SPLIT_COUNT; j++)
+    {
+        ret.simplified_meshlets[j] = 0;
+    }
+    ret.parent = -1; 
+    return ret;
+    
+
+}
 
 
 // bit positions for constant bools
@@ -64,6 +89,8 @@ struct S_Constants
     
     float CurrTime;
     
+    uint SceneObjectCount;
+    
     uint BoolConstants;                     // can hold up to 32 booleans but only uses the space of a single word in the root signature
 };
 
@@ -72,16 +99,14 @@ struct S_Constants
 // Payload size must be less than 16kb.
 struct S_Payload
 {
-    uint vertex_count[GROUP_SIZE];
-    uint triangle_count[GROUP_SIZE];
-    
-    uint vertex_offset[GROUP_SIZE];
-    uint triangle_offset[GROUP_SIZE];
-    
-    uint meshlet_LoD[GROUP_SIZE];
-    
+    uint meshlet_count;
+};
+
+struct S_PayloadEntry
+{
+    uint meshlet_id;
     uint object_id;
-    
+    float lod_morphing; // 0 = vertices stay the same; 1 = vertices are completely pushed towards their parent vertex
 };
 
 struct S_Vertex
@@ -101,6 +126,17 @@ struct S_SceneObject
     
     uint mesh_id;                       // the mesh of the object
     
-    float3 byte_allignement;            // used to keep 16 byte allignement for structured buffer
+    uint root_group_id;
+    
+    float2 byte_allignement;            // used to keep 16 byte allignement for structured buffer
 };
 
+
+#define WORK_QUEUE_SIZE 65536           // (2^16) Workqueue is implemented as ring-buffer, 
+                                        //queue size allows correct indexing and should be able to contain the maximum of simultanious queue tasks
+
+struct S_WorkQueueEntry
+{
+    uint scene_object_id;
+    uint group_id;
+};

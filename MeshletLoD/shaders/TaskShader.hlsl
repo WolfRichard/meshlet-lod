@@ -10,10 +10,8 @@ StructuredBuffer<MeshLoDStructure> meshLoDStructure : register(t3, space0);
 // Draw task arguments
 StructuredBuffer<DrawTask> drawTaskBuffers[]        : register(t0, space4);
 
-cbuffer ConstantsBuffer                             : register(b0, space0)
-{
-    Constants constantsBuffer;
-};
+ConstantBuffer<Constants> constantsBuffer           : register(b0, space0);
+
 
 cbuffer InstanceIDBuffer                            : register(b1, space0)
 {
@@ -129,19 +127,8 @@ void main(in uint I : SV_GroupIndex,
         
     }
    
-    
-   
     // All threads must complete their work so that we can read s_TaskCount
     GroupMemoryBarrierWithGroupSync();
 
     DispatchMesh(s_TaskCount, 1, 1, s_Payload);
-    
-    
-    
-    
-    
-    
-    
-    
-    
 }
