@@ -1,6 +1,5 @@
 #include "ViewDependentStructures.fxh"
 
-#pragma shader("6_5")
 
 
 StructuredBuffer<S_SceneObject> objectsBuffer       : register(t0, space0);
@@ -83,7 +82,6 @@ float CalcDetailLevel(float3 center, float radius)
     return level * level;
 }
 
-[shader("task")]
 [numthreads(MAXIMUM_GROUP_SIZE, 1, 1)]
 void main(in uint I : SV_GroupIndex,
           in uint wg : SV_GroupID)
