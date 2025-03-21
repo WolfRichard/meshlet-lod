@@ -129,6 +129,5 @@ void main(in uint I : SV_GroupIndex,
    
     // All threads must complete their work so that we can read s_TaskCount
     GroupMemoryBarrierWithGroupSync();
-
     DispatchMesh(s_TaskCount, 1, 1, s_Payload);
 }

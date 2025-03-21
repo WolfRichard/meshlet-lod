@@ -75,7 +75,14 @@ void Scene::loadScene(std::string file_path)
     for (uint m = 0; m < scene->mNumMeshes; m++)
     {
         m_meshes.push_back(new Mesh(scene->mMeshes[m], scene));
+
+        m_vertices.push_back(&(m_meshes.back()->m_vertices));
+        m_vertex_indices.push_back(&(m_meshes.back()->m_vertex_indices));
+        m_primitive_indices.push_back(&(m_meshes.back()->m_primitive_indices));
+        m_meshlets.push_back(&(m_meshes.back()->m_meshlets));
+        m_meshlet_groups.push_back(&(m_meshes.back()->m_meshlet_groups));
     }
+    m_mesh_count = scene->mNumMeshes;
 
     // process scene tree
     float4x4 base_transform = float4x4(1, 0, 0, 0,

@@ -96,7 +96,7 @@ void ViewDependentMeshletLoD::UpdateBufferResource(
     }
 }
 
-void ViewDependentMeshletLoD::CreatePSO()
+void ViewDependentMeshletLoD::createPSO()
 {
     Application::Get().Flush();
     m_PipelineState.Reset();
@@ -138,38 +138,15 @@ void ViewDependentMeshletLoD::CreatePSO()
     ThrowIfFailed(device->CreatePipelineState(&pipelineStateStreamDesc, IID_PPV_ARGS(&m_PipelineState)));
 }
 
-void ViewDependentMeshletLoD::CreateCullingPSO()
-{
-    m_ObjectCulling_PipelineState.Reset();
-    auto device = Application::Get().GetDevice();
 
-    struct PipelineStateStream
-    {
-        CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE pRootSignature;
-        CD3DX12_PIPELINE_STATE_STREAM_CS CS;
-    } pipelineStateStream;
-
-    pipelineStateStream.pRootSignature = m_ObjectCulling_RootSignature.Get();
-    pipelineStateStream.CS = CD3DX12_SHADER_BYTECODE(m_objectCullingComputeShaderBlob.Get());
-
-    D3D12_PIPELINE_STATE_STREAM_DESC pipelineStateStreamDesc = {
-        sizeof(PipelineStateStream), &pipelineStateStream
-    };
-    ThrowIfFailed(device->CreatePipelineState(&pipelineStateStreamDesc, IID_PPV_ARGS(&m_ObjectCulling_PipelineState)));
-}
-
-
-bool ViewDependentMeshletLoD::LoadContent()
+void ViewDependentMeshletLoD::setupConstantsUploadBuffer()
 {
     auto device = Application::Get().GetDevice();
-    auto commandQueue = Application::Get().GetCommandQueue(D3D12_COMMAND_LIST_TYPE_COPY);
-    auto commandList = commandQueue->GetCommandList();
-
 
     // constants buffer
     D3D12_HEAP_PROPERTIES heapProps = {};
     heapProps.Type = D3D12_HEAP_TYPE_UPLOAD;
-   
+
     D3D12_RESOURCE_DESC constBufferDesc = {};
     constBufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
     constBufferDesc.Width = (sizeof(S_Constants) + 255) & ~255; // allign to 256 bytes
@@ -181,7 +158,7 @@ bool ViewDependentMeshletLoD::LoadContent()
     constBufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
     constBufferDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
-    // Create the upload buffer
+    // Create an upload buffer for constants
     device->CreateCommittedResource(
         &heapProps,
         D3D12_HEAP_FLAG_NONE,
@@ -190,23 +167,159 @@ bool ViewDependentMeshletLoD::LoadContent()
         nullptr,
         IID_PPV_ARGS(&m_ConstantsBuffer)
     );
-
     // Map the buffer (persistent mapping)
     m_ConstantsBuffer->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedConstantData));
+}
+
+
+template <typename T>
+void ViewDependentMeshletLoD::setupSrvAndBuffer(D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle,
+                                                D3D12_GPU_DESCRIPTOR_HANDLE nextAvailableGpuSrvHandle, 
+                                                D3D12_CPU_DESCRIPTOR_HANDLE nextAvailableCpuSrvHandle,
+                                                std::vector<T>& cpuBuffer,
+                                                Microsoft::WRL::ComPtr<ID3D12Resource>& gpuBuffer,
+                                                std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
+                                                Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
+                                                unsigned int descriptorSize)
+{
+    srvGpuHandle = nextAvailableGpuSrvHandle;
+
+    copyBuffers.push_back(ComPtr<ID3D12Resource>());
+    UpdateBufferResource(commandList, gpuBuffer.GetAddressOf(), copyBuffers.back().GetAddressOf(),
+        (uint)cpuBuffer.size(), sizeof(T), cpuBuffer.data());
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC objectsSrvDesc = {};
+    objectsSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    objectsSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    objectsSrvDesc.Buffer.FirstElement = 0;
+    objectsSrvDesc.Buffer.NumElements = (uint)m_scene.m_scene_objects.size();
+    objectsSrvDesc.Buffer.StructureByteStride = sizeof(SceneObject);
+    objectsSrvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+
+    device->CreateShaderResourceView(m_ObjectsBuffer.Get(), &objectsSrvDesc, nextAvailableCpuSrvHandle);
+    objectBufferSRVHandle = srvHandle;
+    nextAvailableCpuSrvHandle.Offset(1, descriptorSize);
+    nextAvailableGpuSrvHandle.ptr += bufferCount * descriptorSize;
+}
+
+template <typename T>
+void ViewDependentMeshletLoD::setupBindlessSrvAndBuffer(D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle, 
+                                                        D3D12_GPU_DESCRIPTOR_HANDLE nextAvailableGpuSrvHandle, 
+                                                        D3D12_CPU_DESCRIPTOR_HANDLE nextAvailableCpuSrvHandle,
+                                                        std::vector<std::vector<T>*>& cpuBuffers, 
+                                                        std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& gpuBuffers,
+                                                        std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
+                                                        Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
+                                                        unsigned int descriptorSize)
+{
+    auto device = Application::Get().GetDevice();
+    srvGpuHandle = nextAvailableGpuSrvHandle;
+    uint bufferCount = (uint)cpuBuffers.size()
+    
+    for (std::vector<T> cpuSingleBuffer : cpuBuffers)
+    {
+        gpuBuffers.push_back(ComPtr<ID3D12Resource>());
+        copyBuffers.push_back(ComPtr<ID3D12Resource>());
+        
+        UpdateBufferResource(commandList, gpuBuffers.back().GetAddressOf(), copyBuffers.back().GetAddressOf(),
+            (uint)cpuSingleBuffer.size(), sizeof(T), cpuSingleBuffer.data());
+
+        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srvDesc.Buffer.FirstElement = 0;
+        srvDesc.Buffer.NumElements = (uint)cpuSingleBuffer.size();
+        srvDesc.Buffer.StructureByteStride = sizeof(T);
+        srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+
+        device->CreateShaderResourceView(gpuBuffers.back().Get(), &srvDesc, nextAvailableCpuSrvHandle);
+        nextAvailableCpuSrvHandle.Offset(1, descriptorSize);
+        nextAvailableGpuSrvHandle.ptr += bufferCount * descriptorSize;
+    }
+}
 
 
 
+bool ViewDependentMeshletLoD::LoadContent()
+{
+    auto device = Application::Get().GetDevice();
+    auto commandQueue = Application::Get().GetCommandQueue(D3D12_COMMAND_LIST_TYPE_COPY);
+    auto commandList = commandQueue->GetCommandList();
+
+    setupConstantsUploadBuffer();
 
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-    heapDesc.NumDescriptors = 5;
+    heapDesc.NumDescriptors = 1                          // single scene objects buffer
+                            + 1                          // single work queue buffer
+                            + 1                          // single work queue counter buffer
+                            + (uint)m_scene.m_mesh_count // meshlets buffer per unique mesh
+                            + (uint)m_scene.m_mesh_count // meshlet groups buffer per unique mesh
+                            + (uint)m_scene.m_mesh_count // vertex indices buffer per unique mesh
+                            + (uint)m_scene.m_mesh_count // primitive indices buffer per unique mesh
+                            + (uint)m_scene.m_mesh_count // vertex buffer per unique mesh
+        ;
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     heapDesc.NodeMask = 0;
     device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_CBV_SRV_UAV_Heap));
 
     unsigned int descriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(m_CBV_SRV_UAV_Heap->GetCPUDescriptorHandleForHeapStart());
+    CD3DX12_CPU_DESCRIPTOR_HANDLE nextCpuSrvHandle(m_CBV_SRV_UAV_Heap->GetCPUDescriptorHandleForHeapStart());
+    D3D12_GPU_DESCRIPTOR_HANDLE nextGpuSrvHandle(m_CBV_SRV_UAV_Heap->GetGPUDescriptorHandleForHeapStart());
+
+
+    std::vector<ComPtr<ID3D12Resource>> copyBuffers;
     
+    // vertex-indices buffers
+    setupBindlessSrvAndBuffer(m_VertexIndicesSrvHandle, 
+                              nextGpuSrvHandle, nextCpuSrvHandle, 
+                              m_scene.m_vertex_indices, m_VertexIndicesBuffers, 
+                              copyBuffers, commandList, descriptorSize);
+    
+    // vertex buffers
+    setupBindlessSrvAndBuffer(m_VerticesSrvHandle,
+                              nextGpuSrvHandle, nextCpuSrvHandle,
+                              m_scene.m_vertices, m_VertexBuffers,
+                              copyBuffers, commandList, descriptorSize);
+
+    // primitive-indices buffers
+    setupBindlessSrvAndBuffer(m_PrimitiveIndicesSrvHandle,
+                              nextGpuSrvHandle, nextCpuSrvHandle,
+                              m_scene.m_primitive_indices, m_PrimitiveIndicesBuffers,
+                              copyBuffers, commandList, descriptorSize);
+
+    // meshlets buffers
+    setupBindlessSrvAndBuffer(m_MeshletsSrvHandle,
+                              nextGpuSrvHandle, nextCpuSrvHandle,
+                              m_scene.m_meshlets, m_MeshletBuffers,
+                              copyBuffers, commandList, descriptorSize);
+
+    // meshlet groups buffers
+    setupBindlessSrvAndBuffer(m_MeshletGroupsSrvHandle,
+                              nextGpuSrvHandle, nextCpuSrvHandle,
+                              m_scene.m_meshlet_groups, m_MeshletGroupsBuffers,
+                              copyBuffers, commandList, descriptorSize);
+
+    // scene objects buffer
+    setupSrvAndBuffer(m_ObjectsSrvHandle,
+                      nextGpuSrvHandle, nextCpuSrvHandle,
+                      m_scene.m_scene_objects, m_ObjectsBuffer,
+                      copyBuffers, commandList, descriptorSize);
+
+    // work queue buffer
+    std::vector<S_WorkQueueEntry> temporaryCpuWorkQueueBufferData(WORK_QUEUE_SIZE, { 0, 0 });
+    setupSrvAndBuffer(m_WorkQueueSrvHandle,
+                      nextGpuSrvHandle, nextCpuSrvHandle,
+                      temporaryCpuWorkQueueBufferData, m_WorkQueueBuffer,
+                      copyBuffers, commandList, descriptorSize);
+
+    // work queue counters buffer
+    std::vector<uint> temporaryCpuWorkQueueCountersData(2, 0);
+    setupSrvAndBuffer(m_WorkQueueCountersSrvHandle,
+                      nextGpuSrvHandle, nextCpuSrvHandle,
+                      temporaryCpuWorkQueueCountersData, m_WorkQueueCountersBuffer,
+                      copyBuffers, commandList, descriptorSize);
+   
 
     // Create the descriptor heap for the depth-stencil view.
     D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
@@ -215,19 +328,10 @@ bool ViewDependentMeshletLoD::LoadContent()
     dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
     ThrowIfFailed(device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&m_DSVHeap)));
 
-    // Load the pixel shader.
-    
+    // Load shaders.
     ThrowIfFailed(D3DReadFileToBlob(L"PixelShader.cso", &m_pixelShaderBlob));
-
-    // Load the mesh shader.
-    ThrowIfFailed(D3DReadFileToBlob(L"MeshShader.cso", &m_meshShaderBlob));
-
-    // Load the task shader.
-    ThrowIfFailed(D3DReadFileToBlob(L"TaskShader.cso", &m_taskShaderBlob));
-
-    // Load the object culling compute shader.
-    ThrowIfFailed(D3DReadFileToBlob(L"ObjectCulling_ComputeShader.cso", &m_objectCullingComputeShaderBlob));
-
+    ThrowIfFailed(D3DReadFileToBlob(L"ViewDependentMeshShader.cso", &m_meshShaderBlob));
+    ThrowIfFailed(D3DReadFileToBlob(L"ViewDependentTaskShader.cso", &m_taskShaderBlob));
 
     // Create a root signature.
     D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
@@ -242,55 +346,45 @@ bool ViewDependentMeshletLoD::LoadContent()
         D3D12_ROOT_SIGNATURE_FLAG_NONE;
 
 
-    CD3DX12_ROOT_PARAMETER1 rootParameters[12];
+    CD3DX12_ROOT_PARAMETER1 rootParameters[9];
     // constants
-    //rootParameters[0].InitAsConstants(sizeof(Constants) / 4, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
-    rootParameters[0].InitAsConstantBufferView(0);
+    rootParameters[0].InitAsConstantBufferView(0, 0);
 
     // vertices
-    CD3DX12_DESCRIPTOR_RANGE1 srvVertexRange;
-    srvVertexRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_meshes.size(), 0, 1);
-    rootParameters[2].InitAsDescriptorTable(1, &srvVertexRange, D3D12_SHADER_VISIBILITY_MESH);
+    CD3DX12_DESCRIPTOR_RANGE1 srvVerticesRange;
+    srvVerticesRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_mesh_count, 0, 2);
+    rootParameters[1].InitAsDescriptorTable(1, &srvVerticesRange, D3D12_SHADER_VISIBILITY_MESH);
 
-    // indices
-    CD3DX12_DESCRIPTOR_RANGE1 srvIndexRange;
-    srvIndexRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_meshes.size(), 0, 2);
-    rootParameters[1].InitAsDescriptorTable(1, &srvIndexRange, D3D12_SHADER_VISIBILITY_MESH);
+    // vertex-indices
+    CD3DX12_DESCRIPTOR_RANGE1 srvVertexIndicesRange;
+    srvVertexIndicesRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_mesh_count, 0, 3);
+    rootParameters[2].InitAsDescriptorTable(1, &srvVertexIndicesRange, D3D12_SHADER_VISIBILITY_MESH);
 
-    // triangles
-    CD3DX12_DESCRIPTOR_RANGE1 srvTrianglesRange;
-    srvTrianglesRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_meshes.size(), 0, 3);
-    rootParameters[4].InitAsDescriptorTable(1, &srvTrianglesRange, D3D12_SHADER_VISIBILITY_MESH);
+    // primitive-indices
+    CD3DX12_DESCRIPTOR_RANGE1 srvPrimitiveIndicesRange;
+    srvPrimitiveIndicesRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_mesh_count, 0, 4);
+    rootParameters[3].InitAsDescriptorTable(1, &srvPrimitiveIndicesRange, D3D12_SHADER_VISIBILITY_MESH);
 
-    // draw tasks
-    CD3DX12_DESCRIPTOR_RANGE1 srvDrawTasksRange;
-    srvDrawTasksRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_meshes.size(), 0, 4);
-    rootParameters[5].InitAsDescriptorTable(1, &srvDrawTasksRange, D3D12_SHADER_VISIBILITY_AMPLIFICATION);
+    // meshlets
+    CD3DX12_DESCRIPTOR_RANGE1 srvMeshletsRange;
+    srvMeshletsRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_mesh_count, 0, 1);
+    rootParameters[4].InitAsDescriptorTable(1, &srvMeshletsRange, D3D12_SHADER_VISIBILITY_AMPLIFICATION);
 
-    // objects
+    // meshlet groups
+    CD3DX12_DESCRIPTOR_RANGE1 srvMeshletGroupsRange;
+    srvMeshletGroupsRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_mesh_count, 0, 5);
+    rootParameters[5].InitAsDescriptorTable(1, &srvMeshletGroupsRange, D3D12_SHADER_VISIBILITY_AMPLIFICATION);
+
+    // scene objects
     rootParameters[6].InitAsShaderResourceView(0, 0);
 
-    // meshlet counts
-    rootParameters[7].InitAsShaderResourceView(1, 0);
+    // work queue objects
+    rootParameters[7].InitAsUnorderedAccessView(0, 0);
+
+    // work queue counters objects
+    rootParameters[8].InitAsUnorderedAccessView(1, 0);
+
     
-    // indirect draw id
-    rootParameters[3].InitAsConstants(1, 1, 0, D3D12_SHADER_VISIBILITY_ALL);
-
-    // skeletal animation bone matrices
-    CD3DX12_DESCRIPTOR_RANGE1 srvBoneMatricesRange;
-    srvBoneMatricesRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_meshes.size(), 0, 5);
-    rootParameters[8].InitAsDescriptorTable(1, &srvBoneMatricesRange, D3D12_SHADER_VISIBILITY_MESH);
-
-    // animation meta data
-    rootParameters[9].InitAsShaderResourceView(2, 0);
-
-    // object wide LoD
-    rootParameters[10].InitAsConstants(1, 2, 0, D3D12_SHADER_VISIBILITY_ALL);
-
-    // mesh lod structure
-    rootParameters[11].InitAsShaderResourceView(3, 0);
-    
-
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDescription;
     rootSignatureDescription.Init_1_1(_countof(rootParameters), rootParameters, 0, nullptr, rootSignatureFlags);
 
@@ -304,93 +398,10 @@ bool ViewDependentMeshletLoD::LoadContent()
     ThrowIfFailed(device->CreateRootSignature(0, rootSignatureBlob->GetBufferPointer(),
         rootSignatureBlob->GetBufferSize(), IID_PPV_ARGS(&m_RootSignature)));
 
-
-
-
-    // setup object culling root signature
-    CD3DX12_ROOT_PARAMETER1 objectCullingRootParameters[7];
-
-    // constants
-    //objectCullingRootParameters[0].InitAsConstants(sizeof(Constants) / 4, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
-    objectCullingRootParameters[0].InitAsConstantBufferView(0);
-    objectCullingRootParameters[5].InitAsConstants(sizeof(uint) / 4, 1, 0, D3D12_SHADER_VISIBILITY_ALL);
-
-    // objects
-    objectCullingRootParameters[1].InitAsShaderResourceView(0, 0);
-
-    // meshlet counts
-    objectCullingRootParameters[2].InitAsShaderResourceView(1, 0);
-
-    // visible object count buffer
-    objectCullingRootParameters[3].InitAsUnorderedAccessView(0, 0);
-
-    // inirect arguments buffer
-    objectCullingRootParameters[4].InitAsUnorderedAccessView(1, 0);
-
-    // meshlet counts
-    objectCullingRootParameters[6].InitAsShaderResourceView(2, 0);
-
-    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC objectCullingRootSignatureDescription;
-    objectCullingRootSignatureDescription.Init_1_1(_countof(objectCullingRootParameters), objectCullingRootParameters, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
-
-    // Serialize the root signature.
-    ComPtr<ID3DBlob> objectCullingRootSignatureBlob;
-    ComPtr<ID3DBlob> objectCullingErrorBlob;
-    ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&objectCullingRootSignatureDescription,
-        featureData.HighestVersion, &objectCullingRootSignatureBlob, &objectCullingErrorBlob));
-
-    // Create the root signature.
-    ThrowIfFailed(device->CreateRootSignature(0, objectCullingRootSignatureBlob->GetBufferPointer(),
-        objectCullingRootSignatureBlob->GetBufferSize(), IID_PPV_ARGS(&m_ObjectCulling_RootSignature)));
-
-
-
-
-    // setup indirect draw attributes buffer
-    ComPtr<ID3D12Resource> copy_indirectAtgumentBuffer;
-
-    /*
-    UpdateBufferResource(commandList,
-        &m_indirectArgumentBuffer, &copy_indirectAtgumentBuffer,
-        (uint)m_scene.m_indirect_attributes.size(), sizeof(S_CommandStructure), m_scene.m_indirect_attributes.data());
-    */
-
-    // transition to indirect argument state
-    auto commandQueue2 = Application::Get().GetCommandQueue(D3D12_COMMAND_LIST_TYPE_DIRECT);
-    auto commandList2 = commandQueue2->GetCommandList();
-    commandList2->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_indirectArgumentBuffer.Get(),
-        D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT));
-
-
-    // setup command signature
-    D3D12_COMMAND_SIGNATURE_DESC commandSignatureDesc = {};
-    D3D12_INDIRECT_ARGUMENT_DESC argumentDescs[3] = {};
-
-    argumentDescs[0].Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT;
-    argumentDescs[0].Constant.RootParameterIndex = 3;
-    argumentDescs[0].Constant.DestOffsetIn32BitValues = 0;
-    argumentDescs[0].Constant.Num32BitValuesToSet = 1;
-
-    argumentDescs[1].Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT;
-    argumentDescs[1].Constant.RootParameterIndex = 10;
-    argumentDescs[1].Constant.DestOffsetIn32BitValues = 0;
-    argumentDescs[1].Constant.Num32BitValuesToSet = 1;
-
-    argumentDescs[2].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH_MESH;
-
-    commandSignatureDesc.pArgumentDescs = argumentDescs;
-    commandSignatureDesc.NumArgumentDescs = _countof(argumentDescs);
-    //commandSignatureDesc.ByteStride = sizeof(S_CommandStructure);
-    device->CreateCommandSignature(&commandSignatureDesc, m_RootSignature.Get(), IID_PPV_ARGS(&m_commandSignature));
-
-    CreatePSO();
-    CreateCullingPSO();
+    createPSO();
 
     auto fenceValue = commandQueue->ExecuteCommandList(commandList);
     commandQueue->WaitForFenceValue(fenceValue);
-
-    fenceValue = commandQueue2->ExecuteCommandList(commandList2);
-    commandQueue2->WaitForFenceValue(fenceValue);
 
     m_ContentLoaded = true;
 
@@ -462,24 +473,18 @@ void ViewDependentMeshletLoD::UnloadContent()
     m_RootSignature.Reset();
     m_PipelineState.Reset();
 
-    m_ObjectCulling_RootSignature.Reset();
-    m_ObjectCulling_PipelineState.Reset();
-
     // clear & reset model buffers
     m_CBV_SRV_UAV_Heap.Reset();
 
-    m_IndexBuffers.clear();
+    m_MeshletBuffers.clear();
+    m_VertexIndicesBuffers.clear();
+    m_PrimitiveIndicesBuffers.clear();
     m_VertexBuffers.clear();
-    m_TriangleBuffers.clear();
-    m_DrawTasksBuffers.clear();
+    m_MeshletGroupsBuffers.clear();
     m_ObjectsBuffer.Reset();
-    m_MeshletCountsBuffer.Reset();
-    m_objectCountBuffer.Reset();
-    m_indirectArgumentBuffer.Reset();
-    m_BoneMatricesBuffers.clear();
-    m_AnimationMetaDataBuffer.Reset();
-    m_MeshLoDStructureBuffer.Reset();
     m_ConstantsBuffer.Reset();
+    m_WorkQueueBuffer.Reset();
+    m_WorkQueueCountersBuffer.Reset();
 
     m_commandSignature.Reset();
 }
@@ -595,21 +600,6 @@ void ViewDependentMeshletLoD::OnUpdate(UpdateEventArgs& e)
     
 }
 
-void ViewDependentMeshletLoD::UpdateObjectsBuffer()
-{
-    Application::Get().Flush();
-    auto device = Application::Get().GetDevice();
-    auto commandQueue = Application::Get().GetCommandQueue(D3D12_COMMAND_LIST_TYPE_COPY);
-    auto commandList = commandQueue->GetCommandList(); 
-    ComPtr<ID3D12Resource> copyBuffer;
-
-    UpdateBufferResource(commandList,
-        &m_ObjectsBuffer, &copyBuffer,
-        (uint)m_scene.m_scene_objects.size(), sizeof(S_SceneObject), m_scene.m_scene_objects.data());
-
-    auto fenceValue = commandQueue->ExecuteCommandList(commandList);
-    commandQueue->WaitForFenceValue(fenceValue);
-}
 
 // Transition a resource
 void ViewDependentMeshletLoD::TransitionResource(Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7> commandList,
@@ -669,36 +659,11 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     constants.CameraWorldPos = m_cameraPos;
     constants.CoTanHalfFoV = m_LoDScale / std::tan(m_FoV / 2.0f);
     constants.CurrTime = (float)m_totalRunTime;
+    constants.shadingSelection = m_shadingMode;
     constants.BoolConstants = 0;
     if (m_frustumCulling) constants.BoolConstants |= FRUSTUM_CULLING_BIT_POS;
-    if (m_coneCulling) constants.BoolConstants |= CONE_CULLING_BIT_POS;
-    if (m_objectLoD) constants.BoolConstants |= ENABLE_OBJECT_LOD;
-    if (m_meshletLoD) constants.BoolConstants |= ENABLE_MESHLET_LOD;
-    switch (m_debugMode)
-    {
-    case ShowMeshlets:
-        constants.BoolConstants |= ENABLE_DEBUG_VISUALS_BIT_POS;
-        constants.BoolConstants |= DEBUG_MESHLETS;
-        break;
-    case ShowBones:
-        constants.BoolConstants |= ENABLE_DEBUG_VISUALS_BIT_POS;
-        constants.BoolConstants |= DEBUG_BONES;
-        break;
     
-    case ShowLoD:
-        constants.BoolConstants |= ENABLE_DEBUG_VISUALS_BIT_POS;
-        constants.BoolConstants |= DEBUG_LOD;
-        break;
-    default:
-        break;
-    }
-    
-
-
-
     memcpy(m_mappedConstantData, &constants, sizeof(S_Constants));
-
-
 
     // Clear the render targets.
     {
@@ -709,40 +674,6 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
         ClearDepth(commandList, dsv);
     }
 
-
-
-
-    // object culling compute pass
-    commandList->SetPipelineState(m_ObjectCulling_PipelineState.Get());
-    commandList->SetComputeRootSignature(m_ObjectCulling_RootSignature.Get());
-
-    //commandList->SetComputeRoot32BitConstants(0, sizeof(Constants) / 4, &constants, 0);
-    commandList->SetComputeRootConstantBufferView(0, m_ConstantsBuffer->GetGPUVirtualAddress());
-    uint maxObjectCount = (uint)m_scene.m_scene_objects.size();
-    commandList->SetComputeRoot32BitConstants(5, sizeof(uint) / 4, &maxObjectCount, 0);
-
-    ID3D12DescriptorHeap* heaps[] = { m_CBV_SRV_UAV_Heap.Get() };
-    commandList->SetDescriptorHeaps(_countof(heaps), heaps);
-
-    // set objects buffer
-    commandList->SetComputeRootShaderResourceView(1, m_ObjectsBuffer.Get()->GetGPUVirtualAddress());
-    // set meshlet counts buffer
-    commandList->SetComputeRootShaderResourceView(2, m_MeshletCountsBuffer.Get()->GetGPUVirtualAddress());
-    // set visible object count buffer
-    commandList->SetComputeRootUnorderedAccessView(3, m_objectCountBuffer.Get()->GetGPUVirtualAddress());
-    // set indirect arguments buffer
-    commandList->SetComputeRootUnorderedAccessView(4, m_indirectArgumentBuffer.Get()->GetGPUVirtualAddress());
-    // set mesh lod structure buffer
-    commandList->SetComputeRootShaderResourceView(6, m_MeshLoDStructureBuffer.Get()->GetGPUVirtualAddress());
-
-    
-
-    uint32_t groupCountX = (maxObjectCount + GROUP_SIZE - 1) / GROUP_SIZE;
-    if (m_objectCulling)
-        commandList->Dispatch(groupCountX, 1, 1);
-
-
-
     // main render pass
     commandList->SetPipelineState(m_PipelineState.Get());
     commandList->SetGraphicsRootSignature(m_RootSignature.Get());
@@ -752,48 +683,30 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
 
     commandList->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
 
-    //commandList->SetGraphicsRoot32BitConstants(0, sizeof(Constants) / 4, &constants, 0);
+    //set constants
     commandList->SetGraphicsRootConstantBufferView(0, m_ConstantsBuffer->GetGPUVirtualAddress());
-
-    //commandList->DrawIndexedInstanced(_countof(g_Indicies), 1, 0, 0, 0);
-
-    /*
-    ID3D12DescriptorHeap* heaps[] = { m_CBV_SRV_UAV_Heap.Get()};
-    commandList->SetDescriptorHeaps(_countof(heaps), heaps);
-    */
-
-    // set bindless index buffers
-    commandList->SetGraphicsRootDescriptorTable(1, m_indexSrvHandle);
     // set bindless vertex buffers
-    commandList->SetGraphicsRootDescriptorTable(2, m_vertexSrvHandle);
-    // set bindless triangles buffers
-    commandList->SetGraphicsRootDescriptorTable(4, m_triangleSrvHandle);
-    // set bindless draw tasks buffers
-    commandList->SetGraphicsRootDescriptorTable(5, m_drawTasksSrvHandle);
-    // set objects buffer
+    commandList->SetGraphicsRootDescriptorTable(1, m_VerticesSrvHandle);
+    // set bindless vertex-indices buffers
+    commandList->SetGraphicsRootDescriptorTable(2, m_VertexIndicesSrvHandle);
+    // set bindless primitive-indices buffers
+    commandList->SetGraphicsRootDescriptorTable(3, m_PrimitiveIndicesSrvHandle);
+    // set bindless meshlet buffers
+    commandList->SetGraphicsRootDescriptorTable(4, m_MeshletsSrvHandle);
+    // set bindless meshlet groups buffers
+    commandList->SetGraphicsRootDescriptorTable(5, m_MeshletGroupsSrvHandle);
+    // set scene objects buffer
     commandList->SetGraphicsRootShaderResourceView(6, m_ObjectsBuffer.Get()->GetGPUVirtualAddress());
-    // set meshlet counts buffer
-    commandList->SetGraphicsRootShaderResourceView(7, m_MeshletCountsBuffer.Get()->GetGPUVirtualAddress());
-    // set mesh lod structure buffer
-    commandList->SetGraphicsRootShaderResourceView(11, m_MeshLoDStructureBuffer.Get()->GetGPUVirtualAddress());
+    // set work queue buffer
+    commandList->SetGraphicsRootShaderResourceView(7, m_WorkQueueBuffer.Get()->GetGPUVirtualAddress());
+    // set work queue counters buffer
+    commandList->SetGraphicsRootShaderResourceView(8, m_WorkQueueCountersBuffer.Get()->GetGPUVirtualAddress());
     
     
-
-    //commandList->DispatchMesh(1, 1, 1);
-
-    commandList->ExecuteIndirect(
-        m_commandSignature.Get(),
-        (uint)m_scene.m_scene_objects.size(),
-        m_indirectArgumentBuffer.Get(),
-        0,
-        m_objectCountBuffer.Get(),
-        0
-    );
     
-
+    commandList->DispatchMesh(PERSISTENT_THREAD_COUNT, 1, 1);
 
     // Render Dear ImGui graphics
-
     commandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
     commandList->SetDescriptorHeaps(1, m_ImGuiDescriptorHeap.GetAddressOf());
     ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList.Get());
@@ -982,10 +895,8 @@ void ViewDependentMeshletLoD::updateImGui()
     if (!ImGui::CollapsingHeader("Render Settings"))
     {
         ImGui::Checkbox("Meshlet based Frustum Culling", &m_frustumCulling);
-        ImGui::Checkbox("Meshlet based Cone Culling", &m_coneCulling);
         ImGui::Checkbox("Object Culling", &m_objectCulling);
-        ImGui::Checkbox("Object LoD", &m_objectLoD);
-        ImGui::Checkbox("Meshlet LoD", &m_meshletLoD);
+        ImGui::Checkbox("Level Of Detail", &m_LoD_Enabled);
         ImGui::SliderFloat("LoD Scale", &m_LoDScale, 0.01f, 10.0f);
         ImGui::ColorEdit4("Clear Color", m_ClearColor);
         if (ImGui::Button("Toggle Fullscreen"))
@@ -1031,17 +942,17 @@ void ViewDependentMeshletLoD::updateImGui()
 
     if (!ImGui::CollapsingHeader("Debug Settings"))
     {
-        if (ImGui::Checkbox("Wireframe", &m_wireframe)) CreatePSO();
+        if (ImGui::Checkbox("Wireframe", &m_wireframe)) createPSO();
         ImGui::SameLine();
-        if (ImGui::Checkbox("Back Face Culling", &m_backFaceCulling)) CreatePSO();
+        if (ImGui::Checkbox("Back Face Culling", &m_backFaceCulling)) createPSO();
         
         
         static int selected = 0;  // Index of the selected option
-        const char* options[] = { "Disable Debug Visals", "Show Meshlets", "Show Bones", "Show LoD Selection"};
+        const char* options[] = { "Disable Debug Visals", "Show Meshlets", "Show LoDs"};
         for (int i = 0; i < IM_ARRAYSIZE(options); i++) {
             if (ImGui::RadioButton(options[i], selected == i)) {
                 selected = i;  // Update selection when clicked
-                m_debugMode = static_cast<DebugVisualsSelection>(i);
+                m_shadingMode = static_cast<ShadingMode>(i);
             }
         }
         
@@ -1072,7 +983,7 @@ void ViewDependentMeshletLoD::updateImGui()
     if (!ImGui::CollapsingHeader("Scene Stats"))
     {
         ImGui::Text("scene  objects count: %d", (unsigned int)m_scene.m_scene_objects.size());
-        ImGui::Text("unique  meshes count: %d", (unsigned int)m_scene.m_meshes.size());
+        ImGui::Text("unique  meshes count: %d", (unsigned int)m_scene.m_mesh_count);
 
 
         if (!ImGui::CollapsingHeader("Scene Processing Times"))

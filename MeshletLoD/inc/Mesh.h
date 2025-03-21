@@ -22,6 +22,8 @@ struct PairHash {
     }
 };
 
+
+
 namespace
 {
 
@@ -39,7 +41,7 @@ public:
     std::vector<unsigned int>    m_vertex_indices;
     std::vector<unsigned char>   m_primitive_indices;
     std::vector<S_Meshlet>       m_meshlets;
-    std::vector<S_MeshletGroup> m_meshlet_groups;
+    std::vector<S_MeshletGroup>  m_meshlet_groups;
     uint                         m_hierarchy_root_group;
     std::vector<uint>            m_hierarchy_per_level_group_count;
 
@@ -56,8 +58,8 @@ private:
     void groupMeshlets();
     void simplifiyTopLevelGroups();
     void finalTopLevelMeshletGrouping();
-    void findChildrenRecursive(uint current_group_index); 
     void findParentsItterative();
+    S_MeshletGroup getDefaultMeshletGroup();
 
     
     

@@ -3,7 +3,12 @@
 
 #define GROUP_SIZE 32
 
-#define MAXIMUM_GROUP_SIZE 128
+#define PERSISTENT_THREAD_COUNT 1024
+
+#define WORK_QUEUE_SIZE 65536           // (2^16) Workqueue is implemented as ring-buffer, 
+                                        //queue size allows correct indexing and should be able to contain the maximum of simultanious queue tasks
+
+#define MAX_EMITTED_MESHLETS_PER_WORK_GROUP 1280 // Maximum of 40 Meshlets per Task Shader Thread (limited by maximum size of payload)
 
 //#define MAX_MESHLET_VERTEX_COUNT 64
 #define MAX_MESHLET_VERTEX_COUNT 128
@@ -24,6 +29,7 @@ struct S_BoundingSphere
 
 struct S_Meshlet
 {
+    S_BoundingSphere bounding_sphere; // in object space
     uint vertex_count;      
     uint triangle_count;    // how many primitives does the meshlet consists of
     uint vertex_offset;
@@ -34,49 +40,36 @@ struct S_Meshlet
 // node of the binary tree, each group consists of 2 Meshlets
 struct S_MeshletGroup
 {
-    S_BoundingSphere bounding_sphere;               // in object space
+    S_BoundingSphere bounding_sphere;               // in object space, used for LoD-decision, radius = simpification error so maxiumum Offset that a vertex was moved from its original position during simplification in obect space. (equals 0 for leaf nodes, should equal FLOAT_MAX for parent of root node)
     int parent;                                     // index to parent node, -1 if root
-    int children[GROUP_SPLIT_COUNT * 2];            // indices to child nodes -1 if no child
-    uint childCount;            // * 2 as buffer for partion imperfections 
+    int children[GROUP_SPLIT_COUNT * 2];            // indices to child nodes -1 if no child (* 2 as buffer for partion imperfections )
+    uint childCount;                                // can also be used as bool to check if a node is a leaf
     uint simplified_meshlets[GROUP_SPLIT_COUNT];    // indices to the simplified meshlets that are part of this group 
-    uint meshlets[GROUP_MERGE_COUNT * 2];           // indices to the more granular meshlets that are part of this group (0 is a dummy meshlet with no content)
-                                 // * 2 as buffer for partion imperfections
+    uint meshlets[GROUP_MERGE_COUNT * 2];           // indices to the more granular meshlets that are part of this group (0 is a dummy meshlet with no content) (* 2 as buffer for partion imperfections)       
     uint meshlet_count;                             // allows up to merge count * 2 meshlets, this is necessary because graph partitioning wont always create perfect groups of 4
+    
     float2 byte_allignement;                        // used to keep 16 byte allignement for structured buffer
 };
-
-S_MeshletGroup getDefaultMeshletGroup()
-{
-    S_MeshletGroup ret;
-    ret.bounding_sphere.center = float3(0, 0, 0);
-    ret.bounding_sphere.radius = 0;
-    ret.children[0] = -1;
-    ret.children[1] = -1;
-    ret.childCount = 0;
-    for (uint i = 0; i < GROUP_MERGE_COUNT * 2; i++)
-    {
-        ret.meshlets[i] = 0;
-    }
-    for (uint j = 0; j < GROUP_SPLIT_COUNT; j++)
-    {
-        ret.simplified_meshlets[j] = 0;
-    }
-    ret.parent = -1; 
-    return ret;
-    
-
-}
 
 
 // bit positions for constant bools
 #define FRUSTUM_CULLING_BIT_POS          1  // 00000000000000000000000000000001
-#define CONE_CULLING_BIT_POS             2  // 00000000000000000000000000000010
-#define ENABLE_DEBUG_VISUALS_BIT_POS     4  // 00000000000000000000000000000100
-#define DEBUG_MESHLETS                  16  // 00000000000000000000000000001000
-#define DEBUG_BONES                     32  // 00000000000000000000000000010000
-#define DEBUG_LOD                       64  // 00000000000000000000000000100000
-#define ENABLE_OBJECT_LOD              128  // 00000000000000000000000001000000
-#define ENABLE_MESHLET_LOD             256  // 00000000000000000000000010000000
+//#define CONE_CULLING_BIT_POS             2  // 00000000000000000000000000000010
+//#define ENABLE_DEBUG_VISUALS_BIT_POS     4  // 00000000000000000000000000000100
+//#define DEBUG_MESHLETS                  16  // 00000000000000000000000000001000
+//#define DEBUG_BONES                     32  // 00000000000000000000000000010000
+//#define DEBUG_LOD                       64  // 00000000000000000000000000100000
+//#define ENABLE_OBJECT_LOD              128  // 00000000000000000000000001000000
+//#define ENABLE_MESHLET_LOD             256  // 00000000000000000000000010000000
+
+
+enum ShadingMode
+{
+    DEFAULT_SHADING,
+    DEBUG_MESHLET_SHADING,
+    DEBUG_LOD_SHADING
+};
+
 
 struct S_Constants
 {
@@ -91,23 +84,27 @@ struct S_Constants
     
     uint SceneObjectCount;
     
+    ShadingMode shadingSelection;
     uint BoolConstants;                     // can hold up to 32 booleans but only uses the space of a single word in the root signature
 };
 
 
-// Payload from task shader stage to mesh shader
-// Payload size must be less than 16kb.
-struct S_Payload
-{
-    uint meshlet_count;
-};
-
+// every mesh shader thread group processes one payload entry which translates to one meshlet 
 struct S_PayloadEntry
 {
     uint meshlet_id;
     uint object_id;
     float lod_morphing; // 0 = vertices stay the same; 1 = vertices are completely pushed towards their parent vertex
 };
+
+// Payload from task shader stage to mesh shader
+// Payload size must be less than 16kb.
+struct S_Payload
+{
+    S_PayloadEntry tasks[MAX_EMITTED_MESHLETS_PER_WORK_GROUP];
+};
+
+
 
 struct S_Vertex
 {
@@ -130,10 +127,6 @@ struct S_SceneObject
     
     float2 byte_allignement;            // used to keep 16 byte allignement for structured buffer
 };
-
-
-#define WORK_QUEUE_SIZE 65536           // (2^16) Workqueue is implemented as ring-buffer, 
-                                        //queue size allows correct indexing and should be able to contain the maximum of simultanious queue tasks
 
 struct S_WorkQueueEntry
 {

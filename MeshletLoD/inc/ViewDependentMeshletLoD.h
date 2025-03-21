@@ -8,9 +8,6 @@
 
 #include "Scene.h"
 
-
-
-
 class ViewDependentMeshletLoD : public Game
 {
 public:
@@ -52,19 +49,33 @@ protected:
     virtual void OnResize(ResizeEventArgs& e) override; 
 
 private:
-    enum DebugVisualsSelection {
-        ShowNoDebug,
-        ShowMeshlets,
-        ShowBones,
-        ShowLoD
-    };
 
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_ImGuiDescriptorHeap;
     void initImGui();
     void updateImGui();
-    void CreatePSO();
-    void CreateCullingPSO();
-    void UpdateObjectsBuffer();
+    void createPSO();
+    void setupConstantsUploadBuffer();
+
+    template <typename T>
+    void setupSrvAndBuffer(D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle,
+                           D3D12_GPU_DESCRIPTOR_HANDLE nextAvailableGpuSrvHandle,
+                           D3D12_CPU_DESCRIPTOR_HANDLE nextAvailableCpuSrvHandle,
+                           std::vector<T>& cpuBuffer,
+                           Microsoft::WRL::ComPtr<ID3D12Resource>& gpuBuffer,
+                           std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
+                           Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
+                           unsigned int descriptorSize);
+
+    template <typename T>
+    void setupBindlessSrvAndBuffer(D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle,
+                                   D3D12_GPU_DESCRIPTOR_HANDLE nextAvailableGpuSrvHandle,
+                                   D3D12_CPU_DESCRIPTOR_HANDLE nextAvailableCpuSrvHandle,
+                                   std::vector<std::vector<T>*>& cpuBuffers,
+                                   std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& gpuBuffers,
+                                   std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
+                                   Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
+                                   unsigned int descriptorSize);
+
 
     // Helper functions
     // Transition a resource
@@ -98,12 +109,9 @@ private:
 
     // Root signatures
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_RootSignature;
-    Microsoft::WRL::ComPtr<ID3D12RootSignature> m_ObjectCulling_RootSignature;
 
     // Pipeline state objects.
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_PipelineState;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_ObjectCulling_PipelineState;
-
 
     D3D12_VIEWPORT m_Viewport;
     D3D12_RECT m_ScissorRect;
@@ -116,80 +124,58 @@ private:
     Microsoft::WRL::ComPtr<ID3DBlob> m_pixelShaderBlob;
     Microsoft::WRL::ComPtr<ID3DBlob> m_meshShaderBlob;
     Microsoft::WRL::ComPtr<ID3DBlob> m_taskShaderBlob;
-    Microsoft::WRL::ComPtr<ID3DBlob> m_objectCullingComputeShaderBlob;
 
 
     bool m_ContentLoaded;
 
-    float m_ClearColor[4] = {23.0f / 255.0f, 23.0f / 255.0f, 31.0f / 255.0f, 1.0f};
-    double m_fps = 0;
-    double m_frameTime = 0;
-    double m_totalRunTime = 0.0;
-    bool m_wireframe = false;
-    bool m_backFaceCulling = true;
-    bool m_frustumCulling = true;
-    bool m_coneCulling = false;
-    DebugVisualsSelection m_debugMode = ShowNoDebug;
-    bool m_objectCulling = true;
-    bool m_objectLoD = true;
-    bool m_meshletLoD = true;
+    float       m_ClearColor[4]         = {0.09f, 0.09f, 0.12f, 1.0f};
+    double      m_fps                   = 0;
+    double      m_frameTime             = 0;
+    double      m_totalRunTime          = 0.0;
+    bool        m_wireframe             = false;
+    bool        m_backFaceCulling       = true;
+    bool        m_frustumCulling        = true;
+    ShadingMode m_shadingMode           = DEFAULT_SHADING;
+    bool        m_objectCulling         = true;
+    bool        m_LoD_Enabled           = true;
+    float       m_LoDScale              = 1;
 
     // camera related variables
-    float3 m_cameraPos = float3(0, 0, 0);
-    float       m_CameraYaw = 0;
-    float       m_CameraRoll = 0;
-
-    float m_CameraSensibility = 0.003f;
-    float m_cameraSpeed = 20;
-
+    float3      m_cameraPos             = float3(0, 0, 0);
+    float       m_CameraYaw             = 0;
+    float       m_CameraRoll            = 0;
+    float       m_CameraSensibility     = 0.003f;
+    float       m_cameraSpeed           = 20;
+    bool        m_freeCamera            = false;
+    bool        m_autoRotateScene       = true;
+    float       m_autoCameraDistance    = 4.5f;
+    float       m_CameraScrollScale     = 0.25f;
+    float       m_autoRotationOffset    = 4;
     
-    bool m_freeCamera = false;
-    bool m_autoRotateScene = true;
-    float m_autoCameraDistance = 4.5f;
-    float m_CameraScrollScale = 0.25f;
-    float m_autoRotationOffset = 4;
-    float m_LoDScale = 2;
-    
-    
-
-    
-
-
     // Descriptor heap
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_CBV_SRV_UAV_Heap;
 
     // buffers
-    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_IndexBuffers;
+    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_MeshletBuffers;
+    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_VertexIndicesBuffers;
+    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_PrimitiveIndicesBuffers;
     std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_VertexBuffers;
-    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_TriangleBuffers;
-    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_DrawTasksBuffers;
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_ObjectsBuffer;
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_MeshletCountsBuffer;
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_indirectArgumentBuffer;
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_objectCountBuffer;
-    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_BoneMatricesBuffers;
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_AnimationMetaDataBuffer;
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_MeshLoDStructureBuffer;
-    
-    
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_ConstantsBuffer;
-    UINT8* m_mappedConstantData = nullptr;
-
-
-    D3D12_CPU_DESCRIPTOR_HANDLE objectBufferSRVHandle;
+    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_MeshletGroupsBuffers;
+    Microsoft::WRL::ComPtr<ID3D12Resource>              m_ObjectsBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource>              m_ConstantsBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource>              m_WorkQueueBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource>              m_WorkQueueCountersBuffer;
+    UINT8* m_mappedConstantData                         = nullptr;
 
     // gpu handles
-    D3D12_GPU_DESCRIPTOR_HANDLE m_indexSrvHandle;
-    D3D12_GPU_DESCRIPTOR_HANDLE m_vertexSrvHandle;
-    D3D12_GPU_DESCRIPTOR_HANDLE m_triangleSrvHandle;
-    D3D12_GPU_DESCRIPTOR_HANDLE m_drawTasksSrvHandle;
-    D3D12_GPU_DESCRIPTOR_HANDLE m_objectsSrvHandle;
-    D3D12_GPU_DESCRIPTOR_HANDLE m_meshletCountsSrvHandle;
-    D3D12_GPU_DESCRIPTOR_HANDLE m_visibleObjectCountSrvHandle;
-    D3D12_GPU_DESCRIPTOR_HANDLE m_boneMatricesSrvHandle;
-    D3D12_GPU_DESCRIPTOR_HANDLE m_animationMetaDataSrvHandle;
-    D3D12_GPU_DESCRIPTOR_HANDLE m_meshLoDStructureSrvHandle;
-
+    D3D12_GPU_DESCRIPTOR_HANDLE m_MeshletsSrvHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_VertexIndicesSrvHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_PrimitiveIndicesSrvHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_VerticesSrvHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_MeshletGroupsSrvHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_ObjectsSrvHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_WorkQueueSrvHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_WorkQueueCountersSrvHandle;
 
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
 

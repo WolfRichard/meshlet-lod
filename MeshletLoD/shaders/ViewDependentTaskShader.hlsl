@@ -1,41 +1,39 @@
 #include "ViewDependentStructures.fxh"
 
 
-
-StructuredBuffer<S_SceneObject> objectsBuffer       : register(t0, space0);
 ConstantBuffer<S_Constants> constants               : register(b0, space0);
+StructuredBuffer<S_SceneObject> objectsBuffer       : register(t0, space0);
 
 RWStructuredBuffer<S_WorkQueueEntry> workQueue      : register(u0, space0);
-
-RWStructuredBuffer<S_PayloadEntry> globalPayload    : register(u1, space0);
-
+// Workqueue read- & write-Indices
+// 0  -> Begin Counter (read index)
+// 1  -> End Counter (write index)
+RWStructuredBuffer<uint> workQueueCounters          : register(u1, space0);
 
 // bindless buffers
 StructuredBuffer<S_Meshlet> meshletBuffers[]        : register(t0, space1);
-StructuredBuffer<S_MeshletGroup> groupBuffers[]          : register(t0, space2);
+StructuredBuffer<S_MeshletGroup> groupBuffers[]     : register(t0, space5);
 
 
-// Workqueue read- & write-Indices
-groupshared uint gs_WorkQueueHead;
-groupshared uint gs_WorkQueueTail;
+
 
 void appendTask(S_WorkQueueEntry new_task)
 {
     uint task_index;
-    InterlockedAdd(gs_WorkQueueTail, 1, task_index); // Atomically increment endCounter
-    workQueue[task_index % WORK_QUEUE_SIZE] = new_task; // loop index for ring buffer structure
+    InterlockedAdd(workQueueCounters[1], 1, task_index);    // Atomically increment endCounter
+    workQueue[task_index % WORK_QUEUE_SIZE] = new_task;     // loop index because of ring buffer structure
 }
 
 bool consumeTask(out S_WorkQueueEntry out_task)
 {
     uint task_index;
-    InterlockedAdd(gs_WorkQueueHead, 1, task_index); // Atomically increment beginCounter
+    InterlockedAdd(workQueueCounters[0], 1, task_index);    // Atomically increment beginCounter
 
     // Check if the queue is empty
-    if (task_index >= gs_WorkQueueTail) // Compare with endCounter
+    if (task_index >= workQueueCounters[1])                 // Compare with endCounter
         return false;
 
-    out_task = workQueue[task_index % WORK_QUEUE_SIZE]; // Circular buffer
+    out_task = workQueue[task_index % WORK_QUEUE_SIZE];     // loop index because of ring buffer structure
     return true;
 }
 
@@ -43,14 +41,11 @@ bool consumeTask(out S_WorkQueueEntry out_task)
 // Payload will be used in the mesh shader.
 groupshared S_Payload gs_Payload;
 
-// The number of meshlets that are visible by the camera,
+// The number of meshlets that are dispatched by this thread group,
 groupshared uint gs_MeshletCount;
 
 
-
-
-
-// Frustum Culling
+// Frustum culling in world space
 bool isInFrustum(float3 center, float radius)
 {
     float4 f4Center = float4(center, 1.0);
@@ -62,27 +57,36 @@ bool isInFrustum(float3 center, float radius)
     return true;
 }
 
-// Cone Culling
-bool IsShowingBackside(float3 coneApex, float3 coneAxis, float coneCutoff)
+bool groupSimplificationIsPreciseEnough(S_BoundingSphere bounding_sphere) // bounding sphere must be in world space!
 {
-    float3 directionConeCamera = normalize(constants.CameraWorldPos - coneApex);
-    return (dot(directionConeCamera, coneAxis) >= coneCutoff);
-}
-
-float CalcDetailLevel(float3 center, float radius)
-{
-    float3 pos = mul(float4(center, 1.0), constants.ViewMat).xyz;
+    float3 pos = mul(float4(bounding_sphere.center, 1.0), constants.ViewMat).xyz;
     float dist2 = dot(pos, pos);
     
     // calculate the sphere size in screen space
-    float size = 2 * constants.CoTanHalfFoV * radius / sqrt(dist2 - radius * radius);
+    float size = constants.CoTanHalfFoV * bounding_sphere.radius / sqrt(dist2 - bounding_sphere.radius * bounding_sphere.radius);
     
-
-    float level = clamp(1.0 - size, 0.0, 0.999);
-    return level * level;
+    return (size < 1 / 480); // screen pixel count over FoV !!!!!! TODO: should be set in constants buffer !!!!!!!
 }
 
-[numthreads(MAXIMUM_GROUP_SIZE, 1, 1)]
+
+void queueMeshletForDispatch(uint meshlet_index, uint object_index, float lod_blend_value)
+{
+    S_SceneObject scene_object = objectsBuffer[object_index];
+    S_BoundingSphere world_space_bounding_sphere;
+    S_Meshlet current_meshlet = meshletBuffers[scene_object.mesh_id][meshlet_index];
+    world_space_bounding_sphere.center = mul(float4(current_meshlet.bounding_sphere.center, 1.0), scene_object.object_matrix).xyz;
+    world_space_bounding_sphere.radius = length(mul(float4(current_meshlet.bounding_sphere.radius, 0, 0, 0), scene_object.object_matrix).xyz); // theoretically only considers scale in X-Axes so technically incorrect
+    if (isInFrustum(world_space_bounding_sphere.center, world_space_bounding_sphere.radius))
+    {
+        uint payload_index = 0;
+        InterlockedAdd(gs_MeshletCount, 1, payload_index); // Undefined behavior if max meshlet count per work group is set to low 
+        gs_Payload.tasks[payload_index].meshlet_id = meshlet_index;
+        gs_Payload.tasks[payload_index].object_id = object_index;
+        gs_Payload.tasks[payload_index].lod_morphing = lod_blend_value;
+    }
+}
+
+[numthreads(GROUP_SIZE, 1, 1)]
 void main(in uint I : SV_GroupIndex,
           in uint wg : SV_GroupID)
 {
@@ -90,14 +94,12 @@ void main(in uint I : SV_GroupIndex,
     if (I == 0)
     {
         gs_MeshletCount = 0;
-        gs_WorkQueueHead = 0;
-        gs_WorkQueueTail = 0;
     }
     GroupMemoryBarrierWithGroupSync();
     
     
     // object culling and extracting of root nodes into work queue
-    for (uint scene_object_index = I; scene_object_index < constants.SceneObjectCount; scene_object_index += MAXIMUM_GROUP_SIZE)
+    for (uint scene_object_index = I; scene_object_index < constants.SceneObjectCount; scene_object_index += PERSISTENT_THREAD_COUNT)
     {
         S_SceneObject scene_object = objectsBuffer[scene_object_index];
         
@@ -113,26 +115,42 @@ void main(in uint I : SV_GroupIndex,
     S_WorkQueueEntry current_task;
     while (consumeTask(current_task))
     {
-        
         S_SceneObject scene_object = objectsBuffer[current_task.scene_object_id];
         S_MeshletGroup current_group = groupBuffers[scene_object.mesh_id][current_task.group_id];
+        S_BoundingSphere world_space_bounding_sphere;
+        world_space_bounding_sphere.center = mul(float4(current_group.bounding_sphere.center, 1.0), scene_object.object_matrix).xyz;
+        world_space_bounding_sphere.radius = length(mul(float4(current_group.bounding_sphere.radius, 0, 0, 0), scene_object.object_matrix).xyz); // theoretically only considers scale in X-Axes so technically incorrect
         
-        
-        
-        // TODO: Meshlet Culling
-        // TODO: LoD Decision
-        // TODO: Tree Traversal
-        // TODO: WorkQueue Append Group Children
-        // TODO: increment gs_MeshletCount
+        //dispatch simplified meshlets when simplification is precise enough
+        if (groupSimplificationIsPreciseEnough(world_space_bounding_sphere))
+        {
+            for (uint simplified_meshlet_group_index = 0; simplified_meshlet_group_index < GROUP_SPLIT_COUNT; simplified_meshlet_group_index++)
+            {
+                queueMeshletForDispatch(current_group.simplified_meshlets[simplified_meshlet_group_index], current_task.scene_object_id, 0); // LOD morphing not yet implemented !!!!!!!!!
+            }
+        }
+        // dispatch base meshlets when current group is a leaf node of the hierarchy tree
+        else if (!(current_group.childCount))
+        {
+            for (uint base_meshlet_group_index = 0; base_meshlet_group_index < current_group.meshlet_count; base_meshlet_group_index++)
+            {
+                queueMeshletForDispatch(current_group.meshlets[base_meshlet_group_index], current_task.scene_object_id, 0); // LOD morphing not yet implemented !!!!!!!!!
+            }
+        }
+        // append child group into work queue if current simplification isnt precise enough and current group isnt a leaf node
+        else
+        {
+            for (uint child_group_index = 0; child_group_index < current_group.childCount; child_group_index++)
+            {
+                S_WorkQueueEntry new_task;
+                new_task.scene_object_id = current_task.scene_object_id;
+                new_task.group_id = current_group.children[child_group_index];
+                appendTask(new_task);  
+            }
+        }
     }
     
-    
-    // dispatch of mesh shader instances to process the
-    if (I == 0)
-    {
-        gs_Payload.meshlet_count = gs_MeshletCount;
-    }
+    //after work queue is empty dispatch all collected meshlets
     GroupMemoryBarrierWithGroupSync();
-    
     DispatchMesh(gs_MeshletCount, 1, 1, gs_Payload);
 }

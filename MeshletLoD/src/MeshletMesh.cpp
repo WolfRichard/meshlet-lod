@@ -2,6 +2,16 @@
 #include "Animator.h"
 #include <deque>
 
+#include "Windows.h"
+
+#if defined(min)
+#undef min
+#endif
+
+#if defined(max)
+#undef max
+#endif
+
 using namespace DirectX;
 
 MeshletMesh::MeshletMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
@@ -255,8 +265,7 @@ void MeshletMesh::generateMeshlets()
                 target_index_count, FLT_MAX, meshopt_SimplifyLockBorder, &target_error);
             simplified_indices.resize(simplifiedMeshletIndexCount);
             
-            
-            
+
             std::deque<uint> simplifiedVertexIndices;
             for (int k = newTask.vertex_count[0] - 1; k >= 0; k--)
             {
@@ -319,13 +328,17 @@ void MeshletMesh::generateLoD(uint resolution_level)
     std::vector<uint> simplified_indices(m_indices.size());
 
     // Simplify the mesh
-    float target_error = 0.01f;
+    float simplification_error = 0.0f;
     size_t simplified_count = meshopt_simplify(
         simplified_indices.data(), m_indices.data(), m_indices.size(),
         reinterpret_cast<const float*>(m_vertices.data()), m_vertices.size(), sizeof(CustomVertex),
-        target_index_count, FLT_MAX, 0, &target_error                                                           // meshopt_SimplifyPrune
+        target_index_count, FLT_MAX, meshopt_SimplifyErrorAbsolute, &simplification_error                                                       
     );
 
+
+    //OutputDebugString(("\n\nLoD[" + std::to_string(resolution_level) + "]Simplification Error: " + std::to_string(simplification_error) + " with BoundingSphere Radius of: " + std::to_string(m_boundingSphereRadius) + "\n\n").c_str());
+    
+    
     // Resize the index vector to the actual simplified size
     simplified_indices.resize(simplified_count);
     m_simplifiedIndices = simplified_indices;
