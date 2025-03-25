@@ -19,18 +19,20 @@ StructuredBuffer<S_MeshletGroup> groupBuffers[]     : register(t0, space5);
 
 void appendTask(S_WorkQueueEntry new_task)
 {
-    uint task_index;
+    uint task_index = 0;
     InterlockedAdd(workQueueCounters[1], 1, task_index);    // Atomically increment endCounter
     workQueue[task_index % WORK_QUEUE_SIZE] = new_task;     // loop index because of ring buffer structure
 }
 
+
+// TODO: POSIBLE RACE CONDITION! should swap to InterlockedCompareExchange() instead!!!!!!!!!!!!!!!!!!!!!!!!!1
 bool consumeTask(out S_WorkQueueEntry out_task)
 {
-    uint task_index;
+    uint task_index = 0;
     InterlockedAdd(workQueueCounters[0], 1, task_index);    // Atomically increment beginCounter
 
     // Check if the queue is empty
-    if (task_index >= workQueueCounters[1])                 // Compare with endCounter
+    if (task_index > workQueueCounters[1])                 // Compare with endCounter
         return false;
 
     out_task = workQueue[task_index % WORK_QUEUE_SIZE];     // loop index because of ring buffer structure
@@ -48,6 +50,7 @@ groupshared uint gs_MeshletCount;
 // Frustum culling in world space
 bool isInFrustum(float3 center, float radius)
 {
+    return true;
     float4 f4Center = float4(center, 1.0);
     for (int i = 0; i < 6; ++i)
     {
@@ -59,6 +62,7 @@ bool isInFrustum(float3 center, float radius)
 
 bool groupSimplificationIsPreciseEnough(S_BoundingSphere bounding_sphere) // bounding sphere must be in world space!
 {
+    return true;
     float3 pos = mul(float4(bounding_sphere.center, 1.0), constants.ViewMat).xyz;
     float dist2 = dot(pos, pos);
     
@@ -90,6 +94,36 @@ void queueMeshletForDispatch(uint meshlet_index, uint object_index, float lod_bl
 void main(in uint I : SV_GroupIndex,
           in uint wg : SV_GroupID)
 {
+    uint global_thread_index = I + wg * GROUP_SIZE;
+    // debug
+    /*
+    S_SceneObject scene_object = objectsBuffer[0];
+    S_MeshletGroup current_group = groupBuffers[scene_object.mesh_id][scene_object.root_group_id];
+    S_PayloadEntry newTask;
+    newTask.lod_morphing = 0;
+    newTask.meshlet_id = 1;
+    newTask.object_id = 0;
+    gs_Payload.tasks[0] = newTask;
+    GroupMemoryBarrierWithGroupSync();
+    DispatchMesh(1, 1, 1, gs_Payload);
+    
+    return;
+    */
+    
+    // debug 2
+    /*
+    if (I == 0)
+    {
+        gs_MeshletCount = 0;
+    }
+    GroupMemoryBarrierWithGroupSync();
+    queueMeshletForDispatch(I, 0, 0);
+    DispatchMesh(gs_MeshletCount, 1, 1, gs_Payload);
+        
+    return;
+    */
+    
+    
    // Reset the counter variables from the first thread in the group
     if (I == 0)
     {
@@ -99,7 +133,7 @@ void main(in uint I : SV_GroupIndex,
     
     
     // object culling and extracting of root nodes into work queue
-    for (uint scene_object_index = I; scene_object_index < constants.SceneObjectCount; scene_object_index += PERSISTENT_THREAD_COUNT)
+    for (uint scene_object_index = global_thread_index; scene_object_index < constants.SceneObjectCount; scene_object_index += PERSISTENT_THREAD_COUNT)
     {
         S_SceneObject scene_object = objectsBuffer[scene_object_index];
         
@@ -108,8 +142,17 @@ void main(in uint I : SV_GroupIndex,
             S_WorkQueueEntry new_task;
             new_task.group_id = scene_object.root_group_id;
             new_task.scene_object_id = scene_object_index;
+            appendTask(new_task);
         }
     }
+    
+    GroupMemoryBarrierWithGroupSync();
+
+
+
+    
+    
+    
     
     // processing of work queue entries
     S_WorkQueueEntry current_task;
@@ -126,7 +169,7 @@ void main(in uint I : SV_GroupIndex,
         {
             for (uint simplified_meshlet_group_index = 0; simplified_meshlet_group_index < GROUP_SPLIT_COUNT; simplified_meshlet_group_index++)
             {
-                queueMeshletForDispatch(current_group.simplified_meshlets[simplified_meshlet_group_index], current_task.scene_object_id, 0); // LOD morphing not yet implemented !!!!!!!!!
+                queueMeshletForDispatch(current_group.simplified_meshlets[simplified_meshlet_group_index], current_task.scene_object_id, 0); // TODO: LOD morphing not yet implemented !!!!!!!!!
             }
         }
         // dispatch base meshlets when current group is a leaf node of the hierarchy tree
@@ -134,7 +177,7 @@ void main(in uint I : SV_GroupIndex,
         {
             for (uint base_meshlet_group_index = 0; base_meshlet_group_index < current_group.meshlet_count; base_meshlet_group_index++)
             {
-                queueMeshletForDispatch(current_group.meshlets[base_meshlet_group_index], current_task.scene_object_id, 0); // LOD morphing not yet implemented !!!!!!!!!
+                queueMeshletForDispatch(current_group.meshlets[base_meshlet_group_index], current_task.scene_object_id, 0); // TODO:  LOD morphing not yet implemented !!!!!!!!!
             }
         }
         // append child group into work queue if current simplification isnt precise enough and current group isnt a leaf node

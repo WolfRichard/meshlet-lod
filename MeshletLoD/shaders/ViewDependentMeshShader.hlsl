@@ -60,9 +60,14 @@ void main(in uint I : SV_GroupIndex,
           out indices uint3 tris[MAX_MESHLET_PRIMITIVE_COUNT],
           out vertices PixelShaderInput verts[MAX_MESHLET_VERTEX_COUNT])
 {
+   
+    
     S_PayloadEntry payload_task = gs_Payload.tasks[gid];
     S_SceneObject scene_object = objectsBuffer[payload_task.object_id];
     S_Meshlet meshlet = meshletBuffers[scene_object.mesh_id][payload_task.meshlet_id];
+    
+    
+   
     
     SetMeshOutputCounts(meshlet.vertex_count, meshlet.triangle_count);
     
@@ -111,4 +116,48 @@ void main(in uint I : SV_GroupIndex,
                         SampleTriangleBufferAsCharArray(meshlet.triangle_offset + p * 3 + 1, scene_object.mesh_id),
                         SampleTriangleBufferAsCharArray(meshlet.triangle_offset + p * 3 + 2, scene_object.mesh_id));
     }
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    /*
+    SetMeshOutputCounts(3, 1);
+    verts[0].Pos = float4(-1, -1, 0, 0);
+    verts[0].Color = float4(1, 0, 0, 1);
+    verts[1].Pos = float4(1, -1, 0, 0);
+    verts[1].Color = float4(1, 0, 0, 1);
+    verts[2].Pos = float4(-1, 1, 0, 0);
+    verts[2].Color = float4(1, 0, 0, 1);
+    tris[0] = uint3(0, 2, 1);
+    */
+    
+    /*
+    SetMeshOutputCounts(3, 1);
+    
+    verts[0].Pos = mul(float4(-1, -1, 0, 1), constants.ViewProjMat);
+    verts[1].Pos = mul(float4(1, -1, 0, 1), constants.ViewProjMat);
+    verts[2].Pos = mul(float4(-1, 1, 0, 1), constants.ViewProjMat);
+    
+    verts[0].Color = float4(1, 0, 0, 1);
+    verts[1].Color = float4(1, 0, 0, 1);
+    verts[2].Color = float4(1, 0, 0, 1);
+    
+    tris[0] = uint3(0, 2, 1);
+    */
+    
+   
+    
 }

@@ -173,21 +173,21 @@ void ViewDependentMeshletLoD::setupConstantsUploadBuffer()
 
 
 template <typename T>
-void ViewDependentMeshletLoD::setupSrvAndBuffer(D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle,
-                                                D3D12_GPU_DESCRIPTOR_HANDLE nextAvailableGpuSrvHandle, 
-                                                D3D12_CPU_DESCRIPTOR_HANDLE nextAvailableCpuSrvHandle,
+void ViewDependentMeshletLoD::setupSrvAndBuffer(D3D12_GPU_DESCRIPTOR_HANDLE& srvGpuHandle,
+                                                D3D12_GPU_DESCRIPTOR_HANDLE& nextAvailableGpuSrvHandle, 
+                                                D3D12_CPU_DESCRIPTOR_HANDLE& nextAvailableCpuSrvHandle,
                                                 std::vector<T>& cpuBuffer,
                                                 Microsoft::WRL::ComPtr<ID3D12Resource>& gpuBuffer,
                                                 std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
                                                 Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
-                                                unsigned int descriptorSize)
+                                                unsigned int descriptorSize, D3D12_RESOURCE_FLAGS bufferFlags)
 {
     auto device = Application::Get().GetDevice();
     srvGpuHandle = nextAvailableGpuSrvHandle;
 
     copyBuffers.push_back(ComPtr<ID3D12Resource>());
     UpdateBufferResource(commandList, gpuBuffer.GetAddressOf(), copyBuffers.back().GetAddressOf(),
-        (uint)cpuBuffer.size(), sizeof(T), cpuBuffer.data());
+        (uint)cpuBuffer.size(), sizeof(T), cpuBuffer.data(), bufferFlags);
 
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
@@ -203,18 +203,17 @@ void ViewDependentMeshletLoD::setupSrvAndBuffer(D3D12_GPU_DESCRIPTOR_HANDLE srvG
 }
 
 template <typename T>
-void ViewDependentMeshletLoD::setupBindlessSrvAndBuffer(D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle, 
-                                                        D3D12_GPU_DESCRIPTOR_HANDLE nextAvailableGpuSrvHandle, 
-                                                        D3D12_CPU_DESCRIPTOR_HANDLE nextAvailableCpuSrvHandle,
-                                                        std::vector<std::vector<T>*>& cpuBuffers, 
-                                                        std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& gpuBuffers,
-                                                        std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
-                                                        Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
-                                                        unsigned int descriptorSize)
+void ViewDependentMeshletLoD::setupBindlessSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HANDLE& srvGpuHandle, 
+                                                         D3D12_GPU_DESCRIPTOR_HANDLE& nextAvailableGpuSrvHandle, 
+                                                         D3D12_CPU_DESCRIPTOR_HANDLE& nextAvailableCpuSrvHandle,
+                                                         std::vector<std::vector<T>*>& cpuBuffers, 
+                                                         std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& gpuBuffers,
+                                                         std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
+                                                         Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
+                                                         unsigned int descriptorSize)
 {
     auto device = Application::Get().GetDevice();
     srvGpuHandle = nextAvailableGpuSrvHandle;
-    uint bufferCount = (uint)cpuBuffers.size();
     
     for (uint i = 0; i < cpuBuffers.size(); i++)
     {
@@ -240,6 +239,46 @@ void ViewDependentMeshletLoD::setupBindlessSrvAndBuffer(D3D12_GPU_DESCRIPTOR_HAN
     }
 }
 
+// compatible with tight packing of 4 chars into unsigned integers
+void ViewDependentMeshletLoD::setupBindlessPrimitiveIndicesSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HANDLE& srvGpuHandle,
+                                                                         D3D12_GPU_DESCRIPTOR_HANDLE& nextAvailableGpuSrvHandle,
+                                                                         D3D12_CPU_DESCRIPTOR_HANDLE& nextAvailableCpuSrvHandle,
+                                                                         std::vector<std::vector<unsigned char>*>& primitiveIndicesCpuBuffers,
+                                                                         std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& gpuBuffers,
+                                                                         std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
+                                                                         Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
+                                                                         unsigned int descriptorSize)
+{
+    auto device = Application::Get().GetDevice();
+    srvGpuHandle = nextAvailableGpuSrvHandle;
+
+    for (uint i = 0; i < primitiveIndicesCpuBuffers.size(); i++)
+    {
+        std::vector<unsigned char>* cpuSingleBuffer = primitiveIndicesCpuBuffers[i];
+        // fill with zeros to allign its size to 32bits
+        while (cpuSingleBuffer->size() % 4 != 0)
+            cpuSingleBuffer->push_back(0);
+
+        gpuBuffers.push_back(ComPtr<ID3D12Resource>());
+        copyBuffers.push_back(ComPtr<ID3D12Resource>());
+
+        UpdateBufferResource(commandList, gpuBuffers.back().GetAddressOf(), copyBuffers.back().GetAddressOf(),
+            (uint)cpuSingleBuffer->size() / 4, sizeof(uint), cpuSingleBuffer->data());
+
+        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srvDesc.Buffer.FirstElement = 0;
+        srvDesc.Buffer.NumElements = (uint)cpuSingleBuffer->size() / 4;
+        srvDesc.Buffer.StructureByteStride = sizeof(uint);
+        srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+
+        device->CreateShaderResourceView(gpuBuffers.back().Get(), &srvDesc, nextAvailableCpuSrvHandle);
+        nextAvailableCpuSrvHandle.ptr += descriptorSize;
+        nextAvailableGpuSrvHandle.ptr += descriptorSize;
+    }
+}
+
 
 
 bool ViewDependentMeshletLoD::LoadContent()
@@ -250,77 +289,86 @@ bool ViewDependentMeshletLoD::LoadContent()
 
     setupConstantsUploadBuffer();
 
-    D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-    heapDesc.NumDescriptors = 1                          // single scene objects buffer
-                            + 1                          // single work queue buffer
-                            + 1                          // single work queue counter buffer
-                            + (uint)m_scene.m_mesh_count // meshlets buffer per unique mesh
-                            + (uint)m_scene.m_mesh_count // meshlet groups buffer per unique mesh
-                            + (uint)m_scene.m_mesh_count // vertex indices buffer per unique mesh
-                            + (uint)m_scene.m_mesh_count // primitive indices buffer per unique mesh
-                            + (uint)m_scene.m_mesh_count // vertex buffer per unique mesh
-        ;
-    heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-    heapDesc.NodeMask = 0;
-    device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_CBV_SRV_UAV_Heap));
+    D3D12_DESCRIPTOR_HEAP_DESC gpuHeapDesc = {};
+    gpuHeapDesc.NumDescriptors = 1                           // single scene objects buffer
+                               + 1                           // single work queue buffer
+                               + 1                           // single work queue counter buffer
+                               + 1                           // single work queue counter clear values buffer
+                               + (uint)m_scene.m_mesh_count  // meshlets buffer per unique mesh
+                               + (uint)m_scene.m_mesh_count  // meshlet groups buffer per unique mesh
+                               + (uint)m_scene.m_mesh_count  // vertex indices buffer per unique mesh
+                               + (uint)m_scene.m_mesh_count  // primitive indices buffer per unique mesh
+                               + (uint)m_scene.m_mesh_count; // vertex buffer per unique mesh
+    gpuHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    gpuHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+    gpuHeapDesc.NodeMask = 0;
+    device->CreateDescriptorHeap(&gpuHeapDesc, IID_PPV_ARGS(&m_CBV_SRV_UAV_Heap));
+
+
+
 
     unsigned int descriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    CD3DX12_CPU_DESCRIPTOR_HANDLE nextCpuSrvHandle(m_CBV_SRV_UAV_Heap->GetCPUDescriptorHandleForHeapStart());
+    D3D12_CPU_DESCRIPTOR_HANDLE nextCpuSrvHandle(m_CBV_SRV_UAV_Heap->GetCPUDescriptorHandleForHeapStart());
     D3D12_GPU_DESCRIPTOR_HANDLE nextGpuSrvHandle(m_CBV_SRV_UAV_Heap->GetGPUDescriptorHandleForHeapStart());
+    
 
 
     std::vector<ComPtr<ID3D12Resource>> copyBuffers;
     
     // vertex-indices buffers
-    setupBindlessSrvAndBuffer(m_VertexIndicesSrvHandle, 
-                              nextGpuSrvHandle, nextCpuSrvHandle, 
-                              m_scene.m_vertex_indices, m_VertexIndicesBuffers, 
-                              copyBuffers, commandList, descriptorSize);
+    setupBindlessSrvAndBuffers(m_VertexIndicesSrvHandle, 
+                               nextGpuSrvHandle, nextCpuSrvHandle, 
+                               m_scene.m_vertex_indices, m_VertexIndicesBuffers, 
+                               copyBuffers, commandList, descriptorSize);
     
     // vertex buffers
-    setupBindlessSrvAndBuffer(m_VerticesSrvHandle,
-                              nextGpuSrvHandle, nextCpuSrvHandle,
-                              m_scene.m_vertices, m_VertexBuffers,
-                              copyBuffers, commandList, descriptorSize);
+    setupBindlessSrvAndBuffers(m_VerticesSrvHandle,
+                               nextGpuSrvHandle, nextCpuSrvHandle,
+                               m_scene.m_vertices, m_VertexBuffers,
+                               copyBuffers, commandList, descriptorSize);
 
-    // primitive-indices buffers
-    setupBindlessSrvAndBuffer(m_PrimitiveIndicesSrvHandle,
-                              nextGpuSrvHandle, nextCpuSrvHandle,
-                              m_scene.m_primitive_indices, m_PrimitiveIndicesBuffers,
-                              copyBuffers, commandList, descriptorSize);
+    // primitive-indices buffers 
+    setupBindlessPrimitiveIndicesSrvAndBuffers(m_PrimitiveIndicesSrvHandle,
+                                               nextGpuSrvHandle, nextCpuSrvHandle,
+                                               m_scene.m_primitive_indices, m_PrimitiveIndicesBuffers,
+                                               copyBuffers, commandList, descriptorSize);
 
     // meshlets buffers
-    setupBindlessSrvAndBuffer(m_MeshletsSrvHandle,
-                              nextGpuSrvHandle, nextCpuSrvHandle,
-                              m_scene.m_meshlets, m_MeshletBuffers,
-                              copyBuffers, commandList, descriptorSize);
+    setupBindlessSrvAndBuffers(m_MeshletsSrvHandle,
+                               nextGpuSrvHandle, nextCpuSrvHandle,
+                               m_scene.m_meshlets, m_MeshletBuffers,
+                               copyBuffers, commandList, descriptorSize);    
 
     // meshlet groups buffers
-    setupBindlessSrvAndBuffer(m_MeshletGroupsSrvHandle,
-                              nextGpuSrvHandle, nextCpuSrvHandle,
-                              m_scene.m_meshlet_groups, m_MeshletGroupsBuffers,
-                              copyBuffers, commandList, descriptorSize);
+    setupBindlessSrvAndBuffers(m_MeshletGroupsSrvHandle,
+                               nextGpuSrvHandle, nextCpuSrvHandle,
+                               m_scene.m_meshlet_groups, m_MeshletGroupsBuffers,
+                               copyBuffers, commandList, descriptorSize);
 
     // scene objects buffer
     setupSrvAndBuffer(m_ObjectsSrvHandle,
                       nextGpuSrvHandle, nextCpuSrvHandle,
                       m_scene.m_scene_objects, m_ObjectsBuffer,
-                      copyBuffers, commandList, descriptorSize);
+                      copyBuffers, commandList, descriptorSize, D3D12_RESOURCE_FLAG_NONE);
 
     // work queue buffer
     std::vector<S_WorkQueueEntry> temporaryCpuWorkQueueBufferData(WORK_QUEUE_SIZE, { 0, 0 });
     setupSrvAndBuffer(m_WorkQueueSrvHandle,
                       nextGpuSrvHandle, nextCpuSrvHandle,
                       temporaryCpuWorkQueueBufferData, m_WorkQueueBuffer,
-                      copyBuffers, commandList, descriptorSize);
+                      copyBuffers, commandList, descriptorSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 
-    // work queue counters buffer
+    // work queue counters buffer and clear values
     std::vector<uint> temporaryCpuWorkQueueCountersData(2, 0);
     setupSrvAndBuffer(m_WorkQueueCountersSrvHandle,
                       nextGpuSrvHandle, nextCpuSrvHandle,
                       temporaryCpuWorkQueueCountersData, m_WorkQueueCountersBuffer,
-                      copyBuffers, commandList, descriptorSize);
+                      copyBuffers, commandList, descriptorSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+    setupSrvAndBuffer(m_WorkQueueCountersClearValuesSrvHandle,
+                      nextGpuSrvHandle, nextCpuSrvHandle,
+                      temporaryCpuWorkQueueCountersData, m_WorkQueueCountersClearValuesBuffer,
+                      copyBuffers, commandList, descriptorSize, D3D12_RESOURCE_FLAG_NONE);
+    
    
 
     // Create the descriptor heap for the depth-stencil view.
@@ -370,7 +418,7 @@ bool ViewDependentMeshletLoD::LoadContent()
     // meshlets
     CD3DX12_DESCRIPTOR_RANGE1 srvMeshletsRange;
     srvMeshletsRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_mesh_count, 0, 1);
-    rootParameters[4].InitAsDescriptorTable(1, &srvMeshletsRange, D3D12_SHADER_VISIBILITY_AMPLIFICATION);
+    rootParameters[4].InitAsDescriptorTable(1, &srvMeshletsRange, D3D12_SHADER_VISIBILITY_ALL);
 
     // meshlet groups
     CD3DX12_DESCRIPTOR_RANGE1 srvMeshletGroupsRange;
@@ -663,6 +711,7 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     constants.CurrTime = (float)m_totalRunTime;
     constants.shadingSelection = m_shadingMode;
     constants.BoolConstants = 0;
+    constants.SceneObjectCount = (uint)m_scene.m_scene_objects.size();
     if (m_frustumCulling) constants.BoolConstants |= FRUSTUM_CULLING_BIT_POS;
     
     memcpy(m_mappedConstantData, &constants, sizeof(S_Constants));
@@ -685,6 +734,9 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
 
     commandList->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
 
+    ID3D12DescriptorHeap* heaps[] = { m_CBV_SRV_UAV_Heap.Get() };
+    commandList->SetDescriptorHeaps(_countof(heaps), heaps);
+
     //set constants
     commandList->SetGraphicsRootConstantBufferView(0, m_ConstantsBuffer->GetGPUVirtualAddress());
     // set bindless vertex buffers
@@ -700,9 +752,11 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     // set scene objects buffer
     commandList->SetGraphicsRootShaderResourceView(6, m_ObjectsBuffer.Get()->GetGPUVirtualAddress());
     // set work queue buffer
-    commandList->SetGraphicsRootShaderResourceView(7, m_WorkQueueBuffer.Get()->GetGPUVirtualAddress());
-    // set work queue counters buffer
-    commandList->SetGraphicsRootShaderResourceView(8, m_WorkQueueCountersBuffer.Get()->GetGPUVirtualAddress());
+    commandList->SetGraphicsRootUnorderedAccessView(7, m_WorkQueueBuffer.Get()->GetGPUVirtualAddress());
+    // clear with zeros and set work queue counters buffer
+    commandList->CopyResource(m_WorkQueueCountersBuffer.Get(), m_WorkQueueCountersClearValuesBuffer.Get());
+    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_WorkQueueCountersBuffer.Get()));
+    commandList->SetGraphicsRootUnorderedAccessView(8, m_WorkQueueCountersBuffer.Get()->GetGPUVirtualAddress());
     
     
     
@@ -890,7 +944,7 @@ void ViewDependentMeshletLoD::updateImGui()
 
 
     ImGui::SetNextWindowSize(ImVec2(375, 0));
-    ImGui::SetNextWindowPos(ImVec2(275, 12), ImGuiCond_Always);
+    ImGui::SetNextWindowPos(ImVec2((float)(GetClientWidth() - 375 - 12), 12.0f), ImGuiCond_Always);
     ImGui::Begin("Settings");                           
    
 
@@ -1004,7 +1058,7 @@ void ViewDependentMeshletLoD::updateImGui()
 
     // Help Window
     ImGui::SetNextWindowSize(ImVec2(275, 0));
-    ImGui::SetNextWindowPos(ImVec2((float)(GetClientWidth() - 275 - 275 - 12 - 3), 12.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowPos(ImVec2((float)(GetClientWidth() - 275 - 375 - 12 - 7), 12.0f), ImGuiCond_Always);
     ImGui::Begin("Help");
 
     if (!ImGui::CollapsingHeader("Controls"))

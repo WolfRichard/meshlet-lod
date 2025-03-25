@@ -13,6 +13,8 @@ Mesh::Mesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
     parseMesh(assimp_mesh, assimp_scene);
     generateLeafMeshlets();
     buildMeshletHierachy();
+
+    
 }
 
 
@@ -420,16 +422,21 @@ void Mesh::simplifiyTopLevelGroups()
             OutputDebugString(("\n\tNumber of Vertices: " + std::to_string(meshlet.vertex_count) + " Number of Triangles: " + std::to_string(meshlet.triangle_count)).c_str());
 
 
-        //assert(meshlet_count == 2);
 
         // add new vertex/primitive-indicesbuffers to the main buffer and offset meshlet meta data accordingly
+        uint previous_primitive_indices_size = (uint)m_primitive_indices.size();
+        uint previous_vertex_indices_size = (uint)m_vertex_indices.size();
+
+        m_vertex_indices.insert(m_vertex_indices.end(), vertex_indices.begin(), vertex_indices.end());
+        m_primitive_indices.insert(m_primitive_indices.end(), primitive_indices.begin(), primitive_indices.end());
+
         for (uint i = 0; i < meshlet_count; i++)
         {
             S_Meshlet newMeshlet;
             newMeshlet.triangle_count = meshlets[i].triangle_count;
-            newMeshlet.triangle_offset = meshlets[i].triangle_offset + (uint)m_primitive_indices.size();
+            newMeshlet.triangle_offset = meshlets[i].triangle_offset + previous_primitive_indices_size;
             newMeshlet.vertex_count = meshlets[i].vertex_count;
-            newMeshlet.vertex_offset = meshlets[i].vertex_offset + (uint)m_vertex_indices.size();
+            newMeshlet.vertex_offset = meshlets[i].vertex_offset + previous_vertex_indices_size;
 
             meshopt_Bounds bounds = meshopt_computeMeshletBounds(&m_vertex_indices[newMeshlet.vertex_offset],
                 &m_primitive_indices[newMeshlet.triangle_offset],
@@ -448,8 +455,7 @@ void Mesh::simplifiyTopLevelGroups()
             m_meshlets.push_back(newMeshlet);
         }
         
-        m_vertex_indices.insert(m_vertex_indices.end(), vertex_indices.begin(), vertex_indices.end());
-        m_primitive_indices.insert(m_primitive_indices.end(), primitive_indices.begin(), primitive_indices.end());
+        
     
     }
 }

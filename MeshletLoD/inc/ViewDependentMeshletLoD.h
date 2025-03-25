@@ -57,24 +57,33 @@ private:
     void setupConstantsUploadBuffer();
 
     template <typename T>
-    void setupSrvAndBuffer(D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle,
-                           D3D12_GPU_DESCRIPTOR_HANDLE nextAvailableGpuSrvHandle,
-                           D3D12_CPU_DESCRIPTOR_HANDLE nextAvailableCpuSrvHandle,
+    void setupSrvAndBuffer(D3D12_GPU_DESCRIPTOR_HANDLE& srvGpuHandle,
+                           D3D12_GPU_DESCRIPTOR_HANDLE& nextAvailableGpuSrvHandle,
+                           D3D12_CPU_DESCRIPTOR_HANDLE& nextAvailableCpuSrvHandle,
                            std::vector<T>& cpuBuffer,
                            Microsoft::WRL::ComPtr<ID3D12Resource>& gpuBuffer,
                            std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
                            Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
-                           unsigned int descriptorSize);
+                           unsigned int descriptorSize, D3D12_RESOURCE_FLAGS bufferFlags);
 
     template <typename T>
-    void setupBindlessSrvAndBuffer(D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle,
-                                   D3D12_GPU_DESCRIPTOR_HANDLE nextAvailableGpuSrvHandle,
-                                   D3D12_CPU_DESCRIPTOR_HANDLE nextAvailableCpuSrvHandle,
-                                   std::vector<std::vector<T>*>& cpuBuffers,
-                                   std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& gpuBuffers,
-                                   std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
-                                   Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
-                                   unsigned int descriptorSize);
+    void setupBindlessSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HANDLE& srvGpuHandle,
+                                    D3D12_GPU_DESCRIPTOR_HANDLE& nextAvailableGpuSrvHandle,
+                                    D3D12_CPU_DESCRIPTOR_HANDLE& nextAvailableCpuSrvHandle,
+                                    std::vector<std::vector<T>*>& cpuBuffers,
+                                    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& gpuBuffers,
+                                    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
+                                    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
+                                    unsigned int descriptorSize);
+
+    void setupBindlessPrimitiveIndicesSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HANDLE& srvGpuHandle,
+                                                    D3D12_GPU_DESCRIPTOR_HANDLE& nextAvailableGpuSrvHandle,
+                                                    D3D12_CPU_DESCRIPTOR_HANDLE& nextAvailableCpuSrvHandle,
+                                                    std::vector<std::vector<unsigned char>*>& primitiveIndicesCpuBuffers,
+                                                    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& gpuBuffers,
+                                                    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
+                                                    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
+                                                    unsigned int descriptorSize);
 
 
     // Helper functions
@@ -155,6 +164,7 @@ private:
     // Descriptor heap
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_CBV_SRV_UAV_Heap;
 
+
     // buffers
     std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_MeshletBuffers;
     std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_VertexIndicesBuffers;
@@ -165,6 +175,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource>              m_ConstantsBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource>              m_WorkQueueBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource>              m_WorkQueueCountersBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource>              m_WorkQueueCountersClearValuesBuffer;
     UINT8* m_mappedConstantData                         = nullptr;
 
     // gpu handles
@@ -176,6 +187,9 @@ private:
     D3D12_GPU_DESCRIPTOR_HANDLE m_ObjectsSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_WorkQueueSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_WorkQueueCountersSrvHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_WorkQueueCountersClearValuesSrvHandle;
+
+
 
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
 
