@@ -182,24 +182,24 @@ void ViewDependentMeshletLoD::setupSrvAndBuffer(D3D12_GPU_DESCRIPTOR_HANDLE srvG
                                                 Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
                                                 unsigned int descriptorSize)
 {
+    auto device = Application::Get().GetDevice();
     srvGpuHandle = nextAvailableGpuSrvHandle;
 
     copyBuffers.push_back(ComPtr<ID3D12Resource>());
     UpdateBufferResource(commandList, gpuBuffer.GetAddressOf(), copyBuffers.back().GetAddressOf(),
         (uint)cpuBuffer.size(), sizeof(T), cpuBuffer.data());
 
-    D3D12_SHADER_RESOURCE_VIEW_DESC objectsSrvDesc = {};
-    objectsSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-    objectsSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    objectsSrvDesc.Buffer.FirstElement = 0;
-    objectsSrvDesc.Buffer.NumElements = (uint)m_scene.m_scene_objects.size();
-    objectsSrvDesc.Buffer.StructureByteStride = sizeof(SceneObject);
-    objectsSrvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Buffer.FirstElement = 0;
+    srvDesc.Buffer.NumElements = (uint)cpuBuffer.size();
+    srvDesc.Buffer.StructureByteStride = sizeof(T);
+    srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
 
-    device->CreateShaderResourceView(m_ObjectsBuffer.Get(), &objectsSrvDesc, nextAvailableCpuSrvHandle);
-    objectBufferSRVHandle = srvHandle;
-    nextAvailableCpuSrvHandle.Offset(1, descriptorSize);
-    nextAvailableGpuSrvHandle.ptr += bufferCount * descriptorSize;
+    device->CreateShaderResourceView(gpuBuffer.Get(), &srvDesc, nextAvailableCpuSrvHandle);
+    nextAvailableCpuSrvHandle.ptr += descriptorSize;
+    nextAvailableGpuSrvHandle.ptr += descriptorSize;
 }
 
 template <typename T>
@@ -214,27 +214,29 @@ void ViewDependentMeshletLoD::setupBindlessSrvAndBuffer(D3D12_GPU_DESCRIPTOR_HAN
 {
     auto device = Application::Get().GetDevice();
     srvGpuHandle = nextAvailableGpuSrvHandle;
-    uint bufferCount = (uint)cpuBuffers.size()
+    uint bufferCount = (uint)cpuBuffers.size();
     
-    for (std::vector<T> cpuSingleBuffer : cpuBuffers)
+    for (uint i = 0; i < cpuBuffers.size(); i++)
     {
+        std::vector<T>* cpuSingleBuffer = cpuBuffers[i];
+
         gpuBuffers.push_back(ComPtr<ID3D12Resource>());
         copyBuffers.push_back(ComPtr<ID3D12Resource>());
         
         UpdateBufferResource(commandList, gpuBuffers.back().GetAddressOf(), copyBuffers.back().GetAddressOf(),
-            (uint)cpuSingleBuffer.size(), sizeof(T), cpuSingleBuffer.data());
+            (uint)cpuSingleBuffer->size(), sizeof(T), cpuSingleBuffer->data());
 
         D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
         srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         srvDesc.Buffer.FirstElement = 0;
-        srvDesc.Buffer.NumElements = (uint)cpuSingleBuffer.size();
+        srvDesc.Buffer.NumElements = (uint)cpuSingleBuffer->size();
         srvDesc.Buffer.StructureByteStride = sizeof(T);
         srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
 
         device->CreateShaderResourceView(gpuBuffers.back().Get(), &srvDesc, nextAvailableCpuSrvHandle);
-        nextAvailableCpuSrvHandle.Offset(1, descriptorSize);
-        nextAvailableGpuSrvHandle.ptr += bufferCount * descriptorSize;
+        nextAvailableCpuSrvHandle.ptr += descriptorSize;
+        nextAvailableGpuSrvHandle.ptr += descriptorSize;
     }
 }
 
