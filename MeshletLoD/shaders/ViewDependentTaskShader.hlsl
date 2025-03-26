@@ -28,14 +28,23 @@ void appendTask(S_WorkQueueEntry new_task)
 // TODO: POSIBLE RACE CONDITION! should swap to InterlockedCompareExchange() instead!!!!!!!!!!!!!!!!!!!!!!!!!1
 bool consumeTask(out S_WorkQueueEntry out_task)
 {
-    uint task_index = 0;
-    InterlockedAdd(workQueueCounters[0], 1, task_index);    // Atomically increment beginCounter
+    uint task_index, prev_index;
+    do
+    {
+        prev_index = workQueueCounters[0]; // Read beginCounter
+        uint end = workQueueCounters[1]; // Read endCounter
 
-    // Check if the queue is empty
-    if (task_index > workQueueCounters[1])                 // Compare with endCounter
-        return false;
-
-    out_task = workQueue[task_index % WORK_QUEUE_SIZE];     // loop index because of ring buffer structure
+        if (prev_index >= end)
+            return false; // No work available
+        
+        // Try to atomically update 'beginCounter' only if it hasn’t changed
+        InterlockedCompareExchange(workQueueCounters[0], prev_index, prev_index + 1, task_index);
+        
+    } while (task_index != prev_index); // lost race condition in between checking for available work and incrementing counter --> so check if there is other work available to grab
+    
+    
+    // Load the task safely as thread won race condition after checking that there was still work to do
+    out_task = workQueue[task_index % WORK_QUEUE_SIZE];
     return true;
 }
 
@@ -60,20 +69,32 @@ bool isInFrustum(float3 center, float radius)
     return true;
 }
 
+
+float ExtractMaxScaleFactor(float4x4 m)
+{
+    float sx = length(m[0].xyz);
+    float sy = length(m[1].xyz);
+    float sz = length(m[2].xyz);
+   
+    return max(sx, max(sy, sz));
+
+}
+
+
 bool groupSimplificationIsPreciseEnough(S_BoundingSphere bounding_sphere) // bounding sphere must be in world space!
 {
-    return true;
+    
     float3 pos = mul(float4(bounding_sphere.center, 1.0), constants.ViewMat).xyz;
     float dist2 = dot(pos, pos);
     
     // calculate the sphere size in screen space
     float size = constants.CoTanHalfFoV * bounding_sphere.radius / sqrt(dist2 - bounding_sphere.radius * bounding_sphere.radius);
     
-    return (size < 1 / 480); // screen pixel count over FoV !!!!!! TODO: should be set in constants buffer !!!!!!!
+    return (size < 1.0 / 1280.0); // screen pixel count over FoV !!!!!! TODO: should be set in constants buffer !!!!!!!
 }
 
 
-void queueMeshletForDispatch(uint meshlet_index, uint object_index, float lod_blend_value)
+void queueMeshletForDispatch(uint meshlet_index, uint object_index, float lod_blend_value, uint lod_depth)
 {
     S_SceneObject scene_object = objectsBuffer[object_index];
     S_BoundingSphere world_space_bounding_sphere;
@@ -87,6 +108,7 @@ void queueMeshletForDispatch(uint meshlet_index, uint object_index, float lod_bl
         gs_Payload.tasks[payload_index].meshlet_id = meshlet_index;
         gs_Payload.tasks[payload_index].object_id = object_index;
         gs_Payload.tasks[payload_index].lod_morphing = lod_blend_value;
+        gs_Payload.tasks[payload_index].lod_tree_depth = lod_depth;
     }
 }
 
@@ -95,36 +117,33 @@ void main(in uint I : SV_GroupIndex,
           in uint wg : SV_GroupID)
 {
     uint global_thread_index = I + wg * GROUP_SIZE;
-    // debug
-    /*
-    S_SceneObject scene_object = objectsBuffer[0];
-    S_MeshletGroup current_group = groupBuffers[scene_object.mesh_id][scene_object.root_group_id];
-    S_PayloadEntry newTask;
-    newTask.lod_morphing = 0;
-    newTask.meshlet_id = 1;
-    newTask.object_id = 0;
-    gs_Payload.tasks[0] = newTask;
-    GroupMemoryBarrierWithGroupSync();
-    DispatchMesh(1, 1, 1, gs_Payload);
+   
     
-    return;
-    */
-    
-    // debug 2
+    // debug (render most simplified meshlets)
     /*
     if (I == 0)
     {
         gs_MeshletCount = 0;
     }
     GroupMemoryBarrierWithGroupSync();
-    queueMeshletForDispatch(I, 0, 0);
+    
+    
+    if (global_thread_index == 0)
+    {
+        S_SceneObject s_o = objectsBuffer[0];
+        S_MeshletGroup root_group = groupBuffers[s_o.mesh_id][s_o.root_group_id];
+        queueMeshletForDispatch(root_group.simplified_meshlets[0], 0, 0);
+        queueMeshletForDispatch(root_group.simplified_meshlets[1], 0, 0);
+    }
+  
+    GroupMemoryBarrierWithGroupSync();
     DispatchMesh(gs_MeshletCount, 1, 1, gs_Payload);
-        
     return;
     */
+
     
     
-   // Reset the counter variables from the first thread in the group
+   // Reset the group shared counter variables from the first thread in the group
     if (I == 0)
     {
         gs_MeshletCount = 0;
@@ -146,13 +165,6 @@ void main(in uint I : SV_GroupIndex,
         }
     }
     
-    GroupMemoryBarrierWithGroupSync();
-
-
-
-    
-    
-    
     
     // processing of work queue entries
     S_WorkQueueEntry current_task;
@@ -169,7 +181,7 @@ void main(in uint I : SV_GroupIndex,
         {
             for (uint simplified_meshlet_group_index = 0; simplified_meshlet_group_index < GROUP_SPLIT_COUNT; simplified_meshlet_group_index++)
             {
-                queueMeshletForDispatch(current_group.simplified_meshlets[simplified_meshlet_group_index], current_task.scene_object_id, 0); // TODO: LOD morphing not yet implemented !!!!!!!!!
+                queueMeshletForDispatch(current_group.simplified_meshlets[simplified_meshlet_group_index], current_task.scene_object_id, 0, current_group.hierarchy_tree_depth + 1); // TODO: LOD morphing not yet implemented !!!!!!!!!
             }
         }
         // dispatch base meshlets when current group is a leaf node of the hierarchy tree
@@ -177,7 +189,7 @@ void main(in uint I : SV_GroupIndex,
         {
             for (uint base_meshlet_group_index = 0; base_meshlet_group_index < current_group.meshlet_count; base_meshlet_group_index++)
             {
-                queueMeshletForDispatch(current_group.meshlets[base_meshlet_group_index], current_task.scene_object_id, 0); // TODO:  LOD morphing not yet implemented !!!!!!!!!
+                queueMeshletForDispatch(current_group.meshlets[base_meshlet_group_index], current_task.scene_object_id, 0, current_group.hierarchy_tree_depth); // TODO:  LOD morphing not yet implemented !!!!!!!!!
             }
         }
         // append child group into work queue if current simplification isnt precise enough and current group isnt a leaf node

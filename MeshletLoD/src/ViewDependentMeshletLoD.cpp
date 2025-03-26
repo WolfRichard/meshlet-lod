@@ -11,6 +11,13 @@
 #include <CommandQueue.h>
 #include <Helpers.h>
 #include <Window.h>
+#if defined(min)
+#undef min
+#endif
+
+#if defined(max)
+#undef max
+#endif
 #include <sstream>
 
 #include <imgui.h>
@@ -26,13 +33,7 @@ using namespace Microsoft::WRL;
 //#include "DirectXTex.h"
 
 #include <algorithm> 
-#if defined(min)
-#undef min
-#endif
 
-#if defined(max)
-#undef max
-#endif
 
 using namespace DirectX;
 
@@ -694,6 +695,10 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     S_Constants constants;
 
     constants.ViewProjMat = mvpMatrix;
+
+    
+
+
     constants.ViewMat = XMMatrixTranspose(m_ViewMatrix);
     // frustom planes from view-proj-matrix
     // http://gamedevs.org/uploads/fast-extraction-viewing-frustum-planes-from-world-view-projection-matrix.pdf)
@@ -705,6 +710,13 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     constants.Frustum[3] = float4(m._14 + m._12, m._24 + m._22, m._34 + m._32, m._44 + m._42); // bot
     constants.Frustum[4] = float4(m._13, m._23, m._33, m._43);                                 // near
     constants.Frustum[5] = float4(m._14 - m._13, m._24 - m._23, m._34 - m._33, m._44 - m._43); // far
+
+
+    float scale_x = sqrtf(m._11 * m._11 + m._21 * m._21 + m._31 * m._31);
+    float scale_y = sqrtf(m._12 * m._12 + m._22 * m._22 + m._32 * m._32);
+    float scale_z = sqrtf(m._13 * m._13 + m._23 * m._23 + m._33 * m._33);
+    constants.MaxScaleFactor_ViewProjMat = std::max(scale_x, std::max(scale_y, scale_z));
+
 
     constants.CameraWorldPos = m_cameraPos;
     constants.CoTanHalfFoV = m_LoDScale / std::tan(m_FoV / 2.0f);
@@ -953,7 +965,7 @@ void ViewDependentMeshletLoD::updateImGui()
         ImGui::Checkbox("Meshlet based Frustum Culling", &m_frustumCulling);
         ImGui::Checkbox("Object Culling", &m_objectCulling);
         ImGui::Checkbox("Level Of Detail", &m_LoD_Enabled);
-        ImGui::SliderFloat("LoD Scale", &m_LoDScale, 0.01f, 10.0f);
+        ImGui::SliderFloat("LoD Scale", &m_LoDScale, 0.001f, 10.0f);
         ImGui::ColorEdit4("Clear Color", m_ClearColor);
         if (ImGui::Button("Toggle Fullscreen"))
         {

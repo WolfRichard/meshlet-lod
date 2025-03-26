@@ -60,6 +60,9 @@ private:
     void finalTopLevelMeshletGrouping();
     void findParentsItterative();
     S_MeshletGroup getDefaultMeshletGroup();
+    void printTreeFromTop(uint current_group_index);
+    void printAllMeshlets();
+
 
     
     

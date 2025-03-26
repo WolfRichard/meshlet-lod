@@ -67,9 +67,8 @@ void main(in uint I : SV_GroupIndex,
     S_Meshlet meshlet = meshletBuffers[scene_object.mesh_id][payload_task.meshlet_id];
     
     
-   
-    
     SetMeshOutputCounts(meshlet.vertex_count, meshlet.triangle_count);
+    
     
     // process meshlet vertices
     const uint vertexLoops = (MAX_MESHLET_VERTEX_COUNT + GROUP_SIZE - 1) / GROUP_SIZE;
@@ -95,8 +94,8 @@ void main(in uint I : SV_GroupIndex,
         }
         else if (constants.shadingSelection == DEBUG_LOD_SHADING)
         {
-            // TODO:
-            verts[v].Color = brightness;
+           
+            verts[v].Color = Rainbow(payload_task.lod_tree_depth / 6.0) * brightness;
         }
         else
         {

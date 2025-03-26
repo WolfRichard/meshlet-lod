@@ -14,7 +14,8 @@ Mesh::Mesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
     generateLeafMeshlets();
     buildMeshletHierachy();
 
-    
+    printTreeFromTop(m_hierarchy_root_group);
+    printAllMeshlets();
 }
 
 
@@ -308,7 +309,8 @@ void Mesh::groupMeshlets()
         m_current_hierarchy_top_level_groups.push_back((uint)m_meshlet_groups.size());
         m_meshlet_groups.push_back(getDefaultMeshletGroup());
         S_MeshletGroup& current_group = m_meshlet_groups.back();
-        
+        current_group.hierarchy_tree_depth = m_hierarchy_per_level_group_count.size();
+
         // set group child meshlets
         current_group.meshlet_count = 0;
         for (int j = 0; j < MATIS_numNodes; j++)
@@ -421,7 +423,7 @@ void Mesh::simplifiyTopLevelGroups()
         for (auto meshlet : meshlets)
             OutputDebugString(("\n\tNumber of Vertices: " + std::to_string(meshlet.vertex_count) + " Number of Triangles: " + std::to_string(meshlet.triangle_count)).c_str());
 
-
+        //assert(meshlet_count == 2); //currently root group only simplifies to a single meshlet???
 
         // add new vertex/primitive-indicesbuffers to the main buffer and offset meshlet meta data accordingly
         uint previous_primitive_indices_size = (uint)m_primitive_indices.size();
@@ -467,6 +469,8 @@ void Mesh::finalTopLevelMeshletGrouping()
     m_current_hierarchy_top_level_groups.push_back((uint)m_meshlet_groups.size());
     m_meshlet_groups.push_back(getDefaultMeshletGroup());
     S_MeshletGroup& current_group = m_meshlet_groups.back();
+    current_group.hierarchy_tree_depth = m_hierarchy_per_level_group_count.size();
+
 
     // set group child meshlets
     current_group.meshlet_count = 0;
@@ -548,5 +552,27 @@ S_MeshletGroup Mesh::getDefaultMeshletGroup()
         ret.simplified_meshlets[k] = 0;
     }
     ret.parent = -1;
+    ret.hierarchy_tree_depth = 0;
     return ret;
+}
+
+void Mesh::printTreeFromTop(uint current_group_index) 
+{
+    S_MeshletGroup& current_group = m_meshlet_groups[current_group_index];
+    OutputDebugString(("\nGroup[" + std::to_string(current_group_index) + "] --> Children: ").c_str());
+    for (uint i = 0; i < current_group.childCount; i++)
+        OutputDebugString(("[" + std::to_string(current_group.children[i]) + "], ").c_str());
+    for (uint i = 0; i < current_group.childCount; i++)
+        printTreeFromTop(current_group.children[i]);
+}
+
+void Mesh::printAllMeshlets()
+{
+    for (uint m = 0; m < m_meshlets.size(); m++)
+    {
+        S_Meshlet& current_meshlet = m_meshlets[m];
+        OutputDebugString(("\nMeshlet[" + std::to_string(m) + "] - vertex_count: " + std::to_string(current_meshlet.vertex_count) + ", vertex_offset: "
+            + std::to_string(current_meshlet.vertex_offset) + ", triangle_count: " + std::to_string(current_meshlet.triangle_count) + " triangle_offset: " 
+            + std::to_string(current_meshlet.triangle_offset)).c_str());
+    }
 }

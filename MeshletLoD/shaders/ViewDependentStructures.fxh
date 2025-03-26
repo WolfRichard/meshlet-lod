@@ -8,7 +8,7 @@
 #define WORK_QUEUE_SIZE 65536           // (2^16) Workqueue is implemented as ring-buffer, 
                                         //queue size allows correct indexing and should be able to contain the maximum of simultanious queue tasks
 
-#define MAX_EMITTED_MESHLETS_PER_WORK_GROUP 1280 // Maximum of 40 Meshlets per Task Shader Thread (limited by maximum size of payload)
+#define MAX_EMITTED_MESHLETS_PER_WORK_GROUP 1024 // Maximum of 32 Meshlets per Task Shader Thread (limited by maximum size of payload)
 
 //#define MAX_MESHLET_VERTEX_COUNT 64
 #define MAX_MESHLET_VERTEX_COUNT 128
@@ -47,6 +47,7 @@ struct S_MeshletGroup
     uint simplified_meshlets[GROUP_SPLIT_COUNT];    // indices to the simplified meshlets that are part of this group 
     uint meshlets[GROUP_MERGE_COUNT * 2];           // indices to the more granular meshlets that are part of this group (0 is a dummy meshlet with no content) (* 2 as buffer for partion imperfections)       
     uint meshlet_count;                             // allows up to merge count * 2 meshlets, this is necessary because graph partitioning wont always create perfect groups of 4
+    uint hierarchy_tree_depth;
     
     float2 byte_allignement;                        // used to keep 16 byte allignement for structured buffer
 };
@@ -82,6 +83,8 @@ struct S_Constants
     
     float CurrTime;
     
+    float MaxScaleFactor_ViewProjMat;
+    
     uint SceneObjectCount;
     
     ShadingMode shadingSelection;
@@ -95,6 +98,7 @@ struct S_PayloadEntry
     uint meshlet_id;
     uint object_id;
     float lod_morphing; // 0 = vertices stay the same; 1 = vertices are completely pushed towards their parent vertex
+    uint lod_tree_depth;
 };
 
 // Payload from task shader stage to mesh shader
