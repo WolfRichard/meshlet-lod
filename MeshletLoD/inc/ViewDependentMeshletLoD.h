@@ -160,6 +160,8 @@ private:
     float       m_autoCameraDistance    = 4.5f;
     float       m_CameraScrollScale     = 0.25f;
     float       m_autoRotationOffset    = 4;
+    bool        m_lockCameraShaderConstant = false;
+    float3      m_lockedCameraPos       = float3(0, 0, 0);
     
     // Descriptor heap
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_CBV_SRV_UAV_Heap;

@@ -570,46 +570,43 @@ void ViewDependentMeshletLoD::OnUpdate(UpdateEventArgs& e)
         frameCount = 0;
         totalTime = 0.0;
     }
-
-
-    // Update the view matrix.
-    const XMVECTOR eyePosition = XMVectorSet(0, 0, 0, 1);
-    const XMVECTOR focusPoint = XMVectorSet(1, 0, 0, 1);
-    const XMVECTOR upDirection = XMVectorSet(0, 1, 0, 0);
-    m_ViewMatrix = XMMatrixLookAtLH(eyePosition, focusPoint, upDirection);
     
     // Camera Controll
     if (m_freeCamera)
     {
-        float4x4 RotationMatrix = XMMatrixTranspose(XMMatrixRotationY(m_CameraYaw + m_autoRotationOffset) * XMMatrixRotationX(m_CameraRoll));
+        // Compute relative directions from yaw and pitch
+        XMVECTOR forward = XMVectorSet(cosf(m_CameraRoll) * sinf(m_CameraYaw), sinf(m_CameraRoll), cosf(m_CameraRoll) * cosf(m_CameraYaw), 0.0f);
+        XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);  
+        XMVECTOR right = XMVector3Normalize(XMVector3Cross(up, forward));
+        up = XMVector3Normalize(XMVector3Cross(forward, right));
 
         if (ImGui::IsKeyDown(ImGuiKey_W)) {
-            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) + (XMVector4Transform(XMVectorSet(0.0f, 0.0f, -1.0f, 0.0f), RotationMatrix) * m_cameraSpeed * static_cast<float>(e.ElapsedTime));
+            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) + forward * m_cameraSpeed * static_cast<float>(e.ElapsedTime);
             XMStoreFloat3(&m_cameraPos, newCamPos);
         }
         if (ImGui::IsKeyDown(ImGuiKey_A)) {
-            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) + (XMVector4Transform(XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f), RotationMatrix) * m_cameraSpeed * static_cast<float>(e.ElapsedTime));
+            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) - right * m_cameraSpeed * static_cast<float>(e.ElapsedTime);
             XMStoreFloat3(&m_cameraPos, newCamPos);
         }
         if (ImGui::IsKeyDown(ImGuiKey_S)) {
-            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) + (XMVector4Transform(XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f), RotationMatrix) * m_cameraSpeed * static_cast<float>(e.ElapsedTime));
+            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) - forward * m_cameraSpeed * static_cast<float>(e.ElapsedTime);
             XMStoreFloat3(&m_cameraPos, newCamPos);
         }
         if (ImGui::IsKeyDown(ImGuiKey_D)) {
-            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) + (XMVector4Transform(XMVectorSet(-1.0f, 0.0f, 0.0f, 0.0f), RotationMatrix) * m_cameraSpeed * static_cast<float>(e.ElapsedTime));
+            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) + right * m_cameraSpeed * static_cast<float>(e.ElapsedTime);
             XMStoreFloat3(&m_cameraPos, newCamPos);
         }
         if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl)) {
-            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) + (XMVector4Transform(XMVectorSet(0.0f, 1.0f, 0.0f, 1.0f), RotationMatrix) * m_cameraSpeed * static_cast<float>(e.ElapsedTime));
+            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) - up * m_cameraSpeed * static_cast<float>(e.ElapsedTime);
             XMStoreFloat3(&m_cameraPos, newCamPos);
         }
         if (ImGui::IsKeyDown(ImGuiKey_LeftShift)) {
-            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) + (XMVector4Transform(XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f), RotationMatrix) * m_cameraSpeed * static_cast<float>(e.ElapsedTime));
+            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) + up * m_cameraSpeed * static_cast<float>(e.ElapsedTime);
             XMStoreFloat3(&m_cameraPos, newCamPos);
         }
     }
-    m_CameraYaw -= ImGui::GetMouseDragDelta().x * m_CameraSensibility;
-    m_CameraRoll = std::clamp(m_CameraRoll - ImGui::GetMouseDragDelta().y * m_CameraSensibility, (float)-PI / 2.0f, (float)PI / 2.0f);
+    m_CameraYaw += ImGui::GetMouseDragDelta().x * m_CameraSensibility;
+    m_CameraRoll = std::clamp(m_CameraRoll - ImGui::GetMouseDragDelta().y * m_CameraSensibility, (float)-PI / 2.001f, (float)PI / 2.001f);
     ImGui::ResetMouseDragDelta();
 
 
@@ -626,17 +623,21 @@ void ViewDependentMeshletLoD::OnUpdate(UpdateEventArgs& e)
         }
 
         // Compute view matrix
-        float4x4 RotationMatrix = XMMatrixRotationY(m_CameraYaw + m_autoRotationOffset) * XMMatrixRotationX(m_CameraRoll);
-        float4x4 TranslationMatrix = XMMatrixTranslation(0.f, 0.0f, m_autoCameraDistance);
-        m_ViewMatrix = RotationMatrix * TranslationMatrix;
-        XMStoreFloat3(&m_cameraPos, XMVector4Transform(XMVectorSet(0.f, 0.0f, m_autoCameraDistance, 1.0f), XMMatrixTranspose(RotationMatrix)));
+        XMVECTOR forward = XMVectorSet(cosf(m_CameraRoll) * sinf(m_CameraYaw), sinf(m_CameraRoll), cosf(m_CameraRoll) * cosf(m_CameraYaw), 0.0f);
+        XMStoreFloat3(&m_cameraPos, -forward * m_autoCameraDistance);
+        m_ViewMatrix = XMMatrixLookAtLH(XMLoadFloat3(&m_cameraPos), XMVectorSet(0, 0, 0, 0), XMVectorSet(0, 1, 0, 0));
     }
     else
     {
-        // Compute view matrix
-        float4x4 RotationMatrix = XMMatrixRotationY(m_CameraYaw + m_autoRotationOffset) * XMMatrixRotationX(m_CameraRoll);
-        float4x4 TranslationMatrix = XMMatrixTranslation(m_cameraPos.x, m_cameraPos.y, m_cameraPos.z);
-        m_ViewMatrix = TranslationMatrix * RotationMatrix;
+        // Compute forward direction from yaw and pitch
+        XMVECTOR forward = XMVectorSet(cosf(m_CameraRoll) * sinf(m_CameraYaw), sinf(m_CameraRoll), cosf(m_CameraRoll) * cosf(m_CameraYaw), 0.0f);
+        // Normalize the forward vector
+        forward = XMVector3Normalize(forward);
+        // Load camera position into XMVECTOR
+        XMVECTOR eye = XMLoadFloat3(&m_cameraPos);
+        // Compute focus point (camera position + forward * distance)
+        XMVECTOR focus = XMVectorAdd(eye, forward);
+        m_ViewMatrix = XMMatrixLookAtLH(XMLoadFloat3(&m_cameraPos), focus, XMVectorSet(0, 1, 0, 0));
     }
 
 
@@ -646,9 +647,6 @@ void ViewDependentMeshletLoD::OnUpdate(UpdateEventArgs& e)
     m_ProjectionMatrix = XMMatrixPerspectiveFovLH(XMConvertToRadians(m_FoV), aspectRatio, 0.1f, 100000.0f);
 
     updateImGui();
-
-
-    
 }
 
 
@@ -717,9 +715,18 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     float scale_z = sqrtf(m._13 * m._13 + m._23 * m._23 + m._33 * m._33);
     constants.MaxScaleFactor_ViewProjMat = std::max(scale_x, std::max(scale_y, scale_z));
 
+    if (m_lockCameraShaderConstant)
+        constants.CameraWorldPos = m_lockedCameraPos;
+    else
+        constants.CameraWorldPos = m_cameraPos;
 
-    constants.CameraWorldPos = m_cameraPos;
-    constants.CoTanHalfFoV = m_LoDScale / std::tan(m_FoV / 2.0f);
+
+    OutputDebugString(("Camera Constant Position: ("
+        + std::to_string(constants.CameraWorldPos.x) + ", "
+        + std::to_string(constants.CameraWorldPos.y) + ", "
+        + std::to_string(constants.CameraWorldPos.z) + ")\n").c_str());
+    constants.CoTanHalfFoV = 1 / std::tan(m_FoV / 2.0f);
+    constants.LoD_Scale = m_LoDScale;
     constants.CurrTime = (float)m_totalRunTime;
     constants.shadingSelection = m_shadingMode;
     constants.BoolConstants = 0;
@@ -965,7 +972,11 @@ void ViewDependentMeshletLoD::updateImGui()
         ImGui::Checkbox("Meshlet based Frustum Culling", &m_frustumCulling);
         ImGui::Checkbox("Object Culling", &m_objectCulling);
         ImGui::Checkbox("Level Of Detail", &m_LoD_Enabled);
-        ImGui::SliderFloat("LoD Scale", &m_LoDScale, 0.001f, 10.0f);
+        ImGui::InputFloat("LoD_0 Distance", &m_LoDScale, 0.01f, 1.0f, "%.2f");
+        if (ImGui::Checkbox("Lock Camera Position Shader Constant", &m_lockCameraShaderConstant))
+        {
+            m_lockedCameraPos = m_cameraPos;
+        }
         ImGui::ColorEdit4("Clear Color", m_ClearColor);
         if (ImGui::Button("Toggle Fullscreen"))
         {

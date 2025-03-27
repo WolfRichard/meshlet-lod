@@ -94,8 +94,8 @@ void main(in uint I : SV_GroupIndex,
         }
         else if (constants.shadingSelection == DEBUG_LOD_SHADING)
         {
-           
-            verts[v].Color = Rainbow(payload_task.lod_tree_depth / 6.0) * brightness;
+            verts[v].Color = mul(float4(vertex.position.xyz, 1.0), scene_object.object_matrix);
+            //verts[v].Color = Rainbow(payload_task.lod_tree_depth / 6.0) * brightness;
         }
         else
         {

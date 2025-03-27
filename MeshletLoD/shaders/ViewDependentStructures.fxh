@@ -80,6 +80,7 @@ struct S_Constants
     
     float3 CameraWorldPos;
     float CoTanHalfFoV;
+    float LoD_Scale;
     
     float CurrTime;
     

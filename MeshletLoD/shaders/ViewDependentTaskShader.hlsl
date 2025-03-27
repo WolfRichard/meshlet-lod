@@ -81,9 +81,9 @@ float ExtractMaxScaleFactor(float4x4 m)
 }
 
 
-bool groupSimplificationIsPreciseEnough(S_BoundingSphere bounding_sphere) // bounding sphere must be in world space!
+bool groupSimplificationIsPreciseEnough(S_BoundingSphere bounding_sphere, uint lod_level) // bounding sphere must be in world space!
 {
-    
+    /*
     float3 pos = mul(float4(bounding_sphere.center, 1.0), constants.ViewMat).xyz;
     float dist2 = dot(pos, pos);
     
@@ -91,6 +91,12 @@ bool groupSimplificationIsPreciseEnough(S_BoundingSphere bounding_sphere) // bou
     float size = constants.CoTanHalfFoV * bounding_sphere.radius / sqrt(dist2 - bounding_sphere.radius * bounding_sphere.radius);
     
     return (size < 1.0 / 1280.0); // screen pixel count over FoV !!!!!! TODO: should be set in constants buffer !!!!!!!
+    */
+ 
+    
+    float cam_dist = max(distance(constants.CameraWorldPos, bounding_sphere.center) - bounding_sphere.radius, 0);
+    float lod_threshold = log2(cam_dist / constants.LoD_Scale);
+    return lod_level <= lod_threshold;
 }
 
 
@@ -100,7 +106,7 @@ void queueMeshletForDispatch(uint meshlet_index, uint object_index, float lod_bl
     S_BoundingSphere world_space_bounding_sphere;
     S_Meshlet current_meshlet = meshletBuffers[scene_object.mesh_id][meshlet_index];
     world_space_bounding_sphere.center = mul(float4(current_meshlet.bounding_sphere.center, 1.0), scene_object.object_matrix).xyz;
-    world_space_bounding_sphere.radius = length(mul(float4(current_meshlet.bounding_sphere.radius, 0, 0, 0), scene_object.object_matrix).xyz); // theoretically only considers scale in X-Axes so technically incorrect
+    world_space_bounding_sphere.radius = current_meshlet.bounding_sphere.radius * ExtractMaxScaleFactor(scene_object.object_matrix);
     if (isInFrustum(world_space_bounding_sphere.center, world_space_bounding_sphere.radius))
     {
         uint payload_index = 0;
@@ -177,7 +183,7 @@ void main(in uint I : SV_GroupIndex,
         world_space_bounding_sphere.radius = length(mul(float4(current_group.bounding_sphere.radius, 0, 0, 0), scene_object.object_matrix).xyz); // theoretically only considers scale in X-Axes so technically incorrect
         
         //dispatch simplified meshlets when simplification is precise enough
-        if (groupSimplificationIsPreciseEnough(world_space_bounding_sphere))
+        if (groupSimplificationIsPreciseEnough(world_space_bounding_sphere, current_group.hierarchy_tree_depth))
         {
             for (uint simplified_meshlet_group_index = 0; simplified_meshlet_group_index < GROUP_SPLIT_COUNT; simplified_meshlet_group_index++)
             {
