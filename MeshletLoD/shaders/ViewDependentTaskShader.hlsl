@@ -83,20 +83,9 @@ float ExtractMaxScaleFactor(float4x4 m)
 
 bool groupSimplificationIsPreciseEnough(S_BoundingSphere bounding_sphere, uint lod_level) // bounding sphere must be in world space!
 {
-    /*
-    float3 pos = mul(float4(bounding_sphere.center, 1.0), constants.ViewMat).xyz;
-    float dist2 = dot(pos, pos);
-    
-    // calculate the sphere size in screen space
-    float size = constants.CoTanHalfFoV * bounding_sphere.radius / sqrt(dist2 - bounding_sphere.radius * bounding_sphere.radius);
-    
-    return (size < 1.0 / 1280.0); // screen pixel count over FoV !!!!!! TODO: should be set in constants buffer !!!!!!!
-    */
- 
-    
     float cam_dist = max(distance(constants.CameraWorldPos, bounding_sphere.center) - bounding_sphere.radius, 0);
     float lod_threshold = log2(cam_dist / constants.LoD_Scale);
-    return lod_level <= lod_threshold;
+    return lod_level <= uint(lod_threshold);
 }
 
 
@@ -156,7 +145,7 @@ void main(in uint I : SV_GroupIndex,
     }
     GroupMemoryBarrierWithGroupSync();
     
-    
+    /*
     // object culling and extracting of root nodes into work queue
     for (uint scene_object_index = global_thread_index; scene_object_index < constants.SceneObjectCount; scene_object_index += PERSISTENT_THREAD_COUNT)
     {
@@ -187,7 +176,7 @@ void main(in uint I : SV_GroupIndex,
         {
             for (uint simplified_meshlet_group_index = 0; simplified_meshlet_group_index < GROUP_SPLIT_COUNT; simplified_meshlet_group_index++)
             {
-                queueMeshletForDispatch(current_group.simplified_meshlets[simplified_meshlet_group_index], current_task.scene_object_id, 0, current_group.hierarchy_tree_depth + 1); // TODO: LOD morphing not yet implemented !!!!!!!!!
+                queueMeshletForDispatch(current_group.simplified_meshlets[simplified_meshlet_group_index], current_task.scene_object_id, current_task.group_id, current_group.hierarchy_tree_depth + 1); // TODO: LOD morphing not yet implemented currently used for debug !!!!!!!!!
             }
         }
         // dispatch base meshlets when current group is a leaf node of the hierarchy tree
@@ -195,7 +184,7 @@ void main(in uint I : SV_GroupIndex,
         {
             for (uint base_meshlet_group_index = 0; base_meshlet_group_index < current_group.meshlet_count; base_meshlet_group_index++)
             {
-                queueMeshletForDispatch(current_group.meshlets[base_meshlet_group_index], current_task.scene_object_id, 0, current_group.hierarchy_tree_depth); // TODO:  LOD morphing not yet implemented !!!!!!!!!
+                queueMeshletForDispatch(current_group.meshlets[base_meshlet_group_index], current_task.scene_object_id, current_task.group_id, current_group.hierarchy_tree_depth); // TODO:  LOD morphing not yet implemented currently used for debug!!!!!!!!!
             }
         }
         // append child group into work queue if current simplification isnt precise enough and current group isnt a leaf node
@@ -210,6 +199,57 @@ void main(in uint I : SV_GroupIndex,
             }
         }
     }
+    */
+    
+    // debug test (rendering first object without tree traversal by evaluating every group simultaniously)
+    S_SceneObject scene_object = objectsBuffer[0];
+    if (global_thread_index < scene_object.mesh_group_count)
+    {
+        
+        S_MeshletGroup current_group = groupBuffers[scene_object.mesh_id][global_thread_index];
+        S_BoundingSphere world_space_bounding_sphere;
+        world_space_bounding_sphere.center = mul(float4(current_group.bounding_sphere.center, 1.0), scene_object.object_matrix).xyz;
+        world_space_bounding_sphere.radius = current_group.bounding_sphere.radius * ExtractMaxScaleFactor(scene_object.object_matrix); 
+        
+        bool parent_precise_enough = false;
+        bool simplified_precise_enough = groupSimplificationIsPreciseEnough(world_space_bounding_sphere, current_group.hierarchy_tree_depth + 1);
+        bool base_precise_enough = groupSimplificationIsPreciseEnough(world_space_bounding_sphere, current_group.hierarchy_tree_depth);
+        
+        
+        if (current_group.parent >= 0)
+        {
+            S_MeshletGroup parent_group = groupBuffers[scene_object.mesh_id][current_group.parent];
+            S_BoundingSphere parent_world_space_bounding_sphere;
+            parent_world_space_bounding_sphere.center = mul(float4(parent_group.bounding_sphere.center, 1.0), scene_object.object_matrix).xyz;
+            parent_world_space_bounding_sphere.radius = parent_group.bounding_sphere.radius * ExtractMaxScaleFactor(scene_object.object_matrix);
+        
+            parent_precise_enough = groupSimplificationIsPreciseEnough(parent_world_space_bounding_sphere, parent_group.hierarchy_tree_depth);
+        }
+        
+        if (!parent_precise_enough)
+        {
+            if (current_group.parent < 0 && simplified_precise_enough)
+            {
+                for (uint simplified_meshlet_group_index = 0; simplified_meshlet_group_index < GROUP_SPLIT_COUNT; simplified_meshlet_group_index++)
+                {
+                    queueMeshletForDispatch(current_group.simplified_meshlets[simplified_meshlet_group_index], 0, global_thread_index, current_group.hierarchy_tree_depth + 1); // TODO: LOD morphing not yet implemented currently used for debug !!!!!!!!!
+                }
+            }
+            else if (base_precise_enough || !current_group.childCount)
+            {
+                for (uint base_meshlet_group_index = 0; base_meshlet_group_index < current_group.meshlet_count; base_meshlet_group_index++)
+                {
+                    queueMeshletForDispatch(current_group.meshlets[base_meshlet_group_index], 0, global_thread_index, current_group.hierarchy_tree_depth); // TODO:  LOD morphing not yet implemented currently used for debug!!!!!!!!!
+                }
+            }
+        }
+
+    }
+    
+    
+    
+    
+    
     
     //after work queue is empty dispatch all collected meshlets
     GroupMemoryBarrierWithGroupSync();

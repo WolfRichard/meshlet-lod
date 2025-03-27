@@ -68,7 +68,9 @@ enum ShadingMode
 {
     DEFAULT_SHADING,
     DEBUG_MESHLET_SHADING,
-    DEBUG_LOD_SHADING
+    DEBUG_LOD_SHADING,
+    DEBUG_WORLD_POS,
+    DEBUG_MESHLET_GROUP
 };
 
 
@@ -128,7 +130,10 @@ struct S_SceneObject
     
     uint mesh_id;                       // the mesh of the object
     
-    uint root_group_id;
+    uint root_group_id; // could also be stored in seperate "mesh" buffer to avoid storing this multiple times per instance
+    uint mesh_group_count; // could also be stored in seperate "mesh" buffer to avoid storing this multiple times per instance
+    uint mesh_meshlet_count; // could also be stored in seperate "mesh" buffer to avoid storing this multiple times per instance
+    
     
     float2 byte_allignement;            // used to keep 16 byte allignement for structured buffer
 };

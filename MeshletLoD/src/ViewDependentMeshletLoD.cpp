@@ -575,7 +575,7 @@ void ViewDependentMeshletLoD::OnUpdate(UpdateEventArgs& e)
     if (m_freeCamera)
     {
         // Compute relative directions from yaw and pitch
-        XMVECTOR forward = XMVectorSet(cosf(m_CameraRoll) * sinf(m_CameraYaw), sinf(m_CameraRoll), cosf(m_CameraRoll) * cosf(m_CameraYaw), 0.0f);
+        XMVECTOR forward = XMVectorSet(cosf(m_CameraRoll) * sinf(m_CameraYaw - m_autoRotationOffset), sinf(m_CameraRoll), cosf(m_CameraRoll) * cosf(m_CameraYaw - m_autoRotationOffset), 0.0f);
         XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);  
         XMVECTOR right = XMVector3Normalize(XMVector3Cross(up, forward));
         up = XMVector3Normalize(XMVector3Cross(forward, right));
@@ -623,14 +623,14 @@ void ViewDependentMeshletLoD::OnUpdate(UpdateEventArgs& e)
         }
 
         // Compute view matrix
-        XMVECTOR forward = XMVectorSet(cosf(m_CameraRoll) * sinf(m_CameraYaw), sinf(m_CameraRoll), cosf(m_CameraRoll) * cosf(m_CameraYaw), 0.0f);
+        XMVECTOR forward = XMVectorSet(cosf(m_CameraRoll) * sinf(m_CameraYaw - m_autoRotationOffset), sinf(m_CameraRoll), cosf(m_CameraRoll) * cosf(m_CameraYaw - m_autoRotationOffset), 0.0f);
         XMStoreFloat3(&m_cameraPos, -forward * m_autoCameraDistance);
         m_ViewMatrix = XMMatrixLookAtLH(XMLoadFloat3(&m_cameraPos), XMVectorSet(0, 0, 0, 0), XMVectorSet(0, 1, 0, 0));
     }
     else
     {
         // Compute forward direction from yaw and pitch
-        XMVECTOR forward = XMVectorSet(cosf(m_CameraRoll) * sinf(m_CameraYaw), sinf(m_CameraRoll), cosf(m_CameraRoll) * cosf(m_CameraYaw), 0.0f);
+        XMVECTOR forward = XMVectorSet(cosf(m_CameraRoll) * sinf(m_CameraYaw - m_autoRotationOffset), sinf(m_CameraRoll), cosf(m_CameraRoll) * cosf(m_CameraYaw - m_autoRotationOffset), 0.0f);
         // Normalize the forward vector
         forward = XMVector3Normalize(forward);
         // Load camera position into XMVECTOR
@@ -1027,7 +1027,7 @@ void ViewDependentMeshletLoD::updateImGui()
         
         
         static int selected = 0;  // Index of the selected option
-        const char* options[] = { "Disable Debug Visals", "Show Meshlets", "Show LoDs"};
+        const char* options[] = { "Disable Debug Visals", "Show Meshlets", "Show LoDs", "World Position", "Show Meshlet Grouping"};
         for (int i = 0; i < IM_ARRAYSIZE(options); i++) {
             if (ImGui::RadioButton(options[i], selected == i)) {
                 selected = i;  // Update selection when clicked
