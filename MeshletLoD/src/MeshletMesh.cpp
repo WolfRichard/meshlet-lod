@@ -359,7 +359,8 @@ void MeshletMesh::addVertexBoneData(CustomVertex& vertex, int boneID, float weig
     }
 }
 
-// TODO: CHech if there is a solution without a map is possible by just using a vector to store the bones and use their index position as boneID (just a vector of their matrices)
+// TODO: Check if there is a solution without a map is possible by just using a vector to store the bones and use their index position as boneID (just a vector of their matrices)
+// also try to minimize copy opperations of matrices 
 
 void MeshletMesh::extractAssimpBoneData(std::vector<CustomVertex>& vertices, aiMesh* mesh, const aiScene* scene)
 {

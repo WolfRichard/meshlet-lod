@@ -9,15 +9,27 @@ using namespace DirectX;
 
 Scene::Scene()
 {
+    m_mesh_count            = 0;
+    m_total_meshlet_count   = 0;
+    m_totoal_triangle_count = 0;
+    m_total_vertex_count    = 0;
+    m_preProcessingTime     = m_preProcessingTime.zero();
 }
 
 void Scene::init(std::string file_path)
 {
+
+    
+
+    
     m_scene_objects.clear();
     for (auto mesh : m_meshes) delete mesh;
     m_meshes.clear();
 
+    auto benchmark_time_start = std::chrono::high_resolution_clock::now();
     loadScene(file_path);
+    auto benchmark_time_end = std::chrono::high_resolution_clock::now();
+    m_preProcessingTime = benchmark_time_end - benchmark_time_start;
 }
 
 
@@ -51,6 +63,13 @@ void Scene::processSceneNode(aiNode* node, const aiScene* scene, float4x4 parent
         so.mesh_group_count = (uint)m_meshes[so.mesh_id]->m_meshlet_groups.size();
         so.mesh_meshlet_count = (uint)m_meshes[so.mesh_id]->m_meshlets.size();
 
+        
+        m_total_meshlet_count   += (uint)m_meshes[so.mesh_id]->m_meshlets.size();
+        m_totoal_triangle_count += (uint)m_meshes[so.mesh_id]->m_original_indices.size() / 3;
+        m_total_vertex_count    += (uint)m_meshes[so.mesh_id]->m_vertices.size();
+
+
+
         m_scene_objects.push_back(so);
     }
 
@@ -83,6 +102,7 @@ void Scene::loadScene(std::string file_path)
         m_primitive_indices.push_back(&(m_meshes.back()->m_primitive_indices));
         m_meshlets.push_back(&(m_meshes.back()->m_meshlets));
         m_meshlet_groups.push_back(&(m_meshes.back()->m_meshlet_groups));
+        m_morph_indices.push_back(&(m_meshes.back())->m_morph_indices);
     }
     m_mesh_count = scene->mNumMeshes;
 

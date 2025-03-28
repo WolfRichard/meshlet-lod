@@ -461,6 +461,7 @@ void Mesh::simplifiyTopLevelGroups()
         {
             S_Meshlet& current_meshlet = m_meshlets[current_group.meshlets[m]]; 
             std::vector<unsigned char> vertex_indices_that_survived_simplification; // all indices into the local meshlet vertex_index array where the pointed at vertex is still part of the simplified group
+            
             for (unsigned char vi = 0; vi < current_meshlet.vertex_count; vi++)  // go over every vertex index  of the current meshlet
             {
                 uint vertex_index = m_vertex_indices[current_meshlet.vertex_offset + vi];   
@@ -479,7 +480,7 @@ void Mesh::simplifiyTopLevelGroups()
                 uint vertex_index = m_vertex_indices[current_meshlet.vertex_offset + vi];
                 S_Vertex current_vertex = m_vertices[vertex_index];
                 float min_dist2 = FLT_MAX;
-                char closest_parent_vertex_index;
+                unsigned char closest_parent_vertex_index = 0;
                 for (unsigned char vitss : vertex_indices_that_survived_simplification) // search for the closest local vertex_index that survived simplification
                 {
                     if (vitss == vi)
@@ -488,7 +489,8 @@ void Mesh::simplifiyTopLevelGroups()
                         min_dist2 = 0;
                         break;
                     }
-                    S_Vertex comparing_vertex = m_vertices[vitss];
+                    uint comparing_vertex_index = m_vertex_indices[current_meshlet.vertex_offset + vitss];
+                    S_Vertex comparing_vertex = m_vertices[comparing_vertex_index];
 
                     float dx = current_vertex.position.x - comparing_vertex.position.x;
                     float dy = current_vertex.position.y - comparing_vertex.position.y;
@@ -528,9 +530,6 @@ void Mesh::simplifiyTopLevelGroups()
 
         m_vertex_indices.insert(m_vertex_indices.end(), vertex_indices.begin(), vertex_indices.end());
         m_primitive_indices.insert(m_primitive_indices.end(), primitive_indices.begin(), primitive_indices.end());
-
-        
-       
 
         for (uint i = 0; i < meshlet_count; i++)
         {
@@ -577,7 +576,7 @@ void Mesh::finalTopLevelMeshletGrouping()
     m_current_hierarchy_top_level_groups.push_back((uint)m_meshlet_groups.size());
     m_meshlet_groups.push_back(getDefaultMeshletGroup());
     S_MeshletGroup& current_group = m_meshlet_groups.back();
-    current_group.hierarchy_tree_depth = m_hierarchy_per_level_group_count.size();
+    current_group.hierarchy_tree_depth = (uint)m_hierarchy_per_level_group_count.size();
 
 
     // set group child meshlets

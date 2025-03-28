@@ -76,14 +76,14 @@ private:
                                     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
                                     unsigned int descriptorSize);
 
-    void setupBindlessPrimitiveIndicesSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HANDLE& srvGpuHandle,
-                                                    D3D12_GPU_DESCRIPTOR_HANDLE& nextAvailableGpuSrvHandle,
-                                                    D3D12_CPU_DESCRIPTOR_HANDLE& nextAvailableCpuSrvHandle,
-                                                    std::vector<std::vector<unsigned char>*>& primitiveIndicesCpuBuffers,
-                                                    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& gpuBuffers,
-                                                    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
-                                                    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
-                                                    unsigned int descriptorSize);
+    void setupBindlessUCharToUIntSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HANDLE& srvGpuHandle,
+                                               D3D12_GPU_DESCRIPTOR_HANDLE& nextAvailableGpuSrvHandle,
+                                               D3D12_CPU_DESCRIPTOR_HANDLE& nextAvailableCpuSrvHandle,
+                                               std::vector<std::vector<unsigned char>*>& primitiveIndicesCpuBuffers,
+                                               std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& gpuBuffers,
+                                               std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
+                                               Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
+                                               unsigned int descriptorSize);
 
 
     // Helper functions
@@ -148,6 +148,7 @@ private:
     bool        m_objectCulling         = true;
     bool        m_LoD_Enabled           = true;
     float       m_LoDScale              = 1;
+    float       m_debugFloatSlider      = 0;
 
     // camera related variables
     float3      m_cameraPos             = float3(0, 0, 0);
@@ -171,8 +172,8 @@ private:
     std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_MeshletBuffers;
     std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_VertexIndicesBuffers;
     std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_PrimitiveIndicesBuffers;
+    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_MorphIndicesBuffers;
     std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_VertexBuffers;
-    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_MeshletGroupsBuffers;
     Microsoft::WRL::ComPtr<ID3D12Resource>              m_ObjectsBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource>              m_ConstantsBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource>              m_WorkQueueBuffer;
@@ -184,14 +185,12 @@ private:
     D3D12_GPU_DESCRIPTOR_HANDLE m_MeshletsSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_VertexIndicesSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_PrimitiveIndicesSrvHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_MorphIndicesSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_VerticesSrvHandle;
-    D3D12_GPU_DESCRIPTOR_HANDLE m_MeshletGroupsSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_ObjectsSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_WorkQueueSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_WorkQueueCountersSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_WorkQueueCountersClearValuesSrvHandle;
-
-
 
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
 

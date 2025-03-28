@@ -47,6 +47,8 @@ public:
     std::vector<uint>            m_hierarchy_per_level_group_count;
 
     S_BoundingSphere m_bounding_sphere;
+    std::vector<uint> m_original_indices; // indices of the mesh before simplification and meshlet generation
+
 
 private:
     std::pair<uint, uint> sortEdgeIndices(uint v0, uint v1);
@@ -68,7 +70,6 @@ private:
 
     
     
-    std::vector<uint> m_original_indices; // indices of the mesh before simplification and meshlet generation
     
     std::vector<uint> m_current_hierarchy_top_level_meshlets; // indices to the meshlets that are still beeing processed in the construction of the DAG
     std::vector<uint> m_current_hierarchy_top_level_groups; // indices to the groups that are still beeing processed in the construction of the DAG

@@ -12,8 +12,6 @@ RWStructuredBuffer<uint> workQueueCounters          : register(u1, space0);
 
 // bindless buffers
 StructuredBuffer<S_Meshlet> meshletBuffers[]        : register(t0, space1);
-StructuredBuffer<S_MeshletGroup> groupBuffers[]     : register(t0, space5);
-
 
 
 
@@ -25,7 +23,6 @@ void appendTask(S_WorkQueueEntry new_task)
 }
 
 
-// TODO: POSIBLE RACE CONDITION! should swap to InterlockedCompareExchange() instead!!!!!!!!!!!!!!!!!!!!!!!!!1
 bool consumeTask(out S_WorkQueueEntry out_task)
 {
     uint task_index, prev_index;
@@ -96,7 +93,7 @@ bool errorLessThanPixel(S_BoundingSphere bounding_sphere) // bounding sphere mus
     float sphere_diameter_uv = max(constants.ProjMat[0][0], constants.ProjMat[1][1]) * bounding_sphere.radius / sqrt(d2 - r2);
     float view_size = max(constants.ScreenWidth, constants.ScreenHeight);
     float sphere_diameter_pixels = sphere_diameter_uv * view_size;
-    return sphere_diameter_pixels < 1.0;
+    return sphere_diameter_pixels < constants.LoD_Scale; //    1.0;
 }
 
 void queueMeshletForDispatch(uint meshlet_index, uint object_index, float lod_blend_value, uint lod_depth)
@@ -121,32 +118,7 @@ void queueMeshletForDispatch(uint meshlet_index, uint object_index, float lod_bl
 void main(in uint I : SV_GroupIndex,
           in uint wg : SV_GroupID)
 {
-    uint global_thread_index = I + wg * GROUP_SIZE;
-   
-    
-    // debug (render most simplified meshlets)
-    /*
-    if (I == 0)
-    {
-        gs_MeshletCount = 0;
-    }
-    GroupMemoryBarrierWithGroupSync();
-    
-    
-    if (global_thread_index == 0)
-    {
-        S_SceneObject s_o = objectsBuffer[0];
-        S_MeshletGroup root_group = groupBuffers[s_o.mesh_id][s_o.root_group_id];
-        queueMeshletForDispatch(root_group.simplified_meshlets[0], 0, 0);
-        queueMeshletForDispatch(root_group.simplified_meshlets[1], 0, 0);
-    }
-  
-    GroupMemoryBarrierWithGroupSync();
-    DispatchMesh(gs_MeshletCount, 1, 1, gs_Payload);
-    return;
-    */
-
-    
+    uint global_thread_index = I + wg * GROUP_SIZE; 
     
    // Reset the group shared counter variables from the first thread in the group
     if (I == 0)
@@ -154,6 +126,8 @@ void main(in uint I : SV_GroupIndex,
         gs_MeshletCount = 0;
     }
     GroupMemoryBarrierWithGroupSync();
+    
+    //TODO: re-enable code for tree travesal instead of simultaniously processing all meshlets
     
     /*
     // object culling and extracting of root nodes into work queue

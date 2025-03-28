@@ -104,6 +104,8 @@ struct S_Constants
     
     float MaxScaleFactor_ViewProjMat;
     
+    float DebugFloatSliderValue;
+    
     uint SceneObjectCount;
     
     ShadingMode shadingSelection;

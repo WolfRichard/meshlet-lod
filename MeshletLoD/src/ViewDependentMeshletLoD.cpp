@@ -240,15 +240,15 @@ void ViewDependentMeshletLoD::setupBindlessSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HA
     }
 }
 
-// compatible with tight packing of 4 chars into unsigned integers
-void ViewDependentMeshletLoD::setupBindlessPrimitiveIndicesSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HANDLE& srvGpuHandle,
-                                                                         D3D12_GPU_DESCRIPTOR_HANDLE& nextAvailableGpuSrvHandle,
-                                                                         D3D12_CPU_DESCRIPTOR_HANDLE& nextAvailableCpuSrvHandle,
-                                                                         std::vector<std::vector<unsigned char>*>& primitiveIndicesCpuBuffers,
-                                                                         std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& gpuBuffers,
-                                                                         std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
-                                                                         Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
-                                                                         unsigned int descriptorSize)
+// compatible with tight packing of 4 chars into 1 unsigned integers
+void ViewDependentMeshletLoD::setupBindlessUCharToUIntSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HANDLE& srvGpuHandle,
+                                                                    D3D12_GPU_DESCRIPTOR_HANDLE& nextAvailableGpuSrvHandle,
+                                                                    D3D12_CPU_DESCRIPTOR_HANDLE& nextAvailableCpuSrvHandle,
+                                                                    std::vector<std::vector<unsigned char>*>& primitiveIndicesCpuBuffers,
+                                                                    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& gpuBuffers,
+                                                                    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
+                                                                    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
+                                                                    unsigned int descriptorSize)
 {
     auto device = Application::Get().GetDevice();
     srvGpuHandle = nextAvailableGpuSrvHandle;
@@ -296,7 +296,7 @@ bool ViewDependentMeshletLoD::LoadContent()
                                + 1                           // single work queue counter buffer
                                + 1                           // single work queue counter clear values buffer
                                + (uint)m_scene.m_mesh_count  // meshlets buffer per unique mesh
-                               + (uint)m_scene.m_mesh_count  // meshlet groups buffer per unique mesh
+                               + (uint)m_scene.m_mesh_count  // morph indices buffer per unique mesh
                                + (uint)m_scene.m_mesh_count  // vertex indices buffer per unique mesh
                                + (uint)m_scene.m_mesh_count  // primitive indices buffer per unique mesh
                                + (uint)m_scene.m_mesh_count; // vertex buffer per unique mesh
@@ -329,10 +329,16 @@ bool ViewDependentMeshletLoD::LoadContent()
                                copyBuffers, commandList, descriptorSize);
 
     // primitive-indices buffers 
-    setupBindlessPrimitiveIndicesSrvAndBuffers(m_PrimitiveIndicesSrvHandle,
-                                               nextGpuSrvHandle, nextCpuSrvHandle,
-                                               m_scene.m_primitive_indices, m_PrimitiveIndicesBuffers,
-                                               copyBuffers, commandList, descriptorSize);
+    setupBindlessUCharToUIntSrvAndBuffers(m_PrimitiveIndicesSrvHandle,
+                                          nextGpuSrvHandle, nextCpuSrvHandle,
+                                          m_scene.m_primitive_indices, m_PrimitiveIndicesBuffers,
+                                          copyBuffers, commandList, descriptorSize);
+
+    // morph-indices buffers
+    setupBindlessUCharToUIntSrvAndBuffers(m_MorphIndicesSrvHandle,
+                                          nextGpuSrvHandle, nextCpuSrvHandle,
+                                          m_scene.m_morph_indices, m_MorphIndicesBuffers,
+                                          copyBuffers, commandList, descriptorSize);
 
     // meshlets buffers
     setupBindlessSrvAndBuffers(m_MeshletsSrvHandle,
@@ -340,11 +346,6 @@ bool ViewDependentMeshletLoD::LoadContent()
                                m_scene.m_meshlets, m_MeshletBuffers,
                                copyBuffers, commandList, descriptorSize);    
 
-    // meshlet groups buffers
-    setupBindlessSrvAndBuffers(m_MeshletGroupsSrvHandle,
-                               nextGpuSrvHandle, nextCpuSrvHandle,
-                               m_scene.m_meshlet_groups, m_MeshletGroupsBuffers,
-                               copyBuffers, commandList, descriptorSize);
 
     // scene objects buffer
     setupSrvAndBuffer(m_ObjectsSrvHandle,
@@ -421,10 +422,10 @@ bool ViewDependentMeshletLoD::LoadContent()
     srvMeshletsRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_mesh_count, 0, 1);
     rootParameters[4].InitAsDescriptorTable(1, &srvMeshletsRange, D3D12_SHADER_VISIBILITY_ALL);
 
-    // meshlet groups
-    CD3DX12_DESCRIPTOR_RANGE1 srvMeshletGroupsRange;
-    srvMeshletGroupsRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_mesh_count, 0, 5);
-    rootParameters[5].InitAsDescriptorTable(1, &srvMeshletGroupsRange, D3D12_SHADER_VISIBILITY_AMPLIFICATION);
+    // morph indices
+    CD3DX12_DESCRIPTOR_RANGE1 srvMorphIndicesRange;
+    srvMorphIndicesRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_mesh_count, 0, 5);
+    rootParameters[5].InitAsDescriptorTable(1, &srvMorphIndicesRange, D3D12_SHADER_VISIBILITY_MESH);
 
     // scene objects
     rootParameters[6].InitAsShaderResourceView(0, 0);
@@ -531,7 +532,7 @@ void ViewDependentMeshletLoD::UnloadContent()
     m_VertexIndicesBuffers.clear();
     m_PrimitiveIndicesBuffers.clear();
     m_VertexBuffers.clear();
-    m_MeshletGroupsBuffers.clear();
+    m_MorphIndicesBuffers.clear();
     m_ObjectsBuffer.Reset();
     m_ConstantsBuffer.Reset();
     m_WorkQueueBuffer.Reset();
@@ -735,6 +736,7 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     constants.shadingSelection = m_shadingMode;
     constants.BoolConstants = 0;
     constants.SceneObjectCount = (uint)m_scene.m_scene_objects.size();
+    constants.DebugFloatSliderValue = m_debugFloatSlider;
     if (m_frustumCulling) constants.BoolConstants |= FRUSTUM_CULLING_BIT_POS;
     
     memcpy(m_mappedConstantData, &constants, sizeof(S_Constants));
@@ -770,8 +772,8 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     commandList->SetGraphicsRootDescriptorTable(3, m_PrimitiveIndicesSrvHandle);
     // set bindless meshlet buffers
     commandList->SetGraphicsRootDescriptorTable(4, m_MeshletsSrvHandle);
-    // set bindless meshlet groups buffers
-    commandList->SetGraphicsRootDescriptorTable(5, m_MeshletGroupsSrvHandle);
+    // set bindless morph indices buffers
+    commandList->SetGraphicsRootDescriptorTable(5, m_MorphIndicesSrvHandle);
     // set scene objects buffer
     commandList->SetGraphicsRootShaderResourceView(6, m_ObjectsBuffer.Get()->GetGPUVirtualAddress());
     // set work queue buffer
@@ -977,6 +979,7 @@ void ViewDependentMeshletLoD::updateImGui()
         ImGui::Checkbox("Object Culling", &m_objectCulling);
         ImGui::Checkbox("Level Of Detail", &m_LoD_Enabled);
         ImGui::InputFloat("LoD_0 Distance", &m_LoDScale, 0.01f, 1.0f, "%.2f");
+        ImGui::SliderFloat("Debug Float", &m_debugFloatSlider, 0.0f, 1.0f, "%.2f");
         if (ImGui::Checkbox("Lock Camera Position Shader Constant", &m_lockCameraShaderConstant))
         {
             m_lockedCameraPos = m_cameraPos;
@@ -1029,7 +1032,6 @@ void ViewDependentMeshletLoD::updateImGui()
         ImGui::SameLine();
         if (ImGui::Checkbox("Back Face Culling", &m_backFaceCulling)) createPSO();
         
-        
         static int selected = 0;  // Index of the selected option
         const char* options[] = { "Disable Debug Visals", "Show Meshlets", "Show LoDs", "World Position", "Show Meshlet Grouping", "Show Individual Vertices"};
         for (int i = 0; i < IM_ARRAYSIZE(options); i++) {
@@ -1041,8 +1043,6 @@ void ViewDependentMeshletLoD::updateImGui()
         
         if (ImGui::Button("Force Lag"))
             Sleep(1000);
-        
-        
     }
     ImGui::Spacing();
 
@@ -1067,17 +1067,11 @@ void ViewDependentMeshletLoD::updateImGui()
     {
         ImGui::Text("scene  objects count: %d", (unsigned int)m_scene.m_scene_objects.size());
         ImGui::Text("unique  meshes count: %d", (unsigned int)m_scene.m_mesh_count);
-
-
-        if (!ImGui::CollapsingHeader("Scene Processing Times"))
-        {
-            ImGui::Text("model load time:         %.4f sec", 0);
-            ImGui::Text("LoD generation time:     %.4f sec", 0);
-            ImGui::Text("meshlet generation time: %.4f sec", 0);
-            ImGui::Separator();
-            ImGui::Text("total load time:         %.4f sec", 0);
-        }
-
+        ImGui::Text("total  meshlet count: %d", (unsigned int)m_scene.m_total_meshlet_count);
+        ImGui::Text("total   vertex count: %d", (unsigned int)m_scene.m_total_vertex_count);
+        ImGui::Text("total triangle count: %d", (unsigned int)m_scene.m_totoal_triangle_count);
+        ImGui::Separator();
+        ImGui::Text("pre-processing  time: %.4f sec", m_scene.m_preProcessingTime);
     }
 
     ImGui::End();
