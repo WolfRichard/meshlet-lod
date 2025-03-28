@@ -17,6 +17,9 @@
 #define MAX_MESHLET_PRIMITIVE_COUNT 254
 
 #define PI 3.1415927
+#ifndef FLT_MAX
+    #define FLT_MAX 3.402823466e+38
+#endif
 
 struct S_BoundingSphere
 {
@@ -34,6 +37,13 @@ struct S_Meshlet
     uint triangle_count;    // how many primitives does the meshlet consists of
     uint vertex_offset;
     uint triangle_offset;   // offset to the first triangle of the meshlet (offset is counted in indices not triangles !!!)
+    
+    S_BoundingSphere simplified_group_bounds;
+    float base_error;           // if the meshlet is a sub-mesh of the original geometry this is set to 0
+    float simplification_error; // (parent error) if meshlet has no parent because its part of the root then this is set to FLOAT_MAX
+    uint discrete_level_of_detail;
+    
+    float byte_allignement; // used to keep 16 byte allignement for structured buffer
 };
 
 
@@ -78,6 +88,7 @@ struct S_Constants
 {
     float4x4 ViewProjMat;
     float4x4 ViewMat;
+    float4x4 ProjMat;
     float4 Frustum[6];
     
     float3 CameraWorldPos;
@@ -85,6 +96,8 @@ struct S_Constants
     float LoD_Scale;
     
     float CurrTime;
+    uint ScreenWidth; // in pixels
+    uint ScreenHeight; // in pixels
     
     float MaxScaleFactor_ViewProjMat;
     

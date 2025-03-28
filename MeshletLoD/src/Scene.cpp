@@ -49,6 +49,7 @@ void Scene::processSceneNode(aiNode* node, const aiScene* scene, float4x4 parent
         so.bounding_sphere.radius = m_meshes[so.mesh_id]->m_bounding_sphere.radius * maxScale;
         so.root_group_id = m_meshes[so.mesh_id]->m_hierarchy_root_group;
         so.mesh_group_count = (uint)m_meshes[so.mesh_id]->m_meshlet_groups.size();
+        so.mesh_meshlet_count = (uint)m_meshes[so.mesh_id]->m_meshlets.size();
 
         m_scene_objects.push_back(so);
     }

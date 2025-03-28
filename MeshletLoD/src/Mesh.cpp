@@ -126,6 +126,9 @@ void Mesh::generateLeafMeshlets()
     dummyMeshlet.triangle_offset = 0;
     dummyMeshlet.vertex_count = 0;
     dummyMeshlet.vertex_offset = 0;
+    dummyMeshlet.base_error = 0;
+    dummyMeshlet.simplification_error = FLT_MAX;
+    dummyMeshlet.bounding_sphere = { float3(0, 0, 0), 0 };
 
     m_meshlets.push_back(dummyMeshlet);
 
@@ -136,7 +139,9 @@ void Mesh::generateLeafMeshlets()
         newMeshlet.triangle_offset = meshlets[i].triangle_offset;
         newMeshlet.vertex_count = meshlets[i].vertex_count;
         newMeshlet.vertex_offset = meshlets[i].vertex_offset;
-
+        newMeshlet.base_error = 0;
+        newMeshlet.simplification_error = FLT_MAX;
+        newMeshlet.simplified_group_bounds = { float3(0, 0, 0), 0 };
 
         meshopt_Bounds bounds = meshopt_computeMeshletBounds(&m_vertex_indices[newMeshlet.vertex_offset],
             &m_primitive_indices[newMeshlet.triangle_offset],
@@ -179,6 +184,17 @@ void Mesh::buildMeshletHierachy()
     for (uint count : m_hierarchy_per_level_group_count) OutputDebugString((std::to_string(count) + ", ").c_str());
     findParentsItterative();
     OutputDebugString("\n\n");
+
+    
+    for (S_MeshletGroup& current_group : m_meshlet_groups)
+    {
+        for (uint m = 0; m < current_group.meshlet_count; m++)
+        {
+            S_Meshlet& current_meshlet = m_meshlets[current_group.meshlets[m]];
+            current_meshlet.discrete_level_of_detail = current_group.hierarchy_tree_depth;
+        }
+    }
+    
 }
 
 
@@ -200,21 +216,18 @@ void Mesh::groupMeshlets()
     std::vector<std::unordered_set<std::pair<uint, uint>, PairHash>> meshlet_edges;
     for (auto meshlet_index : m_current_hierarchy_top_level_meshlets)
     {
-        S_Meshlet meshlet = m_meshlets[meshlet_index];
-        meshlet_edges.push_back(extractEdges(meshlet));
+        meshlet_edges.push_back(extractEdges(m_meshlets[meshlet_index]));
     }
     std::vector<std::vector<uint>> connectivity_matrix;
 
     for (uint a = 0; a < m_current_hierarchy_top_level_meshlets.size(); a++)
     {
         uint meshlet_A_index = m_current_hierarchy_top_level_meshlets[a];
-        S_Meshlet meshlet_A = m_meshlets[meshlet_A_index];
         connectivity_matrix.push_back(std::vector<uint>());
         MATIS_nodeAdjacencyOffsets.push_back((int)MATIS_adjacencyList.size());
         for (uint b = 0; b < m_current_hierarchy_top_level_meshlets.size(); b++)
         {
             uint meshlet_B_index = m_current_hierarchy_top_level_meshlets[b];
-            S_Meshlet meshlet_B = m_meshlets[meshlet_B_index];
             if (meshlet_A_index == meshlet_B_index)
             {
                 connectivity_matrix.back().push_back(0);
@@ -309,7 +322,7 @@ void Mesh::groupMeshlets()
         m_current_hierarchy_top_level_groups.push_back((uint)m_meshlet_groups.size());
         m_meshlet_groups.push_back(getDefaultMeshletGroup());
         S_MeshletGroup& current_group = m_meshlet_groups.back();
-        current_group.hierarchy_tree_depth = m_hierarchy_per_level_group_count.size();
+        current_group.hierarchy_tree_depth = (uint)m_hierarchy_per_level_group_count.size();
 
         // set group child meshlets
         current_group.meshlet_count = 0;
@@ -380,11 +393,11 @@ void Mesh::simplifiyTopLevelGroups()
         for (uint m = 0; m < current_group.meshlet_count; m++)
         {
             S_Meshlet& current_meshlet = m_meshlets[current_group.meshlets[m]];
-            /*
+            
             current_group.bounding_sphere.center.x += current_meshlet.bounding_sphere.center.x;
             current_group.bounding_sphere.center.y += current_meshlet.bounding_sphere.center.y;
             current_group.bounding_sphere.center.z += current_meshlet.bounding_sphere.center.z;
-            */
+            
             meshlet_bounding_spheres.push_back(current_meshlet.bounding_sphere);
 
             for (uint i = 0; i < current_meshlet.triangle_count * 3; i++) 
@@ -393,12 +406,25 @@ void Mesh::simplifiyTopLevelGroups()
             }
         }
         // average out the bounding sphere centers of chid meshlets to get approximateion for group center
-        /*
+        
         current_group.bounding_sphere.center.x /= current_group.meshlet_count;
         current_group.bounding_sphere.center.y /= current_group.meshlet_count;
         current_group.bounding_sphere.center.z /= current_group.meshlet_count;
-        */
-        current_group.bounding_sphere = computeBoundingSphereRitter(meshlet_bounding_spheres);
+
+        current_group.bounding_sphere.radius = 0;
+        for (uint m = 0; m < current_group.meshlet_count; m++)
+        {
+            S_Meshlet& current_meshlet = m_meshlets[current_group.meshlets[m]];
+            float dx = current_group.bounding_sphere.center.x - current_meshlet.bounding_sphere.center.x;
+            float dy = current_group.bounding_sphere.center.y - current_meshlet.bounding_sphere.center.y;
+            float dz = current_group.bounding_sphere.center.z - current_meshlet.bounding_sphere.center.z;
+
+            float dist = sqrtf(dx * dx + dy * dy + dz * dz) + current_meshlet.bounding_sphere.radius;
+            current_group.bounding_sphere.radius = current_group.bounding_sphere.radius < dist ? dist : current_group.bounding_sphere.radius;
+        }
+         
+        
+        //current_group.bounding_sphere = computeBoundingSphereRitter(meshlet_bounding_spheres);
 
         // simplify the meshlet group to have enough space to hold 2 meshlets
         size_t target_index_count = GROUP_SPLIT_COUNT * MAX_MESHLET_VERTEX_COUNT * 3; //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! should be "GROUP_SPLIT_COUNT * MAX_MESHLET_PRIMITIVE_COUNT * 3", but that would blow past the vertex limit and generate to many meshlets
@@ -410,8 +436,22 @@ void Mesh::simplifiyTopLevelGroups()
             target_index_count, FLT_MAX, meshopt_SimplifyLockBorder & meshopt_SimplifyErrorAbsolute, &lod_error);
         simplified_indices.resize(simplifiedIndexCount);
         //current_group.bounding_sphere.radius = lod_error;
-    
         
+        // set base error line for simplified meshlets aas highest error from base meshlets
+        float collective_base_meshlet_error = 0;
+        for (uint m = 0; m < current_group.meshlet_count; m++)
+        {
+            S_Meshlet& current_meshlet = m_meshlets[current_group.meshlets[m]];
+            collective_base_meshlet_error = max(current_meshlet.base_error, collective_base_meshlet_error);
+        }
+        collective_base_meshlet_error += lod_error;
+        // set simplified error for base meshlets
+        for (uint m = 0; m < current_group.meshlet_count; m++)
+        {
+            S_Meshlet& current_meshlet = m_meshlets[current_group.meshlets[m]];
+            current_meshlet.simplification_error = collective_base_meshlet_error;
+            current_meshlet.simplified_group_bounds = current_group.bounding_sphere;
+        }
 
         // generate new meshlets on simplified geometry
 
@@ -438,6 +478,9 @@ void Mesh::simplifiyTopLevelGroups()
         m_vertex_indices.insert(m_vertex_indices.end(), vertex_indices.begin(), vertex_indices.end());
         m_primitive_indices.insert(m_primitive_indices.end(), primitive_indices.begin(), primitive_indices.end());
 
+        
+       
+
         for (uint i = 0; i < meshlet_count; i++)
         {
             S_Meshlet newMeshlet;
@@ -445,6 +488,9 @@ void Mesh::simplifiyTopLevelGroups()
             newMeshlet.triangle_offset = meshlets[i].triangle_offset + previous_primitive_indices_size;
             newMeshlet.vertex_count = meshlets[i].vertex_count;
             newMeshlet.vertex_offset = meshlets[i].vertex_offset + previous_vertex_indices_size;
+            newMeshlet.base_error = collective_base_meshlet_error;
+            newMeshlet.simplification_error = FLT_MAX;
+            newMeshlet.simplified_group_bounds = { float3(0, 0, 0), 0 };
 
             meshopt_Bounds bounds = meshopt_computeMeshletBounds(&m_vertex_indices[newMeshlet.vertex_offset],
                 &m_primitive_indices[newMeshlet.triangle_offset],
@@ -456,9 +502,13 @@ void Mesh::simplifiyTopLevelGroups()
             newMeshlet.bounding_sphere.center = float3(bounds.center[0], bounds.center[1], bounds.center[2]);
             newMeshlet.bounding_sphere.radius = bounds.radius;
 
+            newMeshlet.bounding_sphere = current_group.bounding_sphere; // !!!!!!!!!!!!!!!!!?
+
             m_current_hierarchy_top_level_meshlets.push_back((uint)m_meshlets.size());
 
             current_group.simplified_meshlets[i] = (uint)m_meshlets.size();
+
+
 
             m_meshlets.push_back(newMeshlet);
         }

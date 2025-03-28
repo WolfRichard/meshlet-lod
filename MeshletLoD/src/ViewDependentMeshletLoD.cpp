@@ -692,9 +692,13 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     XMMATRIX mvpMatrix = XMMatrixTranspose(m_ViewMatrix * m_ProjectionMatrix);
     S_Constants constants;
 
+
     constants.ViewProjMat = mvpMatrix;
 
-    
+
+    constants.ProjMat = XMMatrixTranspose(m_ProjectionMatrix);
+    constants.ScreenWidth = GetClientWidth();
+    constants.ScreenHeight = GetClientHeight();
 
 
     constants.ViewMat = XMMatrixTranspose(m_ViewMatrix);

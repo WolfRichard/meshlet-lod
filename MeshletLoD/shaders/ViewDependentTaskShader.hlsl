@@ -81,13 +81,23 @@ float ExtractMaxScaleFactor(float4x4 m)
 }
 
 
-bool groupSimplificationIsPreciseEnough(S_BoundingSphere bounding_sphere, uint lod_level) // bounding sphere must be in world space!
+bool groupSimplificationIsPreciseEnough(S_BoundingSphere bounding_sphere, float lod_error) // bounding sphere must be in world space!
 {
     float cam_dist = max(distance(constants.CameraWorldPos, bounding_sphere.center) - bounding_sphere.radius, 0);
-    float lod_threshold = log2(cam_dist / constants.LoD_Scale);
-    return lod_level <= uint(lod_threshold);
+    //float cam_dist = distance(constants.CameraWorldPos, bounding_sphere.center);
+    float lod_threshold = max(log2(cam_dist / constants.LoD_Scale), 0);
+    return lod_error <= lod_threshold;
 }
 
+bool errorLessThanPixel(S_BoundingSphere bounding_sphere) // bounding sphere must be in clip space
+{
+    float d2 = dot(bounding_sphere.center, bounding_sphere.center);
+    float r2 = bounding_sphere.radius * bounding_sphere.radius;
+    float sphere_diameter_uv = max(constants.ProjMat[0][0], constants.ProjMat[1][1]) * bounding_sphere.radius / sqrt(d2 - r2);
+    float view_size = max(constants.ScreenWidth, constants.ScreenHeight);
+    float sphere_diameter_pixels = sphere_diameter_uv * view_size;
+    return sphere_diameter_pixels < 1.0;
+}
 
 void queueMeshletForDispatch(uint meshlet_index, uint object_index, float lod_blend_value, uint lod_depth)
 {
@@ -201,49 +211,32 @@ void main(in uint I : SV_GroupIndex,
     }
     */
     
-    // debug test (rendering first object without tree traversal by evaluating every group simultaniously)
+    // debug test (rendering first object without tree traversal by evaluating every meshlet simultaniously)
     S_SceneObject scene_object = objectsBuffer[0];
-    if (global_thread_index < scene_object.mesh_group_count)
+    if (global_thread_index < scene_object.mesh_meshlet_count)
     {
+        float world_scale = ExtractMaxScaleFactor(scene_object.object_matrix);
         
-        S_MeshletGroup current_group = groupBuffers[scene_object.mesh_id][global_thread_index];
-        S_BoundingSphere world_space_bounding_sphere;
-        world_space_bounding_sphere.center = mul(float4(current_group.bounding_sphere.center, 1.0), scene_object.object_matrix).xyz;
-        world_space_bounding_sphere.radius = current_group.bounding_sphere.radius * ExtractMaxScaleFactor(scene_object.object_matrix); 
-        
-        bool parent_precise_enough = false;
-        bool simplified_precise_enough = groupSimplificationIsPreciseEnough(world_space_bounding_sphere, current_group.hierarchy_tree_depth + 1);
-        bool base_precise_enough = groupSimplificationIsPreciseEnough(world_space_bounding_sphere, current_group.hierarchy_tree_depth);
+        S_Meshlet current_meshlet = meshletBuffers[scene_object.mesh_id][global_thread_index];
+        S_BoundingSphere base_bounding_sphere;
+        base_bounding_sphere.center = mul(float4(current_meshlet.bounding_sphere.center, 1.0), scene_object.object_matrix).xyz; // object --> world space
+        base_bounding_sphere.radius = current_meshlet.base_error * world_scale;
+        base_bounding_sphere.center = mul(float4(base_bounding_sphere.center, 1), constants.ViewMat).xyz; // world --> clip space
         
         
-        if (current_group.parent >= 0)
-        {
-            S_MeshletGroup parent_group = groupBuffers[scene_object.mesh_id][current_group.parent];
-            S_BoundingSphere parent_world_space_bounding_sphere;
-            parent_world_space_bounding_sphere.center = mul(float4(parent_group.bounding_sphere.center, 1.0), scene_object.object_matrix).xyz;
-            parent_world_space_bounding_sphere.radius = parent_group.bounding_sphere.radius * ExtractMaxScaleFactor(scene_object.object_matrix);
+        S_BoundingSphere simplified_bounding_sphere;
+        simplified_bounding_sphere.center = mul(float4(current_meshlet.simplified_group_bounds.center, 1.0), scene_object.object_matrix).xyz; // object --> world space
+        simplified_bounding_sphere.radius = current_meshlet.simplification_error * world_scale;
+        simplified_bounding_sphere.center = mul(float4(simplified_bounding_sphere.center, 1), constants.ViewMat).xyz; // world --> clip space
         
-            parent_precise_enough = groupSimplificationIsPreciseEnough(parent_world_space_bounding_sphere, parent_group.hierarchy_tree_depth);
-        }
+        bool parent_precise_enough = errorLessThanPixel(simplified_bounding_sphere);
+        bool base_precise_enough = errorLessThanPixel(base_bounding_sphere);
         
-        if (!parent_precise_enough)
-        {
-            if (current_group.parent < 0 && simplified_precise_enough)
-            {
-                for (uint simplified_meshlet_group_index = 0; simplified_meshlet_group_index < GROUP_SPLIT_COUNT; simplified_meshlet_group_index++)
-                {
-                    queueMeshletForDispatch(current_group.simplified_meshlets[simplified_meshlet_group_index], 0, global_thread_index, current_group.hierarchy_tree_depth + 1); // TODO: LOD morphing not yet implemented currently used for debug !!!!!!!!!
-                }
-            }
-            else if (base_precise_enough || !current_group.childCount)
-            {
-                for (uint base_meshlet_group_index = 0; base_meshlet_group_index < current_group.meshlet_count; base_meshlet_group_index++)
-                {
-                    queueMeshletForDispatch(current_group.meshlets[base_meshlet_group_index], 0, global_thread_index, current_group.hierarchy_tree_depth); // TODO:  LOD morphing not yet implemented currently used for debug!!!!!!!!!
-                }
-            }
-        }
 
+        if (!parent_precise_enough && base_precise_enough)
+        {
+            queueMeshletForDispatch(global_thread_index, 0, 0, current_meshlet.discrete_level_of_detail);
+        }
     }
     
     
