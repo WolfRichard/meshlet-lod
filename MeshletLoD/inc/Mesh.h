@@ -62,7 +62,7 @@ private:
     S_MeshletGroup getDefaultMeshletGroup();
     void printTreeFromTop(uint current_group_index);
     void printAllMeshlets();
-    S_BoundingSphere computeBoundingSphereRitter(std::vector<S_BoundingSphere>& bounding_spheres);
+    S_BoundingSphere computeGroupBoundingSphere(S_MeshletGroup& meshlet_group);
 
 
     

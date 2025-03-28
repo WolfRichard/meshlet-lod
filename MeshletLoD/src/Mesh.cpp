@@ -423,7 +423,7 @@ void Mesh::simplifiyTopLevelGroups()
             current_group.bounding_sphere.radius = current_group.bounding_sphere.radius < dist ? dist : current_group.bounding_sphere.radius;
         }
          
-        
+        computeGroupBoundingSphere(current_group);
         //current_group.bounding_sphere = computeBoundingSphereRitter(meshlet_bounding_spheres);
 
         // simplify the meshlet group to have enough space to hold 2 meshlets
@@ -633,46 +633,47 @@ void Mesh::printAllMeshlets()
     }
 }
 
-S_BoundingSphere Mesh::computeBoundingSphereRitter(std::vector<S_BoundingSphere>& bounding_spheres) 
+S_BoundingSphere Mesh::computeGroupBoundingSphere(S_MeshletGroup& meshlet_group)
 {
     S_BoundingSphere result;
     result.center = float3(0, 0, 0);
     result.radius = 0;
-    if (bounding_spheres.empty()) return result;
+    if (!(meshlet_group.childCount)) return result;
 
-    // Step 1: Find the two most distant sphere centers
-    XMVECTOR p1 = XMLoadFloat3(&bounding_spheres[0].center);
-    XMVECTOR p2 = XMLoadFloat3(&bounding_spheres[0].center);
-    float maxDist = 0;
-
-    for (const auto& s1 : bounding_spheres) {
-        for (const auto& s2 : bounding_spheres) {
-            float dist = XMVectorGetX(XMVector3LengthSq(XMVectorSubtract(p1, p2)));
-            if (dist > maxDist) {
-                maxDist = dist;
-                p1 = XMLoadFloat3(&s1.center);
-                p2 = XMLoadFloat3(&s2.center);
-            }
+    // estimate center
+    uint counter = 0;
+    for (uint m = 0; m < meshlet_group.meshlet_count; m++)
+    {
+        S_Meshlet& current_meshlet = m_meshlets[meshlet_group.meshlets[m]];
+        for (uint i = 0; i < current_meshlet.vertex_count; i++)
+        {
+            result.center.x += m_vertices[m_vertex_indices[current_meshlet.vertex_offset + i]].position.x;
+            result.center.y += m_vertices[m_vertex_indices[current_meshlet.vertex_offset + i]].position.y;
+            result.center.z += m_vertices[m_vertex_indices[current_meshlet.vertex_offset + i]].position.z;
+            counter++;
         }
     }
+    result.center.x /= counter;
+    result.center.y /= counter;
+    result.center.z /= counter;
 
-    // Step 2: Compute initial bounding sphere
-    XMVECTOR center = (p1 + p2) * 0.5f;
-    float radius = XMVectorGetX(XMVector3Length(XMVectorSubtract(p1, p2))) * 0.5f;
 
-    // Step 3: Expand the sphere to include all spheres
-    for (const auto& sphere : bounding_spheres) {
-        float distToCenter = XMVectorGetX(XMVector3Length(XMVectorSubtract(XMLoadFloat3(&sphere.center), center)));
-        if (distToCenter + sphere.radius > radius) {
-            float newRadius = (radius + (distToCenter + sphere.radius)) * 0.5f;
-            float shift = newRadius - radius;
-            center = XMVectorAdd(center, XMVectorScale(XMVector3Normalize(XMVectorSubtract(XMLoadFloat3(&sphere.center), center)), shift));
-            radius = newRadius;
+    // calculate conservative radius from estimated center
+    float max_dist2 = 0;
+    for (uint m = 0; m < meshlet_group.meshlet_count; m++)
+    {
+        S_Meshlet& current_meshlet = m_meshlets[meshlet_group.meshlets[m]];
+        for (uint i = 0; i < current_meshlet.vertex_count; i++)
+        {
+            float dx = result.center.x - m_vertices[m_vertex_indices[current_meshlet.vertex_offset + i]].position.x;
+            float dy = result.center.x - m_vertices[m_vertex_indices[current_meshlet.vertex_offset + i]].position.y;
+            float dz = result.center.x - m_vertices[m_vertex_indices[current_meshlet.vertex_offset + i]].position.z;
+            float dist2 = dx * dx + dy * dy + dz * dz;
+
+            max_dist2 = max(max_dist2, dist2);
         }
     }
-
-    XMStoreFloat3(&result.center, center);
-    result.radius = radius;
+    result.radius = sqrtf(max_dist2);
 
     return result;
 }
