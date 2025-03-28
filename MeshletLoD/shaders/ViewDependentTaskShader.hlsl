@@ -235,7 +235,7 @@ void main(in uint I : SV_GroupIndex,
 
         if (!parent_precise_enough && base_precise_enough)
         {
-            queueMeshletForDispatch(global_thread_index, 0, 0, current_meshlet.discrete_level_of_detail);
+            queueMeshletForDispatch(global_thread_index, 0, current_meshlet.group_id, current_meshlet.discrete_level_of_detail);
         }
     }
     

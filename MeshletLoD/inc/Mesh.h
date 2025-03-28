@@ -38,8 +38,9 @@ public:
 
 
     std::vector<S_Vertex>        m_vertices;
-    std::vector<unsigned int>    m_vertex_indices;
+    std::vector<uint>            m_vertex_indices;
     std::vector<unsigned char>   m_primitive_indices;
+    std::vector<unsigned char>   m_morph_indices;
     std::vector<S_Meshlet>       m_meshlets;
     std::vector<S_MeshletGroup>  m_meshlet_groups;
     uint                         m_hierarchy_root_group;

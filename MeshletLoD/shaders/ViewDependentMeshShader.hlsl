@@ -102,7 +102,11 @@ void main(in uint I : SV_GroupIndex,
         }
         else if (constants.shadingSelection == DEBUG_MESHLET_GROUP)
         {
-            verts[v].Color = mul(float4(Random(payload_task.lod_morphing), (payload_task.lod_tree_depth & 3) / 2.0, Random(gid), 1.0), scene_object.object_matrix);
+            verts[v].Color = Rainbow(Random(payload_task.lod_morphing)) * brightness;
+        }
+        else if (constants.shadingSelection == DEBUG_VERTICES)
+        {
+            verts[v].Color = Rainbow(Random(v));
         }
         else
         {

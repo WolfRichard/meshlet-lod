@@ -1031,7 +1031,7 @@ void ViewDependentMeshletLoD::updateImGui()
         
         
         static int selected = 0;  // Index of the selected option
-        const char* options[] = { "Disable Debug Visals", "Show Meshlets", "Show LoDs", "World Position", "Show Meshlet Grouping"};
+        const char* options[] = { "Disable Debug Visals", "Show Meshlets", "Show LoDs", "World Position", "Show Meshlet Grouping", "Show Individual Vertices"};
         for (int i = 0; i < IM_ARRAYSIZE(options); i++) {
             if (ImGui::RadioButton(options[i], selected == i)) {
                 selected = i;  // Update selection when clicked

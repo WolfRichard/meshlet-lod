@@ -43,7 +43,9 @@ struct S_Meshlet
     float simplification_error; // (parent error) if meshlet has no parent because its part of the root then this is set to FLOAT_MAX
     uint discrete_level_of_detail;
     
-    float byte_allignement; // used to keep 16 byte allignement for structured buffer
+    uint group_id;
+    
+    //float3 byte_allignement; // used to keep 16 byte allignement for structured buffer
 };
 
 
@@ -80,7 +82,8 @@ enum ShadingMode
     DEBUG_MESHLET_SHADING,
     DEBUG_LOD_SHADING,
     DEBUG_WORLD_POS,
-    DEBUG_MESHLET_GROUP
+    DEBUG_MESHLET_GROUP,
+    DEBUG_VERTICES
 };
 
 

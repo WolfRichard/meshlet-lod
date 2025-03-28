@@ -393,6 +393,7 @@ void Mesh::simplifiyTopLevelGroups()
         for (uint m = 0; m < current_group.meshlet_count; m++)
         {
             S_Meshlet& current_meshlet = m_meshlets[current_group.meshlets[m]];
+            current_meshlet.group_id = m_current_hierarchy_top_level_groups[g];
             
             current_group.bounding_sphere.center.x += current_meshlet.bounding_sphere.center.x;
             current_group.bounding_sphere.center.y += current_meshlet.bounding_sphere.center.y;
@@ -433,7 +434,7 @@ void Mesh::simplifiyTopLevelGroups()
         size_t simplifiedIndexCount = meshopt_simplify(
             simplified_indices.data(), merged_deduplicated_indices.data(), merged_deduplicated_indices.size(),
             reinterpret_cast<const float*>(&m_vertices.data()[0].position.x), m_vertices.size(), sizeof(S_Vertex),
-            target_index_count, FLT_MAX, meshopt_SimplifyLockBorder & meshopt_SimplifyErrorAbsolute, &lod_error);
+            target_index_count, FLT_MAX, meshopt_SimplifyLockBorder, &lod_error); // TODO: & meshopt_SimplifyErrorAbsolute bitmask option leads to cracks??? why??
         simplified_indices.resize(simplifiedIndexCount);
         //current_group.bounding_sphere.radius = lod_error;
         
@@ -453,8 +454,58 @@ void Mesh::simplifiyTopLevelGroups()
             current_meshlet.simplified_group_bounds = current_group.bounding_sphere;
         }
 
-        // generate new meshlets on simplified geometry
+        // TODO!!!
+        // populate morph_indices buffer data
+        m_morph_indices.resize(m_vertex_indices.size(), 0); // resize in case new meshlets got added in previous hierarchy expansion
+        for (uint m = 0; m < current_group.meshlet_count; m++) // go over every meshlet
+        {
+            S_Meshlet& current_meshlet = m_meshlets[current_group.meshlets[m]]; 
+            std::vector<unsigned char> vertex_indices_that_survived_simplification; // all indices into the local meshlet vertex_index array where the pointed at vertex is still part of the simplified group
+            for (unsigned char vi = 0; vi < current_meshlet.vertex_count; vi++)  // go over every vertex index  of the current meshlet
+            {
+                uint vertex_index = m_vertex_indices[current_meshlet.vertex_offset + vi];   
+                for (uint si : simplified_indices)  // compare every local meshlet's vertex index to every index of the simplified group to check if its still there
+                {
+                    if (vertex_index == si) 
+                    {
+                        vertex_indices_that_survived_simplification.push_back(vi); // vertex index is still there, inner loop can be early terminated
+                        break;
+                    }
+                }
+            }
 
+            for (unsigned char vi = 0; vi < current_meshlet.vertex_count; vi++) // now that all still present vertex_indices are extracted again go over every local vertex_index
+            {
+                uint vertex_index = m_vertex_indices[current_meshlet.vertex_offset + vi];
+                S_Vertex current_vertex = m_vertices[vertex_index];
+                float min_dist2 = FLT_MAX;
+                char closest_parent_vertex_index;
+                for (unsigned char vitss : vertex_indices_that_survived_simplification) // search for the closest local vertex_index that survived simplification
+                {
+                    if (vitss == vi)
+                    {
+                        closest_parent_vertex_index = vitss; // vertex was not simplified and stayed the same during morphing
+                        min_dist2 = 0;
+                        break;
+                    }
+                    S_Vertex comparing_vertex = m_vertices[vitss];
+
+                    float dx = current_vertex.position.x - comparing_vertex.position.x;
+                    float dy = current_vertex.position.y - comparing_vertex.position.y;
+                    float dz = current_vertex.position.z - comparing_vertex.position.z;
+                    float dist2 = dx * dx + dy * dy + dz * dz;
+                
+                    if (dist2 < min_dist2)
+                    {
+                        min_dist2 = dist2;
+                        closest_parent_vertex_index = vitss;
+                    }
+                }
+                m_morph_indices[current_meshlet.vertex_offset + vi] = closest_parent_vertex_index;
+            }
+        }
+
+        // generate new meshlets on simplified geometry
         const float cone_weight = 0.0f;
         size_t      max_meshlets = meshopt_buildMeshletsBound(simplified_indices.size(), MAX_MESHLET_VERTEX_COUNT, MAX_MESHLET_PRIMITIVE_COUNT);
         std::vector<meshopt_Meshlet> meshlets(max_meshlets);
@@ -501,6 +552,7 @@ void Mesh::simplifiyTopLevelGroups()
             );
             newMeshlet.bounding_sphere.center = float3(bounds.center[0], bounds.center[1], bounds.center[2]);
             newMeshlet.bounding_sphere.radius = bounds.radius;
+            newMeshlet.group_id = 0;
 
             newMeshlet.bounding_sphere = current_group.bounding_sphere; // !!!!!!!!!!!!!!!!!?
 
