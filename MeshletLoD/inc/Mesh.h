@@ -69,9 +69,6 @@ private:
     S_BoundingSphere computeGroupBoundingSphere(S_MeshletGroup& meshlet_group);
 
 
-    
-    
-    
     std::vector<uint> m_current_hierarchy_top_level_meshlets; // indices to the meshlets that are still beeing processed in the construction of the DAG
     std::vector<uint> m_current_hierarchy_top_level_groups; // indices to the groups that are still beeing processed in the construction of the DAG
 };

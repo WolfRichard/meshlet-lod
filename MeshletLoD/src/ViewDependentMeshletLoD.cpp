@@ -738,6 +738,9 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     constants.SceneObjectCount = (uint)m_scene.m_scene_objects.size();
     constants.DebugFloatSliderValue = m_debugFloatSlider;
     if (m_frustumCulling) constants.BoolConstants |= FRUSTUM_CULLING_BIT_POS;
+    if (m_geo_morphing) constants.BoolConstants |= GEO_MORPHING_BIT_POS;
+    if (m_screen_space_LoD) constants.BoolConstants |= SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS;
+
     
     memcpy(m_mappedConstantData, &constants, sizeof(S_Constants));
 
@@ -976,9 +979,13 @@ void ViewDependentMeshletLoD::updateImGui()
     if (!ImGui::CollapsingHeader("Render Settings"))
     {
         ImGui::Checkbox("Meshlet based Frustum Culling", &m_frustumCulling);
-        ImGui::Checkbox("Object Culling", &m_objectCulling);
+        ImGui::Checkbox("Screen Space Error based LoD selection", &m_screen_space_LoD);
+        ImGui::Checkbox("Geo-Morphing", &m_geo_morphing);
         ImGui::Checkbox("Level Of Detail", &m_LoD_Enabled);
-        ImGui::InputFloat("LoD_0 Distance", &m_LoDScale, 0.01f, 1.0f, "%.2f");
+        if (m_screen_space_LoD)
+            ImGui::InputFloat("Max error in pxl", &m_LoDScale, 0.01f, 1.0f, "%.2f");
+        else 
+            ImGui::InputFloat("LoD_0 Distance", &m_LoDScale, 0.01f, 1.0f, "%.2f");
         ImGui::SliderFloat("Debug Float", &m_debugFloatSlider, 0.0f, 1.0f, "%.2f");
         if (ImGui::Checkbox("Lock Camera Position Shader Constant", &m_lockCameraShaderConstant))
         {
@@ -1033,7 +1040,7 @@ void ViewDependentMeshletLoD::updateImGui()
         if (ImGui::Checkbox("Back Face Culling", &m_backFaceCulling)) createPSO();
         
         static int selected = 0;  // Index of the selected option
-        const char* options[] = { "Disable Debug Visals", "Show Meshlets", "Show LoDs", "World Position", "Show Meshlet Grouping", "Show Individual Vertices"};
+        const char* options[] = { "Disable Debug Visals", "Show Meshlets", "Show LoDs", "World Position", "Show Meshlet Grouping", "Show LoD Validation", "Show Vertex LoD" };
         for (int i = 0; i < IM_ARRAYSIZE(options); i++) {
             if (ImGui::RadioButton(options[i], selected == i)) {
                 selected = i;  // Update selection when clicked

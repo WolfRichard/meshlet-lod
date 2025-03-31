@@ -142,13 +142,14 @@ private:
     double      m_frameTime             = 0;
     double      m_totalRunTime          = 0.0;
     bool        m_wireframe             = false;
-    bool        m_backFaceCulling       = true;
     bool        m_frustumCulling        = true;
     ShadingMode m_shadingMode           = DEFAULT_SHADING;
-    bool        m_objectCulling         = true;
     bool        m_LoD_Enabled           = true;
     float       m_LoDScale              = 1;
     float       m_debugFloatSlider      = 0;
+    bool        m_geo_morphing          = false;
+    bool        m_screen_space_LoD      = true;
+    bool        m_backFaceCulling       = true;
 
     // camera related variables
     float3      m_cameraPos             = float3(0, 0, 0);

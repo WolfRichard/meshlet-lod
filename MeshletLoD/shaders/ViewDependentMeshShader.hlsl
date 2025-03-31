@@ -51,6 +51,12 @@ float4 Rainbow(float factor)
     return float4(clamp(col, float3(0.0, 0.0, 0.0), float3(1.0, 1.0, 1.0)), 1.0);
 }
 
+float getExpectedLoDLevel(float4 position)// bounding sphere must be in world space!
+{
+    float cam_dist = distance(constants.CameraWorldPos, position.xyz);
+    return max(log2(cam_dist / constants.LoD_Scale), 0);
+}
+
 
 [shader("mesh")]
 [numthreads(GROUP_SIZE, 1, 1)]
@@ -81,13 +87,33 @@ void main(in uint I : SV_GroupIndex,
         int vertexIndex = vertexIndicesBuffers[scene_object.mesh_id][meshlet.vertex_offset + v];
         S_Vertex vertex = verticesBuffers[scene_object.mesh_id][vertexIndex];
         
-        int morphTargetIndex = morphIndicesBuffers[scene_object.mesh_id][meshlet.vertex_offset + v];
-        S_Vertex morphTargetVertex = verticesBuffers[scene_object.mesh_id][morphTargetIndex];
         
-        vertex.position = lerp(vertex.position, morphTargetVertex.position, constants.DebugFloatSliderValue);
-        vertex.uv = lerp(vertex.uv, morphTargetVertex.uv, constants.DebugFloatSliderValue);
-        vertex.normal = normalize(lerp(vertex.normal, morphTargetVertex.normal, constants.DebugFloatSliderValue));
-        vertex.color = lerp(vertex.color, morphTargetVertex.color, constants.DebugFloatSliderValue);
+        
+        if (constants.BoolConstants & GEO_MORPHING_BIT_POS)
+        {
+            
+            
+            int morphTargetIndex = morphIndicesBuffers[scene_object.mesh_id][meshlet.vertex_offset + v];
+            S_Vertex morphTargetVertex = verticesBuffers[scene_object.mesh_id][morphTargetIndex];
+        
+            if (constants.BoolConstants & SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS)
+            {
+                vertex.position = lerp(vertex.position, morphTargetVertex.position, constants.DebugFloatSliderValue);
+                vertex.uv = lerp(vertex.uv, morphTargetVertex.uv, constants.DebugFloatSliderValue);
+                vertex.normal = normalize(lerp(vertex.normal, morphTargetVertex.normal, constants.DebugFloatSliderValue));
+                vertex.color = lerp(vertex.color, morphTargetVertex.color, constants.DebugFloatSliderValue);
+            }
+            else
+            {
+                float expected_LoD = getExpectedLoDLevel(vertex.position);
+                float lerp_value = clamp(expected_LoD - meshlet.discrete_level_of_detail - 1, 0, 1);
+                
+                vertex.position = lerp(vertex.position, morphTargetVertex.position, lerp_value);
+                vertex.uv = lerp(vertex.uv, morphTargetVertex.uv, lerp_value);
+                vertex.normal = normalize(lerp(vertex.normal, morphTargetVertex.normal, lerp_value));
+                vertex.color = lerp(vertex.color, morphTargetVertex.color, lerp_value);
+            }
+        }
         
         
         verts[v].Pos = mul(mul(float4(vertex.position.xyz, 1.0), scene_object.object_matrix), constants.ViewProjMat);
@@ -112,11 +138,18 @@ void main(in uint I : SV_GroupIndex,
         }
         else if (constants.shadingSelection == DEBUG_MESHLET_GROUP)
         {
-            verts[v].Color = Rainbow(Random(payload_task.lod_morphing)) * brightness;
+            verts[v].Color = Rainbow(Random(meshlet.group_id)) * brightness;
+        }
+        else if (constants.shadingSelection == DEBUG_VERTEX_BASED_LOD)
+        {
+            verts[v].Color = Rainbow(getExpectedLoDLevel(vertex.position) / 5.0);
         }
         else if (constants.shadingSelection == DEBUG_VERTICES)
         {
-            verts[v].Color = Rainbow(Random(v));
+            if (getExpectedLoDLevel(vertex.position)  > payload_task.lod_tree_depth + 1)
+                verts[v].Color = float4(0, 1, 0, 1);
+            else
+                verts[v].Color = float4(1, 0, 0, 1);
         }
         else
         {
