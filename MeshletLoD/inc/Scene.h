@@ -25,9 +25,9 @@ public:
     std::vector<S_SceneObject> m_scene_objects;
     
     std::vector<std::vector<S_Vertex>*>        m_vertices;
-    std::vector<std::vector<unsigned int>*>    m_vertex_indices;
+    std::vector<std::vector<uint>*>            m_vertex_indices;
     std::vector<std::vector<unsigned char>*>   m_primitive_indices;
-    std::vector<std::vector<unsigned char>*>   m_morph_indices;
+    std::vector<std::vector<uint>*>            m_morph_indices;
     std::vector<std::vector<S_Meshlet>*>       m_meshlets;
     std::vector<std::vector<S_MeshletGroup>*>  m_meshlet_groups;
 

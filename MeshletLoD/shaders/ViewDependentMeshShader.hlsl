@@ -51,8 +51,6 @@ float4 Rainbow(float factor)
     return float4(clamp(col, float3(0.0, 0.0, 0.0), float3(1.0, 1.0, 1.0)), 1.0);
 }
 
-groupshared PixelShaderInput gs_temp_verts[MAX_MESHLET_VERTEX_COUNT];
-
 
 [shader("mesh")]
 [numthreads(GROUP_SIZE, 1, 1)]
@@ -83,38 +81,47 @@ void main(in uint I : SV_GroupIndex,
         int vertexIndex = vertexIndicesBuffers[scene_object.mesh_id][meshlet.vertex_offset + v];
         S_Vertex vertex = verticesBuffers[scene_object.mesh_id][vertexIndex];
         
-        gs_temp_verts[v].Pos = mul(mul(float4(vertex.position.xyz, 1.0), scene_object.object_matrix), constants.ViewProjMat);
+        int morphTargetIndex = morphIndicesBuffers[scene_object.mesh_id][meshlet.vertex_offset + v];
+        S_Vertex morphTargetVertex = verticesBuffers[scene_object.mesh_id][morphTargetIndex];
+        
+        vertex.position = lerp(vertex.position, morphTargetVertex.position, constants.DebugFloatSliderValue);
+        vertex.uv = lerp(vertex.uv, morphTargetVertex.uv, constants.DebugFloatSliderValue);
+        vertex.normal = normalize(lerp(vertex.normal, morphTargetVertex.normal, constants.DebugFloatSliderValue));
+        vertex.color = lerp(vertex.color, morphTargetVertex.color, constants.DebugFloatSliderValue);
+        
+        
+        verts[v].Pos = mul(mul(float4(vertex.position.xyz, 1.0), scene_object.object_matrix), constants.ViewProjMat);
         
         float4 normal = mul(float4(vertex.normal.xyz, 0), scene_object.object_matrix);
         float brightness = clamp(clamp(dot(normalize(float3(1, 1, 1)), normal.xyz), 0, 1) + clamp(dot(normalize(float3(-2, 1, -1)), normal.xyz), 0, 0.6), 0.05, 1);
         if (constants.shadingSelection == DEFAULT_SHADING)
         {
-            gs_temp_verts[v].Color = brightness;
+            verts[v].Color = brightness;
         }
         else if (constants.shadingSelection == DEBUG_MESHLET_SHADING)
         {
-            gs_temp_verts[v].Color = Rainbow(Random(gid)) * brightness;
+            verts[v].Color = Rainbow(Random(gid)) * brightness;
         }
         else if (constants.shadingSelection == DEBUG_LOD_SHADING)
         {
-            gs_temp_verts[v].Color = Rainbow(payload_task.lod_tree_depth / 5.0) * brightness;
+            verts[v].Color = Rainbow(payload_task.lod_tree_depth / 5.0) * brightness;
         }
         else if (constants.shadingSelection == DEBUG_WORLD_POS)
         {
-            gs_temp_verts[v].Color = mul(float4(vertex.position.xyz, 1.0), scene_object.object_matrix);
+            verts[v].Color = mul(float4(vertex.position.xyz, 1.0), scene_object.object_matrix);
         }
         else if (constants.shadingSelection == DEBUG_MESHLET_GROUP)
         {
-            gs_temp_verts[v].Color = Rainbow(Random(payload_task.lod_morphing)) * brightness;
+            verts[v].Color = Rainbow(Random(payload_task.lod_morphing)) * brightness;
         }
         else if (constants.shadingSelection == DEBUG_VERTICES)
         {
-            gs_temp_verts[v].Color = Rainbow(Random(v));
+            verts[v].Color = Rainbow(Random(v));
         }
         else
         {
             // should not be possible to reach??
-            gs_temp_verts[v].Color = float4(1, 1, 0, 1);
+            verts[v].Color = float4(1, 1, 0, 1);
         }
     }
     
@@ -130,17 +137,7 @@ void main(in uint I : SV_GroupIndex,
                         SampleTriangleBufferAsCharArray(meshlet.triangle_offset + p * 3 + 2, scene_object.mesh_id));
     }
     
-    
-    GroupMemoryBarrierWithGroupSync();
-    for (uint v_loop2 = 0; v_loop2 < vertexLoops; v_loop2++)
-    {
-        uint v = I + v_loop2 * GROUP_SIZE;
-        v = min(v, meshlet.vertex_count - 1);
-        int morphTargetIndex = morphIndicesBuffers[scene_object.mesh_id][meshlet.vertex_offset + v];
-        
-        verts[v].Pos = lerp(gs_temp_verts[v].Pos, gs_temp_verts[morphTargetIndex].Pos, constants.DebugFloatSliderValue);
-        verts[v].Color = lerp(gs_temp_verts[v].Color, gs_temp_verts[morphTargetIndex].Color, constants.DebugFloatSliderValue);
-    }
+  
     
     
     

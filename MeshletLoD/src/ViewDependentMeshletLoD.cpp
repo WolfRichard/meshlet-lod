@@ -244,7 +244,7 @@ void ViewDependentMeshletLoD::setupBindlessSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HA
 void ViewDependentMeshletLoD::setupBindlessUCharToUIntSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HANDLE& srvGpuHandle,
                                                                     D3D12_GPU_DESCRIPTOR_HANDLE& nextAvailableGpuSrvHandle,
                                                                     D3D12_CPU_DESCRIPTOR_HANDLE& nextAvailableCpuSrvHandle,
-                                                                    std::vector<std::vector<unsigned char>*>& primitiveIndicesCpuBuffers,
+                                                                    std::vector<std::vector<unsigned char>*>& unsignedCharsCpuBuffers,
                                                                     std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& gpuBuffers,
                                                                     std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
                                                                     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
@@ -253,9 +253,9 @@ void ViewDependentMeshletLoD::setupBindlessUCharToUIntSrvAndBuffers(D3D12_GPU_DE
     auto device = Application::Get().GetDevice();
     srvGpuHandle = nextAvailableGpuSrvHandle;
 
-    for (uint i = 0; i < primitiveIndicesCpuBuffers.size(); i++)
+    for (uint i = 0; i < unsignedCharsCpuBuffers.size(); i++)
     {
-        std::vector<unsigned char>* cpuSingleBuffer = primitiveIndicesCpuBuffers[i];
+        std::vector<unsigned char>* cpuSingleBuffer = unsignedCharsCpuBuffers[i];
         // fill with zeros to allign its size to 32bits
         while (cpuSingleBuffer->size() % 4 != 0)
             cpuSingleBuffer->push_back(0);
@@ -335,10 +335,10 @@ bool ViewDependentMeshletLoD::LoadContent()
                                           copyBuffers, commandList, descriptorSize);
 
     // morph-indices buffers
-    setupBindlessUCharToUIntSrvAndBuffers(m_MorphIndicesSrvHandle,
-                                          nextGpuSrvHandle, nextCpuSrvHandle,
-                                          m_scene.m_morph_indices, m_MorphIndicesBuffers,
-                                          copyBuffers, commandList, descriptorSize);
+    setupBindlessSrvAndBuffers(m_MorphIndicesSrvHandle,
+                               nextGpuSrvHandle, nextCpuSrvHandle,
+                               m_scene.m_morph_indices, m_MorphIndicesBuffers,
+                               copyBuffers, commandList, descriptorSize);
 
     // meshlets buffers
     setupBindlessSrvAndBuffers(m_MeshletsSrvHandle,

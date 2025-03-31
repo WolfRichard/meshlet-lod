@@ -79,7 +79,7 @@ private:
     void setupBindlessUCharToUIntSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HANDLE& srvGpuHandle,
                                                D3D12_GPU_DESCRIPTOR_HANDLE& nextAvailableGpuSrvHandle,
                                                D3D12_CPU_DESCRIPTOR_HANDLE& nextAvailableCpuSrvHandle,
-                                               std::vector<std::vector<unsigned char>*>& primitiveIndicesCpuBuffers,
+                                               std::vector<std::vector<unsigned char>*>& unsignedCharsCpuBuffers,
                                                std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& gpuBuffers,
                                                std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
                                                Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,

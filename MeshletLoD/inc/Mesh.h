@@ -40,7 +40,7 @@ public:
     std::vector<S_Vertex>        m_vertices;
     std::vector<uint>            m_vertex_indices;
     std::vector<unsigned char>   m_primitive_indices;
-    std::vector<unsigned char>   m_morph_indices;
+    std::vector<uint>            m_morph_indices;
     std::vector<S_Meshlet>       m_meshlets;
     std::vector<S_MeshletGroup>  m_meshlet_groups;
     uint                         m_hierarchy_root_group;
@@ -54,6 +54,7 @@ private:
     std::pair<uint, uint> sortEdgeIndices(uint v0, uint v1);
     std::unordered_set<std::pair<uint, uint>, PairHash> extractEdges(S_Meshlet meshlet);
     uint count_shared_edges(const std::unordered_set<std::pair<uint, uint>, PairHash>& edgesA, const std::unordered_set<std::pair<uint, uint>, PairHash>& edgesB);
+    std::vector<std::pair<uint, uint>> extractBoundaryEdges(S_MeshletGroup& meshlet_group);
     
     void parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene);
     void generateLeafMeshlets();

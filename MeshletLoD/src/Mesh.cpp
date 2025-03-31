@@ -195,6 +195,8 @@ void Mesh::buildMeshletHierachy()
         }
     }
     
+
+    OutputDebugString(("Size vertex_indices vector: " + std::to_string(m_vertex_indices.size()) + " Size morph_indices vector: " + std::to_string(m_morph_indices.size()) + "\n").c_str());
 }
 
 
@@ -379,6 +381,34 @@ uint Mesh::count_shared_edges(const std::unordered_set<std::pair<uint, uint>, Pa
     return shared_count;
 }
 
+std::vector<std::pair<uint, uint>> Mesh::extractBoundaryEdges(S_MeshletGroup& meshlet_group)
+{
+    std::unordered_map<std::pair<uint, uint>, int, PairHash> edgeCount;
+
+    // Step 1: Count occurrences of each edge
+    for (uint m = 0; m < meshlet_group.meshlet_count; m++)
+    {
+        S_Meshlet& current_meshlet = m_meshlets[meshlet_group.meshlets[m]];
+
+        for (uint p = 0; p < current_meshlet.triangle_count; p++) {
+            edgeCount[sortEdgeIndices(m_primitive_indices[current_meshlet.triangle_offset + p * 3 + 0], m_primitive_indices[current_meshlet.triangle_offset + p * 3 + 1])]++;
+            edgeCount[sortEdgeIndices(m_primitive_indices[current_meshlet.triangle_offset + p * 3 + 1], m_primitive_indices[current_meshlet.triangle_offset + p * 3 + 2])]++;
+            edgeCount[sortEdgeIndices(m_primitive_indices[current_meshlet.triangle_offset + p * 3 + 2], m_primitive_indices[current_meshlet.triangle_offset + p * 3 + 0])]++;
+        }
+    }
+    
+
+    // Step 2: Collect edges that appear only once (boundary edges)
+    std::vector<std::pair<uint, uint>> boundaryEdges;
+    for (const auto& [edge, count] : edgeCount) {
+        if (count == 1) {  // Boundary edges appear only once
+            boundaryEdges.push_back(edge);
+        }
+    }
+
+    return boundaryEdges;
+}
+
 void Mesh::simplifiyTopLevelGroups()
 {
     m_current_hierarchy_top_level_meshlets.clear(); // clear the top level of meshlets as it will be replaced by their simplified version
@@ -454,59 +484,6 @@ void Mesh::simplifiyTopLevelGroups()
             current_meshlet.simplified_group_bounds = current_group.bounding_sphere;
         }
 
-        // TODO!!!
-        // populate morph_indices buffer data
-        m_morph_indices.resize(m_vertex_indices.size(), 0); // resize in case new meshlets got added in previous hierarchy expansion
-        for (uint m = 0; m < current_group.meshlet_count; m++) // go over every meshlet
-        {
-            S_Meshlet& current_meshlet = m_meshlets[current_group.meshlets[m]]; 
-            std::vector<unsigned char> vertex_indices_that_survived_simplification; // all indices into the local meshlet vertex_index array where the pointed at vertex is still part of the simplified group
-            
-            for (unsigned char vi = 0; vi < current_meshlet.vertex_count; vi++)  // go over every vertex index  of the current meshlet
-            {
-                uint vertex_index = m_vertex_indices[current_meshlet.vertex_offset + vi];   
-                for (uint si : simplified_indices)  // compare every local meshlet's vertex index to every index of the simplified group to check if its still there
-                {
-                    if (vertex_index == si) 
-                    {
-                        vertex_indices_that_survived_simplification.push_back(vi); // vertex index is still there, inner loop can be early terminated
-                        break;
-                    }
-                }
-            }
-
-            for (unsigned char vi = 0; vi < current_meshlet.vertex_count; vi++) // now that all still present vertex_indices are extracted again go over every local vertex_index
-            {
-                uint vertex_index = m_vertex_indices[current_meshlet.vertex_offset + vi];
-                S_Vertex current_vertex = m_vertices[vertex_index];
-                float min_dist2 = FLT_MAX;
-                unsigned char closest_parent_vertex_index = 0;
-                for (unsigned char vitss : vertex_indices_that_survived_simplification) // search for the closest local vertex_index that survived simplification
-                {
-                    if (vitss == vi)
-                    {
-                        closest_parent_vertex_index = vitss; // vertex was not simplified and stayed the same during morphing
-                        min_dist2 = 0;
-                        break;
-                    }
-                    uint comparing_vertex_index = m_vertex_indices[current_meshlet.vertex_offset + vitss];
-                    S_Vertex comparing_vertex = m_vertices[comparing_vertex_index];
-
-                    float dx = current_vertex.position.x - comparing_vertex.position.x;
-                    float dy = current_vertex.position.y - comparing_vertex.position.y;
-                    float dz = current_vertex.position.z - comparing_vertex.position.z;
-                    float dist2 = dx * dx + dy * dy + dz * dz;
-                
-                    if (dist2 < min_dist2)
-                    {
-                        min_dist2 = dist2;
-                        closest_parent_vertex_index = vitss;
-                    }
-                }
-                m_morph_indices[current_meshlet.vertex_offset + vi] = closest_parent_vertex_index;
-            }
-        }
-
         // generate new meshlets on simplified geometry
         const float cone_weight = 0.0f;
         size_t      max_meshlets = meshopt_buildMeshletsBound(simplified_indices.size(), MAX_MESHLET_VERTEX_COUNT, MAX_MESHLET_PRIMITIVE_COUNT);
@@ -560,12 +537,63 @@ void Mesh::simplifiyTopLevelGroups()
             current_group.simplified_meshlets[i] = (uint)m_meshlets.size();
 
 
-
             m_meshlets.push_back(newMeshlet);
         }
         
         
-    
+        // TODO!!!
+        // populate morph_indices buffer data
+        //std::vector<std::pair<uint, uint>>  simplified_group_boundary_edges = extractBoundaryEdges(current_group);
+        m_morph_indices.resize(m_vertex_indices.size(), 0); // resize in case new meshlets got added in previous hierarchy expansion
+        for (uint m = 0; m < current_group.meshlet_count; m++) // go over every meshlet of the current group
+        {
+            S_Meshlet& current_meshlet = m_meshlets[current_group.meshlets[m]];
+         
+
+
+            // find closest vertex that survived simplification to set as morph target //TODO also morph to boundary vertices from inner ones
+            for (uint vi = 0; vi < current_meshlet.vertex_count; vi++) 
+            {
+                uint vertex_index = m_vertex_indices[current_meshlet.vertex_offset + vi];
+                S_Vertex current_vertex = m_vertices[vertex_index];
+                float min_dist2 = FLT_MAX;
+                uint closest_morph_target_vertex_index = 0;
+                for (uint simplified_index : simplified_indices) 
+                {
+                    if (vertex_index == simplified_index)
+                    {
+                        closest_morph_target_vertex_index = simplified_index; 
+                        min_dist2 = 0;
+                        break;
+                    }
+
+                    S_Vertex comparing_vertex = m_vertices[simplified_index];
+
+                    float dx = current_vertex.position.x - comparing_vertex.position.x;
+                    float dy = current_vertex.position.y - comparing_vertex.position.y;
+                    float dz = current_vertex.position.z - comparing_vertex.position.z;
+                    float dist2 = dx * dx + dy * dy + dz * dz;
+
+                    if (dist2 < min_dist2)
+                    {
+                        min_dist2 = dist2;
+                        closest_morph_target_vertex_index = simplified_index;
+                    }
+                }
+                m_morph_indices[current_meshlet.vertex_offset + vi] = closest_morph_target_vertex_index;
+            }
+
+
+        }
+
+        for (uint m = 0; m < GROUP_SPLIT_COUNT; m++) // go over every simplified meshlet of the current group
+        {
+            S_Meshlet& current_simplified_meshlet = m_meshlets[current_group.simplified_meshlets[m]];
+            for (unsigned char vi = 0; vi < current_simplified_meshlet.vertex_count; vi++) // now that all still present vertex_indices are extracted again go over every local vertex_index
+            {
+                m_morph_indices[current_simplified_meshlet.vertex_offset + vi] = m_vertex_indices[current_simplified_meshlet.vertex_offset + vi];
+            }
+        }
     }
 }
 
@@ -728,3 +756,5 @@ S_BoundingSphere Mesh::computeGroupBoundingSphere(S_MeshletGroup& meshlet_group)
 
     return result;
 }
+
+
