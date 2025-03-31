@@ -557,30 +557,37 @@ void Mesh::simplifiyTopLevelGroups()
                 uint vertex_index = m_vertex_indices[current_meshlet.vertex_offset + vi];
                 S_Vertex current_vertex = m_vertices[vertex_index];
                 float min_dist2 = FLT_MAX;
-                uint closest_morph_target_vertex_index = 0;
-                for (uint simplified_index : simplified_indices) 
+                uint closest_morph_target_vertex_index_index = current_meshlet.vertex_offset + vi;
+
+
+                for (uint m = 0; m < GROUP_SPLIT_COUNT; m++) // go over every simplified meshlet of the current group
                 {
-                    if (vertex_index == simplified_index)
+                    S_Meshlet& current_simplified_meshlet = m_meshlets[current_group.simplified_meshlets[m]];
+                    for (unsigned char svi = 0; svi < current_simplified_meshlet.vertex_count; svi++) 
                     {
-                        closest_morph_target_vertex_index = simplified_index; 
-                        min_dist2 = 0;
-                        break;
-                    }
+                        uint simplified_vertex_index = m_vertex_indices[current_simplified_meshlet.vertex_offset + svi];
+                        if (vertex_index == simplified_vertex_index)
+                        {
+                            closest_morph_target_vertex_index_index = current_simplified_meshlet.vertex_offset + svi;
+                            min_dist2 = 0;
+                            break;
+                        }
 
-                    S_Vertex comparing_vertex = m_vertices[simplified_index];
+                        S_Vertex comparing_vertex = m_vertices[simplified_vertex_index];
 
-                    float dx = current_vertex.position.x - comparing_vertex.position.x;
-                    float dy = current_vertex.position.y - comparing_vertex.position.y;
-                    float dz = current_vertex.position.z - comparing_vertex.position.z;
-                    float dist2 = dx * dx + dy * dy + dz * dz;
+                        float dx = current_vertex.position.x - comparing_vertex.position.x;
+                        float dy = current_vertex.position.y - comparing_vertex.position.y;
+                        float dz = current_vertex.position.z - comparing_vertex.position.z;
+                        float dist2 = dx * dx + dy * dy + dz * dz;
 
-                    if (dist2 < min_dist2)
-                    {
-                        min_dist2 = dist2;
-                        closest_morph_target_vertex_index = simplified_index;
+                        if (dist2 < min_dist2)
+                        {
+                            min_dist2 = dist2;
+                            closest_morph_target_vertex_index_index = current_simplified_meshlet.vertex_offset + svi;
+                        }
                     }
                 }
-                m_morph_indices[current_meshlet.vertex_offset + vi] = closest_morph_target_vertex_index;
+                m_morph_indices[current_meshlet.vertex_offset + vi] = closest_morph_target_vertex_index_index;
             }
 
 
@@ -589,9 +596,9 @@ void Mesh::simplifiyTopLevelGroups()
         for (uint m = 0; m < GROUP_SPLIT_COUNT; m++) // go over every simplified meshlet of the current group
         {
             S_Meshlet& current_simplified_meshlet = m_meshlets[current_group.simplified_meshlets[m]];
-            for (unsigned char vi = 0; vi < current_simplified_meshlet.vertex_count; vi++) // now that all still present vertex_indices are extracted again go over every local vertex_index
+            for (unsigned char vi = 0; vi < current_simplified_meshlet.vertex_count; vi++) 
             {
-                m_morph_indices[current_simplified_meshlet.vertex_offset + vi] = m_vertex_indices[current_simplified_meshlet.vertex_offset + vi];
+                m_morph_indices[current_simplified_meshlet.vertex_offset + vi] = current_simplified_meshlet.vertex_offset + vi;
             }
         }
     }

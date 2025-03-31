@@ -89,30 +89,21 @@ void main(in uint I : SV_GroupIndex,
         
         
         
-        if (constants.BoolConstants & GEO_MORPHING_BIT_POS)
+        if ((constants.BoolConstants & GEO_MORPHING_BIT_POS) && !(constants.BoolConstants & SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS))
         {
-            
-            
             int morphTargetIndex = morphIndicesBuffers[scene_object.mesh_id][meshlet.vertex_offset + v];
+            int morphTargetVertexIndex = vertexIndicesBuffers[scene_object.mesh_id][morphTargetIndex];
             S_Vertex morphTargetVertex = verticesBuffers[scene_object.mesh_id][morphTargetIndex];
         
-            if (constants.BoolConstants & SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS)
-            {
-                vertex.position = lerp(vertex.position, morphTargetVertex.position, constants.DebugFloatSliderValue);
-                vertex.uv = lerp(vertex.uv, morphTargetVertex.uv, constants.DebugFloatSliderValue);
-                vertex.normal = normalize(lerp(vertex.normal, morphTargetVertex.normal, constants.DebugFloatSliderValue));
-                vertex.color = lerp(vertex.color, morphTargetVertex.color, constants.DebugFloatSliderValue);
-            }
-            else
-            {
-                float expected_LoD = getExpectedLoDLevel(vertex.position);
-                float lerp_value = clamp(expected_LoD - meshlet.discrete_level_of_detail - 1, 0, 1);
+            
+            float expected_LoD = getExpectedLoDLevel(vertex.position);
+            float lerp_value = clamp(expected_LoD - meshlet.discrete_level_of_detail - 1, 0, 1);
                 
-                vertex.position = lerp(vertex.position, morphTargetVertex.position, lerp_value);
-                vertex.uv = lerp(vertex.uv, morphTargetVertex.uv, lerp_value);
-                vertex.normal = normalize(lerp(vertex.normal, morphTargetVertex.normal, lerp_value));
-                vertex.color = lerp(vertex.color, morphTargetVertex.color, lerp_value);
-            }
+            vertex.position = lerp(vertex.position, morphTargetVertex.position, lerp_value);
+            vertex.uv = lerp(vertex.uv, morphTargetVertex.uv, lerp_value);
+            vertex.normal = normalize(lerp(vertex.normal, morphTargetVertex.normal, lerp_value));
+            vertex.color = lerp(vertex.color, morphTargetVertex.color, lerp_value);
+            
         }
         
         
