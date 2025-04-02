@@ -87,6 +87,7 @@ float getExpectedLoDLevel(S_BoundingSphere bounding_sphere)// bounding sphere mu
 
 bool groupSimplificationIsPreciseEnough(S_BoundingSphere bounding_sphere, uint lod_level) // bounding sphere must be in world space!
 {
+    //return lod_level <= 0;
     return lod_level <= getExpectedLoDLevel(bounding_sphere);
 }
 

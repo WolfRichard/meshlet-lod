@@ -87,23 +87,33 @@ void main(in uint I : SV_GroupIndex,
         int vertexIndex = vertexIndicesBuffers[scene_object.mesh_id][meshlet.vertex_offset + v];
         S_Vertex vertex = verticesBuffers[scene_object.mesh_id][vertexIndex];
         
-        
+        float expected_LoD = getExpectedLoDLevel(vertex.position);
+        float lerp_value = clamp(expected_LoD - meshlet.discrete_level_of_detail, -100, 100);
+        int morphTargetIndex = morphIndicesBuffers[scene_object.mesh_id][meshlet.vertex_offset + v];
         
         if ((constants.BoolConstants & GEO_MORPHING_BIT_POS) && !(constants.BoolConstants & SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS))
         {
-            int morphTargetIndex = morphIndicesBuffers[scene_object.mesh_id][meshlet.vertex_offset + v];
+            while (lerp_value > 1)
+            {
+                vertexIndex = vertexIndicesBuffers[scene_object.mesh_id][morphTargetIndex];
+                morphTargetIndex = morphIndicesBuffers[scene_object.mesh_id][morphTargetIndex];
+                lerp_value -= 1;
+                
+            }
+            vertex = verticesBuffers[scene_object.mesh_id][vertexIndex];
+            //int morphTargetIndex = morphIndicesBuffers[scene_object.mesh_id][meshlet.vertex_offset + v];
             int morphTargetVertexIndex = vertexIndicesBuffers[scene_object.mesh_id][morphTargetIndex];
-            S_Vertex morphTargetVertex = verticesBuffers[scene_object.mesh_id][morphTargetIndex];
+            S_Vertex morphTargetVertex = verticesBuffers[scene_object.mesh_id][morphTargetVertexIndex];
+            
         
             
-            float expected_LoD = getExpectedLoDLevel(vertex.position);
-            float lerp_value = clamp(expected_LoD - meshlet.discrete_level_of_detail - 1, 0, 1);
                 
             vertex.position = lerp(vertex.position, morphTargetVertex.position, lerp_value);
-            vertex.uv = lerp(vertex.uv, morphTargetVertex.uv, lerp_value);
-            vertex.normal = normalize(lerp(vertex.normal, morphTargetVertex.normal, lerp_value));
-            vertex.color = lerp(vertex.color, morphTargetVertex.color, lerp_value);
+            vertex.normal   = lerp(vertex.normal,   morphTargetVertex.normal,   lerp_value);
+            vertex.color    = lerp(vertex.color,    morphTargetVertex.color,    lerp_value);
+            vertex.uv       = lerp(vertex.uv,       morphTargetVertex.uv,       lerp_value);
             
+            vertex.normal   = normalize(vertex.normal);
         }
         
         
@@ -134,10 +144,12 @@ void main(in uint I : SV_GroupIndex,
         else if (constants.shadingSelection == DEBUG_VERTEX_BASED_LOD)
         {
             verts[v].Color = Rainbow(getExpectedLoDLevel(vertex.position) / 5.0);
+            //verts[v].Color = Rainbow(lerp_value);
+            
         }
         else if (constants.shadingSelection == DEBUG_VERTICES)
         {
-            if (getExpectedLoDLevel(vertex.position)  > payload_task.lod_tree_depth + 1)
+            if (lerp_value > 0 && lerp_value < 1)
                 verts[v].Color = float4(0, 1, 0, 1);
             else
                 verts[v].Color = float4(1, 0, 0, 1);
