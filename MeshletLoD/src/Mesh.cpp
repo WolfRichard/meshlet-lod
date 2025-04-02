@@ -381,22 +381,17 @@ uint Mesh::count_shared_edges(const std::unordered_set<std::pair<uint, uint>, Pa
     return shared_count;
 }
 
-std::vector<std::pair<uint, uint>> Mesh::extractBoundaryEdges(S_MeshletGroup& meshlet_group)
+std::vector<std::pair<uint, uint>> Mesh::extractBoundaryEdges(std::vector<uint>& indices)
 {
     std::unordered_map<std::pair<uint, uint>, int, PairHash> edgeCount;
 
     // Step 1: Count occurrences of each edge
-    for (uint m = 0; m < meshlet_group.meshlet_count; m++)
+    for (uint tri = 0; tri < (uint)indices.size() / 3; tri++)
     {
-        S_Meshlet& current_meshlet = m_meshlets[meshlet_group.meshlets[m]];
-
-        for (uint p = 0; p < current_meshlet.triangle_count; p++) {
-            edgeCount[sortEdgeIndices(m_primitive_indices[current_meshlet.triangle_offset + p * 3 + 0], m_primitive_indices[current_meshlet.triangle_offset + p * 3 + 1])]++;
-            edgeCount[sortEdgeIndices(m_primitive_indices[current_meshlet.triangle_offset + p * 3 + 1], m_primitive_indices[current_meshlet.triangle_offset + p * 3 + 2])]++;
-            edgeCount[sortEdgeIndices(m_primitive_indices[current_meshlet.triangle_offset + p * 3 + 2], m_primitive_indices[current_meshlet.triangle_offset + p * 3 + 0])]++;
-        }
+        edgeCount[sortEdgeIndices(indices[tri * 3 + 0], indices[tri * 3 + 1])]++;
+        edgeCount[sortEdgeIndices(indices[tri * 3 + 1], indices[tri * 3 + 2])]++;
+        edgeCount[sortEdgeIndices(indices[tri * 3 + 2], indices[tri * 3 + 0])]++;
     }
-    
 
     // Step 2: Collect edges that appear only once (boundary edges)
     std::vector<std::pair<uint, uint>> boundaryEdges;
@@ -411,6 +406,10 @@ std::vector<std::pair<uint, uint>> Mesh::extractBoundaryEdges(S_MeshletGroup& me
 
 void Mesh::simplifiyTopLevelGroups()
 {
+    bool useCustomSimplification = true;
+
+
+
     m_current_hierarchy_top_level_meshlets.clear(); // clear the top level of meshlets as it will be replaced by their simplified version
 
     OutputDebugString(("\n\nNumber of Top LEVEL GROUPS: " + std::to_string(m_current_hierarchy_top_level_groups.size())).c_str());
@@ -467,6 +466,110 @@ void Mesh::simplifiyTopLevelGroups()
             target_index_count, FLT_MAX, meshopt_SimplifyLockBorder, &lod_error); // TODO: & meshopt_SimplifyErrorAbsolute bitmask option leads to cracks??? why??
         simplified_indices.resize(simplifiedIndexCount);
         //current_group.bounding_sphere.radius = lod_error;
+
+
+
+
+
+
+
+
+
+
+
+
+
+        // Custom simplification algorithm that tracks vertex decimation indices
+
+        if (useCustomSimplification) 
+        {   
+            std::unordered_set<uint> vertex_indices_set; // temporary set to filter duplicate vertices
+            std::vector<uint> edge_vertex_indices_indices;  // indices into "vertex_indices"-vector that lie on the boundary of the group
+            std::vector<uint> inner_vertex_indices_indices; // indices into "vertex_indices"-vector that lie within the bounds of the group and are valid targets for vertex decimation
+
+            // extract  indices of unqiue vertices from the group index vector
+            for (uint index : merged_deduplicated_indices) 
+            {
+                vertex_indices_set.insert(index);
+            }
+            std::vector<uint> vertex_indices(vertex_indices_set.begin(), vertex_indices_set.end());
+
+            // sort vertices by boundary or inner geometric topology
+            std::vector<std::pair<uint, uint>> bondary_edges = extractBoundaryEdges(merged_deduplicated_indices);
+            for (uint vertex_index_index = 0; vertex_index_index < vertex_indices.size(); vertex_index_index++) 
+            {
+                uint vertex_index = vertex_indices [vertex_index_index];
+                bool vertex_lies_on_edge = false;
+                for (auto edge : bondary_edges)
+                {
+                    if (vertex_index == edge.first || vertex_index == edge.second)
+                    {
+                        vertex_lies_on_edge = true;
+                        break;
+                    }
+                }
+                if (vertex_lies_on_edge)
+                    edge_vertex_indices_indices.push_back(vertex_index_index);
+                else
+                    inner_vertex_indices_indices.push_back(vertex_index_index);
+            }
+
+            uint current_triangle_count = (uint)merged_deduplicated_indices.size() / 3;
+            uint current_vertex_count = (uint)vertex_indices.size();
+
+
+            struct s_triangle
+            {
+                uint vertex_indices[3]; // index into the simplification vertex struct array
+                uint edge_indices[3]; // index into the simplification edge struct array
+            };
+
+            struct s_edge
+            {
+                std::pair<uint, uint> vertex_indices; // index into the simplification vertex struct array
+                std::vector<uint> neighboring_triangles; // edge can be part of 1 or 2 triangles
+            };
+
+            struct s_vertex
+            {
+                std::vector<uint> edge_indices; // edges that connect to the vertex
+                std::vector<uint> triangle_indices; // triangles that connect to the vertex
+                uint vertex_index; // index into the m_vertices vector
+                std::vector<uint> merged_vertex_indices; // indices that point into the s_vertex struct array that have been merged into this vertex
+            };
+
+            std::vector<s_vertex> simplification_vertices;
+            std::vector<s_edge> simplification_edges;
+            std::vector<s_triangle> simplification_triangles;
+               
+
+            // itterativly decimate vertices
+            while ((current_triangle_count > MAX_MESHLET_PRIMITIVE_COUNT * GROUP_SPLIT_COUNT)
+                || (current_vertex_count > MAX_MESHLET_VERTEX_COUNT * GROUP_SPLIT_COUNT))
+            {
+                // TODO: further simplifciation code
+            }
+            
+
+            
+        
+        
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         
         // set base error line for simplified meshlets aas highest error from base meshlets
         float collective_base_meshlet_error = 0;
