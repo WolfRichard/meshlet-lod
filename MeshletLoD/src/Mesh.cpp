@@ -4,6 +4,8 @@
 #include <metis.h>
 #include <unordered_set>
 
+#include <random>
+
 #include "Windows.h"
 
 using namespace DirectX;
@@ -406,10 +408,6 @@ std::vector<std::pair<uint, uint>> Mesh::extractBoundaryEdges(std::vector<uint>&
 
 void Mesh::simplifiyTopLevelGroups()
 {
-    bool useCustomSimplification = true;
-
-
-
     m_current_hierarchy_top_level_meshlets.clear(); // clear the top level of meshlets as it will be replaced by their simplified version
 
     OutputDebugString(("\n\nNumber of Top LEVEL GROUPS: " + std::to_string(m_current_hierarchy_top_level_groups.size())).c_str());
@@ -483,77 +481,300 @@ void Mesh::simplifiyTopLevelGroups()
 
         if (useCustomSimplification) 
         {   
-            std::unordered_set<uint> vertex_indices_set; // temporary set to filter duplicate vertices
-            std::vector<uint> edge_vertex_indices_indices;  // indices into "vertex_indices"-vector that lie on the boundary of the group
-            std::vector<uint> inner_vertex_indices_indices; // indices into "vertex_indices"-vector that lie within the bounds of the group and are valid targets for vertex decimation
-
-            // extract  indices of unqiue vertices from the group index vector
-            for (uint index : merged_deduplicated_indices) 
-            {
-                vertex_indices_set.insert(index);
-            }
-            std::vector<uint> vertex_indices(vertex_indices_set.begin(), vertex_indices_set.end());
-
-            // sort vertices by boundary or inner geometric topology
-            std::vector<std::pair<uint, uint>> bondary_edges = extractBoundaryEdges(merged_deduplicated_indices);
-            for (uint vertex_index_index = 0; vertex_index_index < vertex_indices.size(); vertex_index_index++) 
-            {
-                uint vertex_index = vertex_indices [vertex_index_index];
-                bool vertex_lies_on_edge = false;
-                for (auto edge : bondary_edges)
-                {
-                    if (vertex_index == edge.first || vertex_index == edge.second)
-                    {
-                        vertex_lies_on_edge = true;
-                        break;
-                    }
-                }
-                if (vertex_lies_on_edge)
-                    edge_vertex_indices_indices.push_back(vertex_index_index);
-                else
-                    inner_vertex_indices_indices.push_back(vertex_index_index);
-            }
-
-            uint current_triangle_count = (uint)merged_deduplicated_indices.size() / 3;
-            uint current_vertex_count = (uint)vertex_indices.size();
-
-
-            struct s_triangle
+            struct simpl_triangle
             {
                 uint vertex_indices[3]; // index into the simplification vertex struct array
                 uint edge_indices[3]; // index into the simplification edge struct array
+                bool removed = false; // true if element was removed during simplification process
             };
 
-            struct s_edge
+            struct simpl_edge
             {
                 std::pair<uint, uint> vertex_indices; // index into the simplification vertex struct array
-                std::vector<uint> neighboring_triangles; // edge can be part of 1 or 2 triangles
+                std::vector<uint> triangle_indices; // edge can be part of 1 or 2 triangles
+                bool is_boundary_edge; // true if edge forms the boundary of the geometry
+                bool removed = false; // true if element was removed during simplification process
             };
 
-            struct s_vertex
+            struct simpl_vertex
             {
                 std::vector<uint> edge_indices; // edges that connect to the vertex
                 std::vector<uint> triangle_indices; // triangles that connect to the vertex
                 uint vertex_index; // index into the m_vertices vector
                 std::vector<uint> merged_vertex_indices; // indices that point into the s_vertex struct array that have been merged into this vertex
+                bool is_boundary_vertex = false; // true if vertex lies on the edge of the geometry
+                bool removed = false; // true if element was removed during simplification process
             };
 
-            std::vector<s_vertex> simplification_vertices;
-            std::vector<s_edge> simplification_edges;
-            std::vector<s_triangle> simplification_triangles;
+            std::vector<simpl_vertex> simplification_vertices;
+            std::vector<simpl_edge> simplification_edges;
+            std::vector<simpl_triangle> simplification_triangles;
+
+          
+            // go over every triangle of the original index buffer
+            for (uint t = 0; t < merged_deduplicated_indices.size() / 3; t++)
+            {
+                // check if ths is a degenerated triangle, if so skip it
+                if (   merged_deduplicated_indices[t * 3 + 0] == merged_deduplicated_indices[t * 3 + 1]
+                    || merged_deduplicated_indices[t * 3 + 1] == merged_deduplicated_indices[t * 3 + 2]
+                    || merged_deduplicated_indices[t * 3 + 2] == merged_deduplicated_indices[t * 3 + 0])
+                {
+                    OutputDebugString("DEGENERATE TRIANGLE!!!!\n");
+                    assert(false);
+                    continue;
+                }
+
+                simpl_triangle new_triangle;
+                // search for each of the vertices structs that are part of this triangles. create if vertex was not yet created
+                for (uint i = 0; i < 3; i++)
+                {
+                    int s_vertex_index = -1;
+                    for (uint svi = 0; svi < simplification_vertices.size(); svi++)
+                    {
+                        simpl_vertex& sv = simplification_vertices[svi];
+                        if (sv.vertex_index == merged_deduplicated_indices[t * 3 + i])
+                        {
+                            s_vertex_index = svi;
+                            break;
+                        }
+                    }
+                    if (s_vertex_index == -1)
+                    {
+                        s_vertex_index = simplification_vertices.size();
+                        simpl_vertex new_vertex;
+                        new_vertex.vertex_index = merged_deduplicated_indices[t * 3 + i];
+                        simplification_vertices.push_back(new_vertex);
+                    }
+                    new_triangle.vertex_indices[i] = s_vertex_index;
+                    simplification_vertices[s_vertex_index].triangle_indices.push_back(simplification_triangles.size());
+                }
+
+                // search and if not already present create a new edge struct for each of the triangle sides
+                for (uint i = 0; i < 3; i++) 
+                {
+                    simpl_edge new_edge;
+                    new_edge.vertex_indices = sortEdgeIndices(new_triangle.vertex_indices[i], new_triangle.vertex_indices[(i + 1) % 3]);
+                    int s_edge_index = -1;
+                    for (uint sei = 0; sei < simplification_edges.size(); sei++)
+                    {
+                        simpl_edge& se = simplification_edges[sei];
+                        if (se.vertex_indices == new_edge.vertex_indices)
+                        {
+                            s_edge_index = sei;
+                            break;
+                        }
+                    }
+                    if (s_edge_index == -1)
+                    {
+                        s_edge_index = simplification_edges.size();
+                        simplification_edges.push_back(new_edge);
+                    }
+                    new_triangle.edge_indices[i] = s_edge_index;
+                    assert(new_edge.vertex_indices.first != new_edge.vertex_indices.second);
+                    simplification_edges[s_edge_index].triangle_indices.push_back(simplification_triangles.size());
+                }
+                simplification_triangles.push_back(new_triangle);
+            }
                
+            // go over every edge, update boundary information for each edge and vertex while also adding the connectivity data from vertex to edge
+            for (uint sei = 0; sei < simplification_edges.size(); sei++)
+            {
+                simpl_edge& se = simplification_edges[sei];
+                //OutputDebugString(("Number of adjecent Triangles to edge: " + std::to_string(se.triangle_indices.size()) + "\n").c_str());
+                if (se.triangle_indices.size() > 2)
+                {
+                    OutputDebugString(("Following Edge has to many triangles: " + std::to_string(se.vertex_indices.first) + ", " + std::to_string(se.vertex_indices.second) + "\n").c_str());
+                    for (uint t : se.triangle_indices)
+                    {
+                        simpl_triangle& st = simplification_triangles[t];
+                        OutputDebugString(("Triangles adjecent to this edge: " + std::to_string(st.vertex_indices[0]) + ", " + std::to_string(st.vertex_indices[1]) + ", " + std::to_string(st.vertex_indices[2]) + "\n").c_str());
+                    }
+                }
+                assert((se.triangle_indices.size() >= 1) && (se.triangle_indices.size() <= 2)); // TODO: can have more than 2 triangles, because of differing winding order so technically incorrect!
+                se.is_boundary_edge = (se.triangle_indices.size() == 1); // edge forms boundary if its only part of one triangle
+
+                // add connectivity data from vertex to edge
+                simplification_vertices[se.vertex_indices.first].edge_indices.push_back(sei);
+                simplification_vertices[se.vertex_indices.second].edge_indices.push_back(sei);
+
+                // inherit boundary satus from edges to their vertices
+                simplification_vertices[se.vertex_indices.first].is_boundary_vertex = se.is_boundary_edge;
+                simplification_vertices[se.vertex_indices.second].is_boundary_vertex = se.is_boundary_edge;
+            }
+
+            // extract vertex indices of all non bondary simpl_vertices
+            std::vector<uint> vertex_valid_for_simplification_pool;
+            for (uint i = 0; i < simplification_vertices.size(); i++)
+            {
+                if (!(simplification_vertices[i].is_boundary_vertex))
+                    vertex_valid_for_simplification_pool.push_back(i);
+            }
+
+
+            uint current_primitives_count = (uint)simplification_triangles.size();
+            uint current_vertex_count = (uint)simplification_vertices.size();
+
+            OutputDebugString(("Triangle Count: " + std::to_string(current_primitives_count) + "\n").c_str());
+            OutputDebugString(("Vertex Count: " + std::to_string(current_vertex_count) + "\n").c_str());
+            OutputDebugString(("Pool Vertex Count: " + std::to_string(vertex_valid_for_simplification_pool.size()) + "\n").c_str());
+            OutputDebugString(("Boundary Vertex Count: " + std::to_string(simplification_vertices.size() - vertex_valid_for_simplification_pool.size()) + "\n").c_str());
 
             // itterativly decimate vertices
-            while ((current_triangle_count > MAX_MESHLET_PRIMITIVE_COUNT * GROUP_SPLIT_COUNT)
-                || (current_vertex_count > MAX_MESHLET_VERTEX_COUNT * GROUP_SPLIT_COUNT))
+            while ((current_primitives_count > MAX_MESHLET_PRIMITIVE_COUNT * GROUP_SPLIT_COUNT) 
+                || (current_vertex_count > MAX_MESHLET_VERTEX_COUNT))// * GROUP_SPLIT_COUNT)) // TODO: find a better solu´tion to the problem
             {
-                // TODO: further simplifciation code
+                // pick vertex that should be removed
+                // TODO: currently chooses random vertex from all inner vertices that have the smallest number of edges connected to them. this should be replaced by QEM in the future!
+                assert(vertex_valid_for_simplification_pool.size() > 0);
+
+                std::vector<uint> lowest_connectivity_vertex_index_pool_indices;
+
+                uint lowest_edge_count = UINT32_MAX;
+                for (uint vvfsi = 0; vvfsi < vertex_valid_for_simplification_pool.size(); vvfsi++)
+                {
+                    simpl_vertex& sv = simplification_vertices[vertex_valid_for_simplification_pool[vvfsi]];
+                    
+                    if (sv.edge_indices.size() == lowest_edge_count)
+                    {
+                        lowest_connectivity_vertex_index_pool_indices.push_back(vvfsi);
+                    }
+                    else if (sv.edge_indices.size() < lowest_edge_count)
+                    {
+                        lowest_edge_count = (uint)sv.edge_indices.size();
+                        lowest_connectivity_vertex_index_pool_indices.clear();
+                        lowest_connectivity_vertex_index_pool_indices.push_back(vvfsi);
+                    }
+                    
+                }
+
+
+                uint randomly_selected_vertex_simplification_pool_index = lowest_connectivity_vertex_index_pool_indices[randomInt(0, lowest_connectivity_vertex_index_pool_indices.size() - 1)];
+                uint removing_vertex_index = vertex_valid_for_simplification_pool[randomly_selected_vertex_simplification_pool_index];
+                simpl_vertex& removing_vertex = simplification_vertices[removing_vertex_index];
+                S_Vertex& dereferenced_removing_vertex = m_vertices[removing_vertex.vertex_index];
+
+                // find closest neighbor vertex that should be selected as the morph target
+                float min_dist2 = FLT_MAX;
+                uint closest_vertex_neighbor_index;
+                uint shortest_neighbor_edge_index;
+                for (uint ei : removing_vertex.edge_indices)
+                {
+                    simpl_edge& e = simplification_edges[ei];
+                    assert(e.vertex_indices.first != e.vertex_indices.second);
+                    uint other_edge_vertex_index = (e.vertex_indices.first == removing_vertex_index) ? e.vertex_indices.second : e.vertex_indices.first;
+                    simpl_vertex& other_vertex = simplification_vertices[other_edge_vertex_index];
+                    S_Vertex dereferenced_other_vertex = m_vertices[other_vertex.vertex_index];
+
+                    float dx = dereferenced_removing_vertex.position.x - dereferenced_other_vertex.position.x;
+                    float dy = dereferenced_removing_vertex.position.y - dereferenced_other_vertex.position.y;
+                    float dz = dereferenced_removing_vertex.position.z - dereferenced_other_vertex.position.z;
+                    float dist2 = dx * dx + dy * dy + dz * dz;
+
+                    if (dist2 < min_dist2)
+                    {
+                        shortest_neighbor_edge_index = ei;
+                        closest_vertex_neighbor_index = other_edge_vertex_index;
+                        min_dist2 = dist2;
+                    }
+                }
+
+
+                
+                // remove flag the selected vertex, its shortest neighboring edge and all triangles that side the removed edge
+                simpl_edge& removing_edge = simplification_edges[shortest_neighbor_edge_index];
+                for (uint removing_triangle_index : removing_edge.triangle_indices)
+                {
+                    simpl_triangle& removing_triangle = simplification_triangles[removing_triangle_index];
+                    removing_triangle.removed = true;
+                    current_primitives_count--;
+                }
+                removing_edge.removed = true;
+                removing_vertex.removed = true;
+                assert((sortEdgeIndices(closest_vertex_neighbor_index, removing_vertex_index) == removing_edge.vertex_indices));
+                current_vertex_count--;
+
+                
+                assert(closest_vertex_neighbor_index != removing_vertex_index);
+                // append all morph children vertex indices into own morph target aswell as removed vertex index
+                simpl_vertex& morph_target_vertex = simplification_vertices[closest_vertex_neighbor_index];
+                morph_target_vertex.merged_vertex_indices.insert(morph_target_vertex.merged_vertex_indices.end(), removing_vertex.merged_vertex_indices.begin(), removing_vertex.merged_vertex_indices.end());
+                morph_target_vertex.merged_vertex_indices.push_back(removing_vertex_index);
+
+                // erase old connection indices from removed edge and erased triangles from morph target
+                for (int morph_target_triangles_index = morph_target_vertex.triangle_indices.size() - 1; morph_target_triangles_index >= 0; morph_target_triangles_index--)
+                {
+                    if (simplification_triangles[morph_target_vertex.triangle_indices[morph_target_triangles_index]].removed)
+                    {
+                        morph_target_vertex.triangle_indices[morph_target_triangles_index] = morph_target_vertex.triangle_indices.back();
+                        morph_target_vertex.triangle_indices.pop_back();
+                    }
+                }
+                for (int morph_target_edge_index = morph_target_vertex.edge_indices.size() - 1; morph_target_edge_index >= 0; morph_target_edge_index--)
+                {
+                    if (simplification_edges[morph_target_vertex.edge_indices[morph_target_edge_index]].removed)
+                    {
+                        morph_target_vertex.edge_indices[morph_target_edge_index] = morph_target_vertex.edge_indices.back();
+                        morph_target_vertex.edge_indices.pop_back();
+                    }
+                }
+
+                // update all other neighboring edges and triangles to have their vertex index replaced by the morph target
+                // add all other adjacent triangles and edges to the morph target if they wreent removed flagged
+                for (uint neighboring_triangle_index : removing_vertex.triangle_indices)
+                {
+                    simpl_triangle& nt = simplification_triangles[neighboring_triangle_index];
+                    if (nt.removed) continue; // skip removed triangles
+                    for (uint& vi : nt.vertex_indices)
+                    {
+                        if (vi == removing_vertex_index) vi = closest_vertex_neighbor_index;
+                    }
+                    morph_target_vertex.triangle_indices.push_back(neighboring_triangle_index);
+                }
+                for (uint neighboring_edge_index : removing_vertex.edge_indices)
+                {
+                    simpl_edge& ne = simplification_edges[neighboring_edge_index];
+                    if (ne.removed) continue; // skip removed edge
+                    assert(ne.vertex_indices.first != ne.vertex_indices.second);
+                    assert(shortest_neighbor_edge_index != neighboring_edge_index);
+                    assert(!(sortEdgeIndices(closest_vertex_neighbor_index, removing_vertex_index) == ne.vertex_indices));
+                    if (ne.vertex_indices.first == removing_vertex_index)
+                    {
+                        ne.vertex_indices.first = closest_vertex_neighbor_index;
+                    }
+                    else
+                    {
+                        ne.vertex_indices.second = closest_vertex_neighbor_index;
+                    }
+                    morph_target_vertex.edge_indices.push_back(neighboring_edge_index);
+                    assert(ne.vertex_indices.first != ne.vertex_indices.second);
+                }
+
+                
+
+                // remove vertex from simplification pool
+                vertex_valid_for_simplification_pool[randomly_selected_vertex_simplification_pool_index] = vertex_valid_for_simplification_pool.back();
+                vertex_valid_for_simplification_pool.pop_back();
             }
             
 
-            
-        
-        
+            // reconstruct simplified index buffer from custom "simpl_" struct vectors
+            simplified_indices.clear();
+
+            for (simpl_triangle& st : simplification_triangles)
+            {
+                if (!(st.removed))
+                {
+                    for (uint i = 0; i < 3; i++) {
+                        simpl_vertex& sv = simplification_vertices[st.vertex_indices[i]];
+                        assert(!(sv.removed));
+                        simplified_indices.push_back(sv.vertex_index);
+                    }
+                }
+            }
+
+
+            OutputDebugString(("Triangle Count after custom simp: " + std::to_string(current_primitives_count) + "\n").c_str());
+            OutputDebugString(("Vertex Count after custom simp: " + std::to_string(current_vertex_count) + "\n").c_str());
         }
 
 
@@ -868,3 +1089,9 @@ S_BoundingSphere Mesh::computeGroupBoundingSphere(S_MeshletGroup& meshlet_group)
 }
 
 
+int Mesh::randomInt(int min, int max) {
+    static std::random_device rd;  // Seed
+    static std::mt19937 gen(rd()); // Mersenne Twister PRNG
+    std::uniform_int_distribution<int> dist(min, max);
+    return dist(gen);
+}

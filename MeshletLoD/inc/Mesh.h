@@ -51,11 +51,16 @@ public:
 
 
 private:
+    bool useCustomSimplification = true;
+
+
     std::pair<uint, uint> sortEdgeIndices(uint v0, uint v1);
     std::unordered_set<std::pair<uint, uint>, PairHash> extractEdges(S_Meshlet meshlet);
     uint count_shared_edges(const std::unordered_set<std::pair<uint, uint>, PairHash>& edgesA, const std::unordered_set<std::pair<uint, uint>, PairHash>& edgesB);
     std::vector<std::pair<uint, uint>> extractBoundaryEdges(std::vector<uint>& indices);
     
+    int randomInt(int min, int max);
+
     void parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene);
     void generateLeafMeshlets();
     void buildMeshletHierachy();
