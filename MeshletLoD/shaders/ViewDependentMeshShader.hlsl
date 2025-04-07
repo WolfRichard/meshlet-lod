@@ -131,7 +131,7 @@ void main(in uint I : SV_GroupIndex,
         }
         else if (constants.shadingSelection == DEBUG_LOD_SHADING)
         {
-            verts[v].Color = Rainbow(payload_task.lod_tree_depth / 5.0) * brightness;
+            verts[v].Color = Rainbow(meshlet.discrete_level_of_detail / 5.0) * brightness;
         }
         else if (constants.shadingSelection == DEBUG_WORLD_POS)
         {

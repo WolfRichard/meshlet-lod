@@ -148,6 +148,7 @@ private:
     float       m_LoDScale              = 1;
     float       m_debugFloatSlider      = 0;
     bool        m_geo_morphing          = false;
+    bool        m_tre_instead_of_flat   = true;
     bool        m_screen_space_LoD      = true;
     bool        m_backFaceCulling       = true;
 

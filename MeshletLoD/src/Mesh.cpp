@@ -179,6 +179,10 @@ void Mesh::buildMeshletHierachy()
     finalTopLevelMeshletGrouping();
     simplifiyTopLevelGroups();
 
+    // store root meshlet id's inside the dummy meshlet (maybe not the most elegant solution but it saves the need for an extra buffer)
+    m_meshlets[0].child_meshlets[0] = (uint)m_meshlets.size() - 2;
+    m_meshlets[0].child_meshlets[1] = (uint)m_meshlets.size() - 1;
+
     //clear uneeded data
     m_current_hierarchy_top_level_groups.clear();
     m_current_hierarchy_top_level_meshlets.clear();

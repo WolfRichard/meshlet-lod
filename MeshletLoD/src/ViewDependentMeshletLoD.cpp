@@ -740,6 +740,7 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     if (m_frustumCulling) constants.BoolConstants |= FRUSTUM_CULLING_BIT_POS;
     if (m_geo_morphing) constants.BoolConstants |= GEO_MORPHING_BIT_POS;
     if (m_screen_space_LoD) constants.BoolConstants |= SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS;
+    if (m_tre_instead_of_flat) constants.BoolConstants |= TREE_INSTEAD_OF_FLAT_BIT_POS;
 
     
     memcpy(m_mappedConstantData, &constants, sizeof(S_Constants));
@@ -981,6 +982,7 @@ void ViewDependentMeshletLoD::updateImGui()
         ImGui::Checkbox("Meshlet based Frustum Culling", &m_frustumCulling);
         ImGui::Checkbox("Screen Space Error based LoD selection", &m_screen_space_LoD);
         ImGui::Checkbox("Geo-Morphing", &m_geo_morphing);
+        ImGui::Checkbox("Hierarchical Tree-Traversal Instead of Flat Meshlet Processing", &m_tre_instead_of_flat);
         ImGui::Checkbox("Level Of Detail", &m_LoD_Enabled);
         if (m_screen_space_LoD)
             ImGui::InputFloat("Max error in pxl", &m_LoDScale, 0.01f, 1.0f, "%.2f");

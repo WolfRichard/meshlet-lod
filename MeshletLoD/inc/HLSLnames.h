@@ -2,7 +2,7 @@
 #include <DirectXMath.h>
 #include <vector>
 
-using uint		 = unsigned int;
+using uint		 = uint32_t;
 using uint2      = DirectX::XMUINT2;
 using uint3      = DirectX::XMUINT3;
 using uint4      = DirectX::XMUINT4;

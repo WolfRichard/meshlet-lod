@@ -8,7 +8,7 @@
 #define WORK_QUEUE_SIZE 65536           // (2^16) Workqueue is implemented as ring-buffer, 
                                         //queue size allows correct indexing and should be able to contain the maximum of simultanious queue tasks
 
-#define MAX_EMITTED_MESHLETS_PER_WORK_GROUP 1024 // Maximum of 32 Meshlets per Task Shader Thread (limited by maximum size of payload)
+#define MAX_EMITTED_MESHLETS_PER_WORK_GROUP 2048 // Maximum of 64 Meshlets per Task Shader Thread (limited by maximum size of payload)
 
 //#define MAX_MESHLET_VERTEX_COUNT 64
 #define MAX_MESHLET_VERTEX_COUNT 128
@@ -71,7 +71,7 @@ struct S_MeshletGroup
 #define FRUSTUM_CULLING_BIT_POS                 1  // 00000000000000000000000000000001
 #define SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS    2  // 00000000000000000000000000000010
 #define GEO_MORPHING_BIT_POS                    4  // 00000000000000000000000000000100
-//#define DEBUG_MESHLETS                       16  // 00000000000000000000000000001000
+#define TREE_INSTEAD_OF_FLAT_BIT_POS           16  // 00000000000000000000000000001000
 //#define DEBUG_BONES                          32  // 00000000000000000000000000010000
 //#define DEBUG_LOD                            64  // 00000000000000000000000000100000
 //#define ENABLE_OBJECT_LOD                   128  // 00000000000000000000000001000000
@@ -121,8 +121,6 @@ struct S_PayloadEntry
 {
     uint meshlet_id;
     uint object_id;
-    float lod_morphing; // 0 = vertices stay the same; 1 = vertices are completely pushed towards their parent vertex
-    uint lod_tree_depth;
 };
 
 // Payload from task shader stage to mesh shader
@@ -151,10 +149,7 @@ struct S_SceneObject
     
     uint mesh_id;                       // the mesh of the object
     
-    uint root_group_id; // could also be stored in seperate "mesh" buffer to avoid storing this multiple times per instance
-    uint mesh_group_count; // could also be stored in seperate "mesh" buffer to avoid storing this multiple times per instance
-    uint mesh_meshlet_count; // could also be stored in seperate "mesh" buffer to avoid storing this multiple times per instance
-    
+    uint mesh_meshlet_count;            // could also be stored in seperate "mesh" buffer to avoid storing this multiple times per instance
     
     float2 byte_allignement;            // used to keep 16 byte allignement for structured buffer
 };
@@ -162,5 +157,5 @@ struct S_SceneObject
 struct S_WorkQueueEntry
 {
     uint scene_object_id;
-    uint group_id;
+    uint meshlet_id;
 };
