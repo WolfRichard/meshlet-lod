@@ -41,11 +41,13 @@ struct S_Meshlet
     S_BoundingSphere simplified_group_bounds;
     float base_error;           // if the meshlet is a sub-mesh of the original geometry this is set to 0
     float simplification_error; // (parent error) if meshlet has no parent because its part of the root then this is set to FLOAT_MAX
-    uint discrete_level_of_detail;
+    uint discrete_level_of_detail;  // the discrete level of innacuracy for the meshlet (higher number means less precise mesh resolution)
+    uint group_id;              // currently just for debug-rendering
     
-    uint group_id;
+    uint child_meshlets[GROUP_MERGE_COUNT]; // indices that point into the meshlet buffer towards the child meshlets that were used during group simplification to produce the simplififed geometry of the current meshlet
     
-    //float3 byte_allignement; // used to keep 16 byte allignement for structured buffer
+    uint child_count;
+    float3 byte_allignement; // used to keep 16 byte allignement for structured buffer
 };
 
 
