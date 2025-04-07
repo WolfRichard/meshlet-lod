@@ -155,7 +155,6 @@ void main(in uint I : SV_GroupIndex,
             }
         }
     
-    
     // processing of work queue entries
         S_WorkQueueEntry current_task;
         while (consumeTask(current_task))
@@ -205,12 +204,11 @@ void main(in uint I : SV_GroupIndex,
         
                 if (!parent_precise_enough)
                 {
-            //dispatch simplified meshlets when simplification is precise enough
                     if (base_precise_enough)
                     {
                         queueMeshletForDispatch(current_task.meshlet_id, current_task.scene_object_id);
                     }
-            // append child meshlets into work queue if current simplification isnt precise enough and current meshlet isnt a leaf node
+                    // append child meshlets into work queue if current simplification isnt precise enough and current meshlet isnt a leaf node
                     else
                     {
                         for (uint child_meshlet_index_index = 0; child_meshlet_index_index < current_meshlet.child_count; child_meshlet_index_index++)
@@ -268,8 +266,10 @@ void main(in uint I : SV_GroupIndex,
             
                 bool parent_precise_enough = groupSimplificationIsPreciseEnough(current_meshlet.simplified_group_bounds, current_meshlet.discrete_level_of_detail + 1);
                 bool base_precise_enough = groupSimplificationIsPreciseEnough(current_meshlet.bounding_sphere, current_meshlet.discrete_level_of_detail);
-            
-
+                
+                if (current_meshlet.simplification_error == FLT_MAX)
+                    parent_precise_enough = false;
+          
                 if (!parent_precise_enough && base_precise_enough)
                 {
                     queueMeshletForDispatch(global_thread_index, 0);
@@ -277,6 +277,8 @@ void main(in uint I : SV_GroupIndex,
             }
         }
     }
+    
+    
     
     
     //after work queue is empty dispatch all collected meshlets

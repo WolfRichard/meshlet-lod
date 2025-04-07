@@ -129,6 +129,7 @@ void Mesh::generateLeafMeshlets()
     dummyMeshlet.vertex_count = 0;
     dummyMeshlet.vertex_offset = 0;
     dummyMeshlet.base_error = 0;
+    dummyMeshlet.discrete_level_of_detail = 0;
     dummyMeshlet.simplification_error = FLT_MAX;
     dummyMeshlet.bounding_sphere = { float3(0, 0, 0), 0 };
     for (uint i = 0; i < GROUP_MERGE_COUNT; i++)
@@ -145,6 +146,7 @@ void Mesh::generateLeafMeshlets()
         newMeshlet.vertex_count = meshlets[i].vertex_count;
         newMeshlet.vertex_offset = meshlets[i].vertex_offset;
         newMeshlet.base_error = 0;
+        newMeshlet.discrete_level_of_detail = 0;
         newMeshlet.simplification_error = FLT_MAX;
         newMeshlet.simplified_group_bounds = { float3(0, 0, 0), 0 };
         for (uint i = 0; i < GROUP_MERGE_COUNT; i++)
@@ -198,14 +200,7 @@ void Mesh::buildMeshletHierachy()
     OutputDebugString("\n\n");
 
     
-    for (S_MeshletGroup& current_group : m_meshlet_groups)
-    {
-        for (uint m = 0; m < current_group.meshlet_count; m++)
-        {
-            S_Meshlet& current_meshlet = m_meshlets[current_group.meshlets[m]];
-            current_meshlet.discrete_level_of_detail = current_group.hierarchy_tree_depth;
-        }
-    }
+
     
 
     OutputDebugString(("Size vertex_indices vector: " + std::to_string(m_vertex_indices.size()) + " Size morph_indices vector: " + std::to_string(m_morph_indices.size()) + "\n").c_str());
@@ -731,6 +726,7 @@ void Mesh::simplifiyTopLevelGroups()
             newMeshlet.vertex_count = meshlets[i].vertex_count;
             newMeshlet.vertex_offset = meshlets[i].vertex_offset + previous_vertex_indices_size;
             newMeshlet.base_error = collective_base_meshlet_error;
+            newMeshlet.discrete_level_of_detail = (uint)m_hierarchy_per_level_group_count.size();
             newMeshlet.simplification_error = FLT_MAX;
             newMeshlet.simplified_group_bounds = { float3(0, 0, 0), 0 };
             for (uint i = 0; i < GROUP_MERGE_COUNT; i++)

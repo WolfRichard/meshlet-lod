@@ -129,6 +129,7 @@ void Scene::loadScene(std::string file_path)
 
 void Scene::storeSceneToBackUp(std::string file_path)
 {
+    /*
     std::ofstream back_up_file(file_path, std::ios::binary);
     if (!back_up_file)
     {
@@ -143,6 +144,7 @@ void Scene::storeSceneToBackUp(std::string file_path)
 
     // backup 
     back_
+    */
 }
 
 bool Scene::loadSceneFromBackUp(std::string file_path)
