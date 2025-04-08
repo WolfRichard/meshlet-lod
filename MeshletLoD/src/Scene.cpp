@@ -140,23 +140,123 @@ void Scene::storeSceneToBackUp(std::string file_path)
     // backup scene meta data
     uint scene_object_count = (uint)m_scene_objects.size();
     back_up_file.write(reinterpret_cast<const char*>(&scene_object_count), sizeof(uint));
-    back_up_file.write(reinterpret_cast<const char*>(&m_mesh_count)      , sizeof(uint));
+    back_up_file.write(reinterpret_cast<const char*>(&m_mesh_count), sizeof(uint));
 
-    // backup 
-    back_
+    // backup scene objects buffer data
+    back_up_file.write(reinterpret_cast<const char*>(m_scene_objects.data()), sizeof(S_SceneObject) * m_scene_objects.size());
+    
+    // backup vertex buffers
+    for (uint i = 0; i < m_mesh_count; i++)
+    {
+        uint vertex_count = m_vertices[i]->size();
+        back_up_file.write(reinterpret_cast<const char*>(m_vertices[i]->data()), sizeof(S_Vertex) * vertex_count);
+    }
+
+    // backup vertex-indices buffers
+    for (uint i = 0; i < m_mesh_count; i++)
+    {
+        uint vertex_indices_count = m_vertex_indices[i]->size();
+        back_up_file.write(reinterpret_cast<const char*>(m_vertex_indices[i]->data()), sizeof(uint) * vertex_indices_count);
+    }
+
+    // backup morph-indices buffers
+    for (uint i = 0; i < m_mesh_count; i++)
+    {
+        uint morph_indices_count = m_morph_indices[i]->size();
+        back_up_file.write(reinterpret_cast<const char*>(m_morph_indices[i]->data()), sizeof(uint) * morph_indices_count);
+    }
+
+    // backup primitive_indices buffers
+    for (uint i = 0; i < m_mesh_count; i++)
+    {
+        uint primitive_indices_count = m_primitive_indices[i]->size();
+        back_up_file.write(reinterpret_cast<const char*>(m_primitive_indices[i]->data()), sizeof(unsigned char) * primitive_indices_count);
+    }
+
+    // backup meshlet buffers
+    for (uint i = 0; i < m_mesh_count; i++)
+    {
+        uint meshlet_count = m_meshlets[i]->size();
+        back_up_file.write(reinterpret_cast<const char*>(m_meshlets[i]->data()), sizeof(S_Meshlet) * meshlet_count);
+    }
+
+    back_up_file.close();
     */
 }
 
 bool Scene::loadSceneFromBackUp(std::string file_path)
 {
-    std::ifstream back_up_file(file_path);
+    return false;
+    
+    std::ifstream back_up_file(file_path, std::ios::binary);
     // early terminate if there is no backup file to load from
     if (!back_up_file.good()) {
         OutputDebugString("FAILED TO LOAD/FIND BACKUP FILE, INITIATE PRE-PROCESSING!\n");
         return false;
     }
+    OutputDebugString("CHECKPOINT!\n");
+    // load scene meta data
+    uint scene_object_count;
+    back_up_file.read(reinterpret_cast<char*>(&scene_object_count), sizeof(uint));
+    back_up_file.read(reinterpret_cast<char*>(&m_mesh_count), sizeof(uint));
+    OutputDebugString("CHECKPOINT!\n");
+    // load scene objects buffer data
+    m_scene_objects.resize(scene_object_count);
+    back_up_file.read(reinterpret_cast<char*>(m_scene_objects.data()), sizeof(S_SceneObject) * scene_object_count);
+    OutputDebugString("CHECKPOINT!\n");
+    // load vertex buffers
+    m_vertices.resize(m_mesh_count);
+    for (uint i = 0; i < m_mesh_count; i++)
+    {
+        uint vertex_count; 
+        back_up_file.read(reinterpret_cast<char*>(&vertex_count), sizeof(uint));
+        m_vertices[i]->resize(vertex_count);
+        back_up_file.read(reinterpret_cast<char*>(m_vertices[i]->data()), sizeof(S_Vertex) * vertex_count);
+    }
+    OutputDebugString("CHECKPOINT!\n");
+    // load vertex-indices buffers
+    m_vertex_indices.resize(m_mesh_count);
+    for (uint i = 0; i < m_mesh_count; i++)
+    {
+        uint vertex_indices_count;
+        back_up_file.read(reinterpret_cast<char*>(&vertex_indices_count), sizeof(uint));
+        m_vertex_indices[i]->resize(vertex_indices_count);
+        back_up_file.read(reinterpret_cast<char*>(m_vertex_indices[i]->data()), sizeof(uint) * vertex_indices_count);
+    }
+    OutputDebugString("CHECKPOINT!\n");
+    // backup morph-indices buffers
+    m_morph_indices.resize(m_mesh_count);
+    for (uint i = 0; i < m_mesh_count; i++)
+    {
+        uint morph_indices_count;
+        back_up_file.read(reinterpret_cast<char*>(&morph_indices_count), sizeof(uint));
+        m_morph_indices[i]->resize(morph_indices_count);
+        back_up_file.read(reinterpret_cast<char*>(m_morph_indices[i]->data()), sizeof(uint) * morph_indices_count);
+    }
+    OutputDebugString("CHECKPOINT!\n");
+    // backup primitive_indices buffers
+    m_primitive_indices.resize(m_mesh_count);
+    for (uint i = 0; i < m_mesh_count; i++)
+    {
+        uint primitive_indices_count;
+        back_up_file.read(reinterpret_cast<char*>(&primitive_indices_count), sizeof(uint));
+        m_primitive_indices[i]->resize(primitive_indices_count);
+        back_up_file.read(reinterpret_cast<char*>(m_primitive_indices[i]->data()), sizeof(unsigned char) * primitive_indices_count);
+    }
+    OutputDebugString("CHECKPOINT!\n");
+    // backup meshlet buffers
+    m_meshlets.resize(m_mesh_count);
+    for (uint i = 0; i < m_mesh_count; i++)
+    {
+        uint meshlet_count;
+        back_up_file.read(reinterpret_cast<char*>(&meshlet_count), sizeof(uint));
+        m_meshlets[i]->resize(meshlet_count);
+        back_up_file.read(reinterpret_cast<char*>(m_meshlets[i]->data()), sizeof(S_Meshlet) * meshlet_count);
+    }
+    OutputDebugString("CHECKPOINT!\n");
+    back_up_file.close();
+    return true;
     
-    
-
-
 }
+
+// TODO: SCENE CURRENTLY ONLY HOLDS POINTERS TO MESH CLASS BUFFERS, NOT THE ACTUAL DATA ITSELF, THUS THIS LOAD FUNKTION HAS TO BE REWRITTEN OR THE SCENE CLASS HAS TO BE ALTERED!!!!!!
