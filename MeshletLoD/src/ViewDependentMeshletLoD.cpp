@@ -207,7 +207,7 @@ template <typename T>
 void ViewDependentMeshletLoD::setupBindlessSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HANDLE& srvGpuHandle, 
                                                          D3D12_GPU_DESCRIPTOR_HANDLE& nextAvailableGpuSrvHandle, 
                                                          D3D12_CPU_DESCRIPTOR_HANDLE& nextAvailableCpuSrvHandle,
-                                                         std::vector<std::vector<T>*>& cpuBuffers, 
+                                                         std::vector<std::vector<T>>& cpuBuffers, 
                                                          std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& gpuBuffers,
                                                          std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
                                                          Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
@@ -218,19 +218,19 @@ void ViewDependentMeshletLoD::setupBindlessSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HA
     
     for (uint i = 0; i < cpuBuffers.size(); i++)
     {
-        std::vector<T>* cpuSingleBuffer = cpuBuffers[i];
+        std::vector<T>& cpuSingleBuffer = cpuBuffers[i];
 
         gpuBuffers.push_back(ComPtr<ID3D12Resource>());
         copyBuffers.push_back(ComPtr<ID3D12Resource>());
         
         UpdateBufferResource(commandList, gpuBuffers.back().GetAddressOf(), copyBuffers.back().GetAddressOf(),
-            (uint)cpuSingleBuffer->size(), sizeof(T), cpuSingleBuffer->data());
+            (uint)cpuSingleBuffer.size(), sizeof(T), cpuSingleBuffer.data());
 
         D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
         srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         srvDesc.Buffer.FirstElement = 0;
-        srvDesc.Buffer.NumElements = (uint)cpuSingleBuffer->size();
+        srvDesc.Buffer.NumElements = (uint)cpuSingleBuffer.size();
         srvDesc.Buffer.StructureByteStride = sizeof(T);
         srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
 
@@ -244,7 +244,7 @@ void ViewDependentMeshletLoD::setupBindlessSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HA
 void ViewDependentMeshletLoD::setupBindlessUCharToUIntSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HANDLE& srvGpuHandle,
                                                                     D3D12_GPU_DESCRIPTOR_HANDLE& nextAvailableGpuSrvHandle,
                                                                     D3D12_CPU_DESCRIPTOR_HANDLE& nextAvailableCpuSrvHandle,
-                                                                    std::vector<std::vector<unsigned char>*>& unsignedCharsCpuBuffers,
+                                                                    std::vector<std::vector<unsigned char>>& unsignedCharsCpuBuffers,
                                                                     std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& gpuBuffers,
                                                                     std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
                                                                     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
@@ -255,22 +255,22 @@ void ViewDependentMeshletLoD::setupBindlessUCharToUIntSrvAndBuffers(D3D12_GPU_DE
 
     for (uint i = 0; i < unsignedCharsCpuBuffers.size(); i++)
     {
-        std::vector<unsigned char>* cpuSingleBuffer = unsignedCharsCpuBuffers[i];
+        std::vector<unsigned char>& cpuSingleBuffer = unsignedCharsCpuBuffers[i];
         // fill with zeros to allign its size to 32bits
-        while (cpuSingleBuffer->size() % 4 != 0)
-            cpuSingleBuffer->push_back(0);
+        while (cpuSingleBuffer.size() % 4 != 0)
+            cpuSingleBuffer.push_back(0);
 
         gpuBuffers.push_back(ComPtr<ID3D12Resource>());
         copyBuffers.push_back(ComPtr<ID3D12Resource>());
 
         UpdateBufferResource(commandList, gpuBuffers.back().GetAddressOf(), copyBuffers.back().GetAddressOf(),
-            (uint)cpuSingleBuffer->size() / 4, sizeof(uint), cpuSingleBuffer->data());
+            (uint)cpuSingleBuffer.size() / 4, sizeof(uint), cpuSingleBuffer.data());
 
         D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
         srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         srvDesc.Buffer.FirstElement = 0;
-        srvDesc.Buffer.NumElements = (uint)cpuSingleBuffer->size() / 4;
+        srvDesc.Buffer.NumElements = (uint)cpuSingleBuffer.size() / 4;
         srvDesc.Buffer.StructureByteStride = sizeof(uint);
         srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
 

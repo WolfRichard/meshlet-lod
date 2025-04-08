@@ -70,7 +70,7 @@ private:
     void setupBindlessSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HANDLE& srvGpuHandle,
                                     D3D12_GPU_DESCRIPTOR_HANDLE& nextAvailableGpuSrvHandle,
                                     D3D12_CPU_DESCRIPTOR_HANDLE& nextAvailableCpuSrvHandle,
-                                    std::vector<std::vector<T>*>& cpuBuffers,
+                                    std::vector<std::vector<T>>& cpuBuffers,
                                     std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& gpuBuffers,
                                     std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
                                     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
@@ -79,7 +79,7 @@ private:
     void setupBindlessUCharToUIntSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HANDLE& srvGpuHandle,
                                                D3D12_GPU_DESCRIPTOR_HANDLE& nextAvailableGpuSrvHandle,
                                                D3D12_CPU_DESCRIPTOR_HANDLE& nextAvailableCpuSrvHandle,
-                                               std::vector<std::vector<unsigned char>*>& unsignedCharsCpuBuffers,
+                                               std::vector<std::vector<unsigned char>>& unsignedCharsCpuBuffers,
                                                std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& gpuBuffers,
                                                std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
                                                Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
@@ -148,8 +148,8 @@ private:
     float       m_LoDScale              = 1;
     float       m_debugFloatSlider      = 0;
     bool        m_geo_morphing          = false;
-    bool        m_tre_instead_of_flat   = true;
-    bool        m_screen_space_LoD      = true;
+    bool        m_tre_instead_of_flat   = false;
+    bool        m_screen_space_LoD      = false;
     bool        m_backFaceCulling       = true;
 
     // camera related variables
