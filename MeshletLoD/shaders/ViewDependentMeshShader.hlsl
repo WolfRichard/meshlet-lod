@@ -51,7 +51,7 @@ float4 Rainbow(float factor)
     return float4(clamp(col, float3(0.0, 0.0, 0.0), float3(1.0, 1.0, 1.0)), 1.0);
 }
 
-float getExpectedLoDLevel(float4 position)// bounding sphere must be in world space!
+float getExpectedLoDLevel(float4 position)// position must be in world space!
 {
     float cam_dist = distance(constants.CameraWorldPos, position.xyz);
     return max(log2(cam_dist / constants.LoD_Scale), 0);
@@ -87,7 +87,9 @@ void main(in uint I : SV_GroupIndex,
         int vertexIndex = vertexIndicesBuffers[scene_object.mesh_id][meshlet.vertex_offset + v];
         S_Vertex vertex = verticesBuffers[scene_object.mesh_id][vertexIndex];
         
-        float expected_LoD = getExpectedLoDLevel(vertex.position);
+        float4 original_world_pos = mul(float4(vertex.position.xyz, 1.0), scene_object.object_matrix);
+        
+        float expected_LoD = getExpectedLoDLevel(original_world_pos);
         float lerp_value = clamp(expected_LoD - meshlet.discrete_level_of_detail, -100, 100);
         int morphTargetIndex = morphIndicesBuffers[scene_object.mesh_id][meshlet.vertex_offset + v];
         
@@ -143,7 +145,7 @@ void main(in uint I : SV_GroupIndex,
         }
         else if (constants.shadingSelection == DEBUG_VERTEX_BASED_LOD)
         {
-            verts[v].Color = Rainbow(getExpectedLoDLevel(vertex.position) / 5.0);
+            verts[v].Color = Rainbow(expected_LoD / 5.0);
             //verts[v].Color = Rainbow(lerp_value);
             
         }

@@ -39,7 +39,6 @@ bool consumeTask(out S_WorkQueueEntry out_task)
         
     } while (task_index != prev_index); // lost race condition in between checking for available work and incrementing counter --> so check if there is other work available to grab
     
-    
     // Load the task safely as thread won race condition after checking that there was still work to do
     out_task = workQueue[task_index % WORK_QUEUE_SIZE];
     return true;
@@ -56,7 +55,6 @@ groupshared uint gs_MeshletCount;
 // Frustum culling in world space
 bool isInFrustum(float3 center, float radius)
 {
-    return true;
     float4 f4Center = float4(center, 1.0);
     for (int i = 0; i < 6; ++i)
     {
@@ -74,7 +72,6 @@ float ExtractMaxScaleFactor(float4x4 m)
     float sz = length(m[2].xyz);
    
     return max(sx, max(sy, sz));
-
 }
 
 float getExpectedLoDLevel(S_BoundingSphere bounding_sphere)// bounding sphere must be in world space!
@@ -136,9 +133,7 @@ void main(in uint I : SV_GroupIndex,
     
     if (constants.BoolConstants & TREE_INSTEAD_OF_FLAT_BIT_POS)
     {
-    
-    //TODO: re-enable code for tree travesal instead of simultaniously processing all meshlets
-    // object culling and extracting of root nodes into work queue
+        // object culling and extracting of root nodes into work queue
         for (uint scene_object_index = global_thread_index; scene_object_index < constants.SceneObjectCount; scene_object_index += PERSISTENT_THREAD_COUNT)
         {
             S_SceneObject scene_object = objectsBuffer[scene_object_index];
@@ -154,8 +149,10 @@ void main(in uint I : SV_GroupIndex,
                 }
             }
         }
-    
-    // processing of work queue entries
+        
+        GroupMemoryBarrierWithGroupSync();
+        
+        // processing of work queue entries
         S_WorkQueueEntry current_task;
         while (consumeTask(current_task))
         {
@@ -194,34 +191,32 @@ void main(in uint I : SV_GroupIndex,
                 simplified_bounding_sphere.center = mul(float4(current_meshlet.simplified_group_bounds.center, 1.0), scene_object.object_matrix).xyz; // object --> world space
                 simplified_bounding_sphere.radius = current_meshlet.simplification_error * world_scale;
             
-                parent_precise_enough = groupSimplificationIsPreciseEnough(current_meshlet.simplified_group_bounds, current_meshlet.discrete_level_of_detail + 1);
-                base_precise_enough = groupSimplificationIsPreciseEnough(current_meshlet.bounding_sphere, current_meshlet.discrete_level_of_detail);
+                parent_precise_enough = groupSimplificationIsPreciseEnough(simplified_bounding_sphere, current_meshlet.discrete_level_of_detail + 1);
+                base_precise_enough = groupSimplificationIsPreciseEnough(base_bounding_sphere, current_meshlet.discrete_level_of_detail);
             }
         
             if (current_meshlet.simplification_error == FLT_MAX)
                 parent_precise_enough = false;
         
-        
-                if (!parent_precise_enough)
+            if (!parent_precise_enough)
+            {
+                if (base_precise_enough)
                 {
-                    if (base_precise_enough)
+                    queueMeshletForDispatch(current_task.meshlet_id, current_task.scene_object_id);
+                }
+                // append child meshlets into work queue if current simplification isnt precise enough and current meshlet isnt a leaf node
+                else
+                {
+                    for (uint child_meshlet_index_index = 0; child_meshlet_index_index < current_meshlet.child_count; child_meshlet_index_index++)
                     {
-                        queueMeshletForDispatch(current_task.meshlet_id, current_task.scene_object_id);
-                    }
-                    // append child meshlets into work queue if current simplification isnt precise enough and current meshlet isnt a leaf node
-                    else
-                    {
-                        for (uint child_meshlet_index_index = 0; child_meshlet_index_index < current_meshlet.child_count; child_meshlet_index_index++)
-                        {
-                            S_WorkQueueEntry new_task;
-                            new_task.scene_object_id = current_task.scene_object_id;
-                            new_task.meshlet_id = current_meshlet.child_meshlets[child_meshlet_index_index];
-                            appendTask(new_task);
-                        }
+                        S_WorkQueueEntry new_task;
+                        new_task.scene_object_id = current_task.scene_object_id;
+                        new_task.meshlet_id = current_meshlet.child_meshlets[child_meshlet_index_index];
+                        appendTask(new_task);
                     }
                 }
+            }
         }
-    
     }
     else //rendering first object without tree traversal by evaluating every meshlet simultaniously
     {

@@ -141,14 +141,14 @@ private:
     double      m_fps                   = 0;
     double      m_frameTime             = 0;
     double      m_totalRunTime          = 0.0;
-    bool        m_wireframe             = false;
+    bool        m_wireframe             = true;
     bool        m_frustumCulling        = true;
-    ShadingMode m_shadingMode           = DEFAULT_SHADING;
+    ShadingMode m_shadingMode           = DEBUG_VERTEX_BASED_LOD;
     bool        m_LoD_Enabled           = true;
     float       m_LoDScale              = 1;
     float       m_debugFloatSlider      = 0;
-    bool        m_geo_morphing          = false;
-    bool        m_tre_instead_of_flat   = false;
+    bool        m_geo_morphing          = true;
+    bool        m_tre_instead_of_flat   = true;
     bool        m_screen_space_LoD      = false;
     bool        m_backFaceCulling       = true;
 
@@ -197,5 +197,5 @@ private:
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
 
     Scene m_scene;
-    char  m_model_file_path[1024] = "./assets/Torus.glb";//"./assets/TestScene.glb";
+    char  m_model_file_path[1024] = "./assets/TorusInstances.glb";//"./assets/TestScene.glb";
 };
