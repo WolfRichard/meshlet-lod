@@ -5,13 +5,23 @@ ConstantBuffer<S_Constants> constants               : register(b0, space0);
 StructuredBuffer<S_SceneObject> objectsBuffer       : register(t0, space0);
 
 RWStructuredBuffer<S_WorkQueueEntry> workQueue      : register(u0, space0);
+
 // Workqueue read- & write-Indices
 // 0  -> Begin Counter (read index)
 // 1  -> End Counter (write index)
+// 2  -> Processed Counter (how many Tasks have finished processing)
 RWStructuredBuffer<uint> workQueueCounters          : register(u1, space0);
 
 // bindless buffers
 StructuredBuffer<S_Meshlet> meshletBuffers[]        : register(t0, space1);
+
+
+// Payload will be used in the mesh shader.
+groupshared S_Payload gs_Payload;
+
+// The number of meshlets that are dispatched by this thread group,
+groupshared uint gs_MeshletCount;
+
 
 
 
@@ -25,6 +35,8 @@ void appendTask(S_WorkQueueEntry new_task)
 
 bool consumeTask(out S_WorkQueueEntry out_task)
 {
+    if (gs_MeshletCount >= MAX_EMITTED_MESHLETS_PER_WORK_GROUP - 33)
+        return false;
     uint task_index, prev_index;
     do
     {
@@ -45,11 +57,6 @@ bool consumeTask(out S_WorkQueueEntry out_task)
 }
 
 
-// Payload will be used in the mesh shader.
-groupshared S_Payload gs_Payload;
-
-// The number of meshlets that are dispatched by this thread group,
-groupshared uint gs_MeshletCount;
 
 
 // Frustum culling in world space

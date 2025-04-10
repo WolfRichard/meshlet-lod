@@ -8,7 +8,7 @@
 #define WORK_QUEUE_SIZE 65536           // (2^16) Workqueue is implemented as ring-buffer, 
                                         //queue size allows correct indexing and should be able to contain the maximum of simultanious queue tasks
 
-#define MAX_EMITTED_MESHLETS_PER_WORK_GROUP 2048 // Maximum of 64 Meshlets per Task Shader Thread (limited by maximum size of payload)
+#define MAX_EMITTED_MESHLETS_PER_WORK_GROUP 1024 // Maximum of 32 (1024 max meshlets divided by 32 task shader group size) Meshlets (on average) per Task Shader Thread (limited by maximum size of payload)
 
 //#define MAX_MESHLET_VERTEX_COUNT 64
 #define MAX_MESHLET_VERTEX_COUNT 128
@@ -121,6 +121,8 @@ struct S_PayloadEntry
 {
     uint meshlet_id;
     uint object_id;
+    uint tesselation_grade;
+    uint tesselation_triangle_offset;
 };
 
 // Payload from task shader stage to mesh shader
