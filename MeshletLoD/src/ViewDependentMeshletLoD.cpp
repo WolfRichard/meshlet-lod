@@ -361,7 +361,7 @@ bool ViewDependentMeshletLoD::LoadContent()
                       copyBuffers, commandList, descriptorSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 
     // work queue counters buffer and clear values
-    std::vector<uint> temporaryCpuWorkQueueCountersData(2, 0);
+    std::vector<uint> temporaryCpuWorkQueueCountersData(3, 0);
     setupSrvAndBuffer(m_WorkQueueCountersSrvHandle,
                       nextGpuSrvHandle, nextCpuSrvHandle,
                       temporaryCpuWorkQueueCountersData, m_WorkQueueCountersBuffer,
@@ -790,6 +790,7 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     
     
     commandList->DispatchMesh(PERSISTENT_THREAD_COUNT, 1, 1);
+    
 
     // Render Dear ImGui graphics
     commandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);

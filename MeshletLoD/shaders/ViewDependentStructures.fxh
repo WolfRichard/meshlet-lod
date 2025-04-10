@@ -3,7 +3,7 @@
 
 #define GROUP_SIZE 32
 
-#define PERSISTENT_THREAD_COUNT 1024
+#define PERSISTENT_THREAD_COUNT 4096
 
 #define WORK_QUEUE_SIZE 65536           // (2^16) Workqueue is implemented as ring-buffer, 
                                         //queue size allows correct indexing and should be able to contain the maximum of simultanious queue tasks
