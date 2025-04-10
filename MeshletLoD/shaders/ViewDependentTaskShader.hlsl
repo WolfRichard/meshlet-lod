@@ -109,13 +109,12 @@ void queueMeshletForDispatch(uint meshlet_index, uint object_index)
     S_Meshlet current_meshlet = meshletBuffers[scene_object.mesh_id][meshlet_index];
     world_space_bounding_sphere.center = mul(float4(current_meshlet.bounding_sphere.center, 1.0), scene_object.object_matrix).xyz;
     world_space_bounding_sphere.radius = current_meshlet.bounding_sphere.radius * ExtractMaxScaleFactor(scene_object.object_matrix);
-    if (isInFrustum(world_space_bounding_sphere.center, world_space_bounding_sphere.radius))
-    {
+    
         uint payload_index = 0;
         InterlockedAdd(gs_MeshletCount, 1, payload_index); // Undefined behavior if max meshlet count per work group is set to low 
         gs_Payload.tasks[payload_index].meshlet_id = meshlet_index;
         gs_Payload.tasks[payload_index].object_id = object_index;
-    }
+    
 }
 
 [numthreads(GROUP_SIZE, 1, 1)]
@@ -163,14 +162,16 @@ void main(in uint I : SV_GroupIndex,
             bool base_precise_enough;
         
             float world_scale = ExtractMaxScaleFactor(scene_object.object_matrix);
+            
+            S_BoundingSphere world_space_bounding_sphere;
+            world_space_bounding_sphere.center = mul(float4(current_meshlet.bounding_sphere.center, 1.0), scene_object.object_matrix).xyz; // object --> world space
+            world_space_bounding_sphere.radius = current_meshlet.base_error * world_scale;
         
-        
+            
             if (constants.BoolConstants & SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS)
             {
-                S_BoundingSphere base_bounding_sphere;
-                base_bounding_sphere.center = mul(float4(current_meshlet.bounding_sphere.center, 1.0), scene_object.object_matrix).xyz; // object --> world space
-                base_bounding_sphere.radius = current_meshlet.base_error * world_scale;
-                base_bounding_sphere.center = mul(float4(base_bounding_sphere.center, 1), constants.ViewMat).xyz; // world --> clip space
+                
+                world_space_bounding_sphere.center = mul(float4(world_space_bounding_sphere.center, 1), constants.ViewMat).xyz; // world --> clip space
         
         
                 S_BoundingSphere simplified_bounding_sphere;
@@ -179,7 +180,7 @@ void main(in uint I : SV_GroupIndex,
                 simplified_bounding_sphere.center = mul(float4(simplified_bounding_sphere.center, 1), constants.ViewMat).xyz; // world --> clip space
             
                 parent_precise_enough = isPreciseEnough(simplified_bounding_sphere);
-                base_precise_enough = isPreciseEnough(base_bounding_sphere);
+                base_precise_enough = isPreciseEnough(world_space_bounding_sphere); // actually in screen clip space
             }
             else
             {
@@ -202,7 +203,8 @@ void main(in uint I : SV_GroupIndex,
             {
                 if (base_precise_enough)
                 {
-                    queueMeshletForDispatch(current_task.meshlet_id, current_task.scene_object_id);
+                    if (isInFrustum(world_space_bounding_sphere.center, world_space_bounding_sphere.radius))
+                        queueMeshletForDispatch(current_task.meshlet_id, current_task.scene_object_id);
                 }
                 // append child meshlets into work queue if current simplification isnt precise enough and current meshlet isnt a leaf node
                 else
