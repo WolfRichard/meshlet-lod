@@ -3,12 +3,14 @@
 
 #define GROUP_SIZE 32
 
-#define PERSISTENT_THREAD_COUNT 4096
+#define PERSISTENT_THREAD_COUNT 32 // 14 SM * GROUP_SIZE
 
 #define WORK_QUEUE_SIZE 65536           // (2^16) Workqueue is implemented as ring-buffer, 
                                         //queue size allows correct indexing and should be able to contain the maximum of simultanious queue tasks
 
 #define MAX_EMITTED_MESHLETS_PER_WORK_GROUP 1024 // Maximum of 32 (1024 max meshlets divided by 32 task shader group size) Meshlets (on average) per Task Shader Thread (limited by maximum size of payload)
+
+#define MAX_DISPATCH_MESH_GROUP_COUNT 4194304 // 2^22 https://microsoft.github.io/DirectX-Specs/d3d/MeshShader.html#dispatchmesh-api
 
 //#define MAX_MESHLET_VERTEX_COUNT 64
 #define MAX_MESHLET_VERTEX_COUNT 128

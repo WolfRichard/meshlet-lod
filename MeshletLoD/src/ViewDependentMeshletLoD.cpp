@@ -788,8 +788,8 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     commandList->SetGraphicsRootUnorderedAccessView(8, m_WorkQueueCountersBuffer.Get()->GetGPUVirtualAddress());
     
     
-    
-    commandList->DispatchMesh(PERSISTENT_THREAD_COUNT, 1, 1);
+    assert((PERSISTENT_THREAD_COUNT % GROUP_SIZE) == 0);
+    commandList->DispatchMesh(PERSISTENT_THREAD_COUNT / GROUP_SIZE, 1, 1);
     
 
     // Render Dear ImGui graphics

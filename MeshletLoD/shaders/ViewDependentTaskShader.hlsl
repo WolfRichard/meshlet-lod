@@ -1,4 +1,6 @@
 #include "ViewDependentStructures.fxh"
+#pragma optimize("", off)
+//#pragma optimize("", on)
 
 
 ConstantBuffer<S_Constants> constants               : register(b0, space0);
@@ -35,8 +37,9 @@ void appendTask(S_WorkQueueEntry new_task)
 
 bool consumeTask(out S_WorkQueueEntry out_task)
 {
-    if (gs_MeshletCount >= MAX_EMITTED_MESHLETS_PER_WORK_GROUP - 33)
+    if (gs_MeshletCount >= MAX_EMITTED_MESHLETS_PER_WORK_GROUP - GROUP_SIZE)
         return false;
+    
     uint task_index, prev_index;
     do
     {
@@ -62,6 +65,9 @@ bool consumeTask(out S_WorkQueueEntry out_task)
 // Frustum culling in world space
 bool isInFrustum(float3 center, float radius)
 {
+    // TODO: remove early termination 
+    return true;
+    // TODO: FIX CULLING currently cuts away to early
     float4 f4Center = float4(center, 1.0);
     for (int i = 0; i < 6; ++i)
     {
@@ -109,6 +115,13 @@ bool isPreciseEnough(S_BoundingSphere bounding_sphere) // bounding sphere must b
     return getScreenSpaceErrorInPixels(bounding_sphere) < constants.LoD_Scale; //    1.0;
 }
 
+void delayBeforeNextWorkQueueCheck(uint number_of_attemps_scince_last_work)
+{
+    float dummy_work_load;
+    for (uint i = 0; i < number_of_attemps_scince_last_work * 1; i++)
+        dummy_work_load = sqrt(max(i, 2));
+}
+
 void queueMeshletForDispatch(uint meshlet_index, uint object_index)
 {
     S_SceneObject scene_object = objectsBuffer[object_index];
@@ -124,6 +137,45 @@ void queueMeshletForDispatch(uint meshlet_index, uint object_index)
     
 }
 
+void processTask(S_WorkQueueEntry task)
+{
+    S_SceneObject scene_object = objectsBuffer[task.scene_object_id];
+    S_Meshlet current_meshlet = meshletBuffers[scene_object.mesh_id][task.meshlet_id];
+        
+    bool precise_enough;
+            
+    S_BoundingSphere world_space_bounding_sphere;
+    world_space_bounding_sphere.center = mul(float4(current_meshlet.bounding_sphere.center, 1.0), scene_object.object_matrix).xyz; // object --> world space
+    world_space_bounding_sphere.radius = current_meshlet.base_error * ExtractMaxScaleFactor(scene_object.object_matrix);
+        
+    if (constants.BoolConstants & SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS)
+    {
+        world_space_bounding_sphere.center = mul(float4(world_space_bounding_sphere.center, 1), constants.ViewMat).xyz; // world --> clip space
+        precise_enough = isPreciseEnough(world_space_bounding_sphere); // actually in screen clip space
+    }
+    else
+    {
+        precise_enough = groupSimplificationIsPreciseEnough(world_space_bounding_sphere, current_meshlet.discrete_level_of_detail);
+    }
+        
+    if (precise_enough)
+    {
+        if (isInFrustum(world_space_bounding_sphere.center, world_space_bounding_sphere.radius))
+            queueMeshletForDispatch(task.meshlet_id, task.scene_object_id);
+    }
+    else // append all child meshlets into work queue if current simplification isnt precise enough (zero children when current meshlet is a leaf node)
+    {
+        for (uint child_meshlet_index_index = 0; child_meshlet_index_index < current_meshlet.child_count; child_meshlet_index_index++)
+        {
+            S_WorkQueueEntry new_task;
+            new_task.scene_object_id = task.scene_object_id;
+            new_task.meshlet_id = current_meshlet.child_meshlets[child_meshlet_index_index];
+            appendTask(new_task);
+        }
+    }
+}
+
+
 [numthreads(GROUP_SIZE, 1, 1)]
 void main(in uint I : SV_GroupIndex,
           in uint wg : SV_GroupID)
@@ -136,141 +188,42 @@ void main(in uint I : SV_GroupIndex,
         gs_MeshletCount = 0;
     }
     GroupMemoryBarrierWithGroupSync();
-    /*
-    if (constants.BoolConstants & TREE_INSTEAD_OF_FLAT_BIT_POS)
+ 
+    // object culling and extracting of root nodes into work queue
+    for (uint scene_object_index = global_thread_index; scene_object_index < constants.SceneObjectCount; scene_object_index += PERSISTENT_THREAD_COUNT)
     {
-    */
-        // object culling and extracting of root nodes into work queue
-        for (uint scene_object_index = global_thread_index; scene_object_index < constants.SceneObjectCount; scene_object_index += PERSISTENT_THREAD_COUNT)
-        {
-            S_SceneObject scene_object = objectsBuffer[scene_object_index];
+        S_SceneObject scene_object = objectsBuffer[scene_object_index];
         
-            if (isInFrustum(scene_object.bounding_sphere.center, scene_object.bounding_sphere.radius))
+        if (isInFrustum(scene_object.bounding_sphere.center, scene_object.bounding_sphere.radius))
+        {
+            for (uint i = 0; i < GROUP_SPLIT_COUNT; i++)
             {
-                for (uint i = 0; i < GROUP_SPLIT_COUNT; i++)
-                {
-                    S_WorkQueueEntry new_task;
-                    new_task.meshlet_id = meshletBuffers[scene_object.mesh_id][0].child_meshlets[i];
-                    new_task.scene_object_id = scene_object_index;
-                    appendTask(new_task);
-                }
+                S_WorkQueueEntry new_task;
+                new_task.meshlet_id = meshletBuffers[scene_object.mesh_id][0].child_meshlets[i];
+                new_task.scene_object_id = scene_object_index;
+                appendTask(new_task);
             }
         }
+    }
         
-        GroupMemoryBarrierWithGroupSync();
-        
+    AllMemoryBarrierWithGroupSync();
        
-        // processing of work queue entries    
-        S_WorkQueueEntry current_task;
-        // check if new task have been added aslong as there are still tasks beeing processed by other threads
-        //while ((workQueueCounters[2] < workQueueCounters[1]) && (gs_MeshletCount < MAX_EMITTED_MESHLETS_PER_WORK_GROUP - 33))
-        
-        while (consumeTask(current_task))
+    // processing of work queue entries    
+    S_WorkQueueEntry current_task;
+    // check if new task have been added aslong as there are still tasks beeing processed by other threads
+    //while (consumeTask(current_task))
+    bool keepSpinLock = ((I == 0) && (workQueueCounters[2] < workQueueCounters[1]) && (gs_MeshletCount < MAX_EMITTED_MESHLETS_PER_WORK_GROUP - GROUP_SIZE));
+    do 
+    {
+        if (consumeTask(current_task))
         {
-            /*
-            if (!consumeTask(current_task))
-                continue;
-            */
-            
-            S_SceneObject scene_object = objectsBuffer[current_task.scene_object_id];
-            S_Meshlet current_meshlet = meshletBuffers[scene_object.mesh_id][current_task.meshlet_id];
-        
-            bool precise_enough;
-            
-            S_BoundingSphere world_space_bounding_sphere;
-            world_space_bounding_sphere.center = mul(float4(current_meshlet.bounding_sphere.center, 1.0), scene_object.object_matrix).xyz; // object --> world space
-            world_space_bounding_sphere.radius = current_meshlet.base_error * ExtractMaxScaleFactor(scene_object.object_matrix);
-        
-            
-            if (constants.BoolConstants & SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS)
-            {
-                world_space_bounding_sphere.center = mul(float4(world_space_bounding_sphere.center, 1), constants.ViewMat).xyz; // world --> clip space
-                precise_enough = isPreciseEnough(world_space_bounding_sphere); // actually in screen clip space
-            }
-            else
-            {
-                precise_enough = groupSimplificationIsPreciseEnough(world_space_bounding_sphere, current_meshlet.discrete_level_of_detail);
-            }
-        
-            
-            if (precise_enough)
-            {
-                if (isInFrustum(world_space_bounding_sphere.center, world_space_bounding_sphere.radius))
-                    queueMeshletForDispatch(current_task.meshlet_id, current_task.scene_object_id);
-            }
-            else // append all child meshlets into work queue if current simplification isnt precise enough (zero children when current meshlet is a leaf node)
-            {
-                for (uint child_meshlet_index_index = 0; child_meshlet_index_index < current_meshlet.child_count; child_meshlet_index_index++)
-                {
-                    S_WorkQueueEntry new_task;
-                    new_task.scene_object_id = current_task.scene_object_id;
-                    new_task.meshlet_id = current_meshlet.child_meshlets[child_meshlet_index_index];
-                    appendTask(new_task);
-                }
-            }
-            
+            processTask(current_task);
             uint last_task_index = 0;
             InterlockedAdd(workQueueCounters[2], 1, last_task_index);
         }
-    /*
-    }
-    else //rendering first object without tree traversal by evaluating every meshlet simultaniously
-    {
-        S_SceneObject scene_object = objectsBuffer[0];
-        if (global_thread_index < scene_object.mesh_meshlet_count)
-        {
-            float world_scale = ExtractMaxScaleFactor(scene_object.object_matrix);
-            S_Meshlet current_meshlet = meshletBuffers[scene_object.mesh_id][global_thread_index];
-        
-        
-            if (constants.BoolConstants & SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS)
-            {
-                S_BoundingSphere base_bounding_sphere;
-                base_bounding_sphere.center = mul(float4(current_meshlet.bounding_sphere.center, 1.0), scene_object.object_matrix).xyz; // object --> world space
-                base_bounding_sphere.radius = current_meshlet.base_error * world_scale;
-                base_bounding_sphere.center = mul(float4(base_bounding_sphere.center, 1), constants.ViewMat).xyz; // world --> clip space
-        
-        
-                S_BoundingSphere simplified_bounding_sphere;
-                simplified_bounding_sphere.center = mul(float4(current_meshlet.simplified_group_bounds.center, 1.0), scene_object.object_matrix).xyz; // object --> world space
-                simplified_bounding_sphere.radius = current_meshlet.simplification_error * world_scale;
-                simplified_bounding_sphere.center = mul(float4(simplified_bounding_sphere.center, 1), constants.ViewMat).xyz; // world --> clip space
             
-                bool parent_precise_enough = isPreciseEnough(simplified_bounding_sphere);
-                bool base_precise_enough = isPreciseEnough(base_bounding_sphere);
-        
-
-                if (!parent_precise_enough && base_precise_enough)
-                {
-                    queueMeshletForDispatch(global_thread_index, 0);
-                }
-            }
-            else
-            {
-                S_BoundingSphere base_bounding_sphere;
-                base_bounding_sphere.center = mul(float4(current_meshlet.bounding_sphere.center, 1.0), scene_object.object_matrix).xyz; // object --> world space
-                base_bounding_sphere.radius = current_meshlet.base_error * world_scale;
-            
-                S_BoundingSphere simplified_bounding_sphere;
-                simplified_bounding_sphere.center = mul(float4(current_meshlet.simplified_group_bounds.center, 1.0), scene_object.object_matrix).xyz; // object --> world space
-                simplified_bounding_sphere.radius = current_meshlet.simplification_error * world_scale;
-            
-                bool parent_precise_enough = groupSimplificationIsPreciseEnough(current_meshlet.simplified_group_bounds, current_meshlet.discrete_level_of_detail + 1);
-                bool base_precise_enough = groupSimplificationIsPreciseEnough(current_meshlet.bounding_sphere, current_meshlet.discrete_level_of_detail);
-                
-                if (current_meshlet.simplification_error == FLT_MAX)
-                    parent_precise_enough = false;
-          
-                if (!parent_precise_enough && base_precise_enough)
-                {
-                    queueMeshletForDispatch(global_thread_index, 0);
-                }
-            }
-        }
-    }
-    
-    */
-    
+        keepSpinLock = ((I == 0) && (workQueueCounters[2] < workQueueCounters[1]) && (gs_MeshletCount < MAX_EMITTED_MESHLETS_PER_WORK_GROUP - GROUP_SIZE));
+    } while (keepSpinLock);
     
     //after work queue is empty dispatch all collected meshlets
     GroupMemoryBarrierWithGroupSync();
