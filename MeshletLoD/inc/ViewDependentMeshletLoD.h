@@ -169,6 +169,8 @@ private:
     // Descriptor heap
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_CBV_SRV_UAV_Heap;
 
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_Sampler_Heap;
+
 
     // buffers
     std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_MeshletBuffers;
@@ -184,6 +186,9 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource>              m_GlobalMeshPayloadBuffer;
     UINT8* m_mappedConstantData                         = nullptr;
 
+    Microsoft::WRL::ComPtr<ID3D12Resource>              m_HeightMapTexture;
+
+
     // gpu handles
     D3D12_GPU_DESCRIPTOR_HANDLE m_MeshletsSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_VertexIndicesSrvHandle;
@@ -196,9 +201,12 @@ private:
     D3D12_GPU_DESCRIPTOR_HANDLE m_WorkQueueCountersClearValuesSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_GlobalMeshPayloadSrvHandle;
 
+    D3D12_GPU_DESCRIPTOR_HANDLE m_HeightMapTextureSrvHandle;
+
+
 
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
 
     Scene m_scene;
-    char  m_model_file_path[1024] = "./assets/TorusInstances.glb";//"./assets/TestScene.glb";
+    char  m_model_file_path[1024] = "./assets/scenes/TorusInstances.glb";//"./assets/TestScene.glb";
 };

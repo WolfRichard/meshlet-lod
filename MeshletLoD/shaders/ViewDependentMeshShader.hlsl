@@ -4,11 +4,15 @@ struct PixelShaderInput
 {
     float4 Pos : SV_POSITION;
     float4 Color : COLOR;
+    float2 UV : TEXCOORD;
 };
 
 
 ConstantBuffer<S_Constants> constants               : register(b0, space0);
 StructuredBuffer<S_SceneObject> objectsBuffer       : register(t0, space0);
+
+Texture2D heightMapTexture                          : register(t1, space0);
+SamplerState heightMapSampler                       : register(s0, space0);
 
 RWStructuredBuffer<S_PayloadEntry> payloadBuffer    : register(u2, space0);
 
@@ -124,6 +128,7 @@ void main(in uint I : SV_GroupIndex,
         
         
         verts[v].Pos = mul(mul(float4(vertex.position.xyz, 1.0), scene_object.object_matrix), constants.ViewProjMat);
+        verts[v].UV = vertex.uv.xy;
         
         float4 normal = mul(float4(vertex.normal.xyz, 0), scene_object.object_matrix);
         float brightness = clamp(clamp(dot(normalize(float3(1, 1, 1)), normal.xyz), 0, 1) + clamp(dot(normalize(float3(-2, 1, -1)), normal.xyz), 0, 0.6), 0.05, 1);

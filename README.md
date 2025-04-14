@@ -20,4 +20,4 @@ vcpkg install directxtex[dx12]
 cmake . -B build -A x64
 ```
 ## Screen Shot
-![failed to load preview](MeshletLoD/assets/screen_shot.png)
+![failed to load preview](MeshletLoD/assets/screenshots/screen_shot.png)

@@ -169,3 +169,4 @@ struct S_WorkQueueCounters
     uint payload_head; // index from what point the meshlets have not been emitted yet
     uint payload_tail; // index to the next available free meshlet slot
 };
+

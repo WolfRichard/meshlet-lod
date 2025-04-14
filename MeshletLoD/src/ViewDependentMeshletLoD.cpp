@@ -30,9 +30,12 @@ using namespace Microsoft::WRL;
 
 #include <d3dcompiler.h>
 
-//#include "DirectXTex.h"
-
 #include <algorithm> 
+
+#include <DirectXTex.h>
+
+
+
 
 
 using namespace DirectX;
@@ -290,12 +293,40 @@ bool ViewDependentMeshletLoD::LoadContent()
 
     setupConstantsUploadBuffer();
 
+
+
+    // height map texture sampler
+    D3D12_DESCRIPTOR_HEAP_DESC samplerHeapDesc = {};
+    samplerHeapDesc.NumDescriptors = 1;
+    samplerHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
+    samplerHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+    device->CreateDescriptorHeap(&samplerHeapDesc, IID_PPV_ARGS(&m_Sampler_Heap));
+
+    D3D12_SAMPLER_DESC samplerDesc = {};
+    samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    samplerDesc.MinLOD = 0;
+    samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+    samplerDesc.MipLODBias = 0.0f;
+    samplerDesc.MaxAnisotropy = 1;
+    samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+
+    // Create the sampler
+    device->CreateSampler(&samplerDesc, m_Sampler_Heap->GetCPUDescriptorHandleForHeapStart());
+
+
+
+
+
     D3D12_DESCRIPTOR_HEAP_DESC gpuHeapDesc = {};
     gpuHeapDesc.NumDescriptors = 1                           // single scene objects buffer
                                + 1                           // single work queue buffer
                                + 1                           // single work queue counter buffer
                                + 1                           // single work queue counter clear values buffer
                                + 1                           // global mesh payload buffer
+                               + 1                           // height map texture
                                + (uint)m_scene.m_mesh_count  // meshlets buffer per unique mesh
                                + (uint)m_scene.m_mesh_count  // morph indices buffer per unique mesh
                                + (uint)m_scene.m_mesh_count  // vertex indices buffer per unique mesh
@@ -306,13 +337,60 @@ bool ViewDependentMeshletLoD::LoadContent()
     gpuHeapDesc.NodeMask = 0;
     device->CreateDescriptorHeap(&gpuHeapDesc, IID_PPV_ARGS(&m_CBV_SRV_UAV_Heap));
 
-
-
-
     unsigned int descriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     D3D12_CPU_DESCRIPTOR_HANDLE nextCpuSrvHandle(m_CBV_SRV_UAV_Heap->GetCPUDescriptorHandleForHeapStart());
     D3D12_GPU_DESCRIPTOR_HANDLE nextGpuSrvHandle(m_CBV_SRV_UAV_Heap->GetGPUDescriptorHandleForHeapStart());
+
+
+
+
+    // height map texture
+    ScratchImage height_map_test_image;
+    TexMetadata metadata;
+    HRESULT hr = LoadFromWICFile(L"./assets/textures/test_height_map.png", WIC_FLAGS_NONE, &metadata, height_map_test_image);
+    if (FAILED(hr)) {
+        OutputDebugString("FAILED TO LOAD TEST TEXTURE!\n");
+        assert(false);
+    }
+
+    const Image* img = height_map_test_image.GetImage(0, 0, 0);
+
     
+    D3D12_RESOURCE_DESC textureDesc = {};
+    textureDesc.MipLevels = 1;
+    textureDesc.Format = img->format;
+    textureDesc.Width = img->width;
+    textureDesc.Height = img->height;
+    textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+    textureDesc.DepthOrArraySize = 1;
+    textureDesc.SampleDesc.Count = 1;
+    textureDesc.SampleDesc.Quality = 0;
+    textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+
+    device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+        D3D12_HEAP_FLAG_NONE,
+        &textureDesc,
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        nullptr,
+        IID_PPV_ARGS(&m_HeightMapTexture)
+    );
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Format = textureDesc.Format;
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Texture2D.MipLevels = 1;
+
+    device->CreateShaderResourceView(m_HeightMapTexture.Get(), &srvDesc, nextCpuSrvHandle);
+    m_HeightMapTextureSrvHandle = nextGpuSrvHandle;
+
+    nextCpuSrvHandle.ptr += descriptorSize;
+    nextGpuSrvHandle.ptr += descriptorSize;
+
+
+
+
 
 
     std::vector<ComPtr<ID3D12Resource>> copyBuffers;
@@ -406,7 +484,7 @@ bool ViewDependentMeshletLoD::LoadContent()
         D3D12_ROOT_SIGNATURE_FLAG_NONE;
 
 
-    CD3DX12_ROOT_PARAMETER1 rootParameters[10];
+    CD3DX12_ROOT_PARAMETER1 rootParameters[12];
     // constants
     rootParameters[0].InitAsConstantBufferView(0, 0);
 
@@ -446,6 +524,14 @@ bool ViewDependentMeshletLoD::LoadContent()
 
     // global mesh payload
     rootParameters[9].InitAsUnorderedAccessView(2, 0);
+     
+    // height map texture
+    rootParameters[10].InitAsShaderResourceView(1, 0);
+
+    // height map texture sampler
+    CD3DX12_DESCRIPTOR_RANGE1 samplerRange;
+    samplerRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0, 0);
+    rootParameters[11].InitAsDescriptorTable(1, &samplerRange, D3D12_SHADER_VISIBILITY_ALL);
 
     
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDescription;
@@ -775,7 +861,7 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
 
     commandList->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
 
-    ID3D12DescriptorHeap* heaps[] = { m_CBV_SRV_UAV_Heap.Get() };
+    ID3D12DescriptorHeap* heaps[] = { m_CBV_SRV_UAV_Heap.Get(), m_Sampler_Heap.Get()};
     commandList->SetDescriptorHeaps(_countof(heaps), heaps);
 
     //set constants
@@ -800,6 +886,10 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     commandList->SetGraphicsRootUnorderedAccessView(8, m_WorkQueueCountersBuffer.Get()->GetGPUVirtualAddress());
     // set global mesh payload buffer
     commandList->SetGraphicsRootUnorderedAccessView(9, m_GlobalMeshPayloadBuffer.Get()->GetGPUVirtualAddress());
+    // set height map texture
+    commandList->SetGraphicsRootShaderResourceView(10, m_HeightMapTexture.Get()->GetGPUVirtualAddress());
+    // set hight map texture sampler
+    commandList->SetGraphicsRootDescriptorTable(11, m_Sampler_Heap->GetGPUDescriptorHandleForHeapStart());
 
     
     

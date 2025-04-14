@@ -1,6 +1,4 @@
 #include "ViewDependentStructures.fxh"
-#pragma optimize("", off)
-//#pragma optimize("", on)
 
 
 ConstantBuffer<S_Constants> constants                       : register(b0, space0);
@@ -143,9 +141,7 @@ void processTask(S_WorkQueueEntry task)
         precise_enough = isPreciseEnough(world_space_bounding_sphere); // actually in screen clip space
     }
     else
-    {
         precise_enough = groupSimplificationIsPreciseEnough(world_space_bounding_sphere, current_meshlet.discrete_level_of_detail);
-    }
         
     if (precise_enough)
     {
@@ -153,7 +149,6 @@ void processTask(S_WorkQueueEntry task)
             queueMeshletForDispatch(task.meshlet_id, task.scene_object_id);
     }
     else // append all child meshlets into work queue if current simplification isnt precise enough (zero children when current meshlet is a leaf node)
-    {
         for (uint child_meshlet_index_index = 0; child_meshlet_index_index < current_meshlet.child_count; child_meshlet_index_index++)
         {
             S_WorkQueueEntry new_task;
@@ -161,7 +156,6 @@ void processTask(S_WorkQueueEntry task)
             new_task.meshlet_id = current_meshlet.child_meshlets[child_meshlet_index_index];
             appendTask(new_task);
         }
-    }
 }
 
 
