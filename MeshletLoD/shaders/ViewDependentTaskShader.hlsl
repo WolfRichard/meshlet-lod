@@ -3,19 +3,14 @@
 //#pragma optimize("", on)
 
 
-ConstantBuffer<S_Constants> constants               : register(b0, space0);
-StructuredBuffer<S_SceneObject> objectsBuffer       : register(t0, space0);
+ConstantBuffer<S_Constants> constants                       : register(b0, space0);
+StructuredBuffer<S_SceneObject> objectsBuffer               : register(t0, space0);
 
-RWStructuredBuffer<S_WorkQueueEntry> workQueue      : register(u0, space0);
-
-// Workqueue read- & write-Indices
-// 0  -> Begin Counter (read index)
-// 1  -> End Counter (write index)
-// 2  -> Processed Counter (how many Tasks have finished processing)
-RWStructuredBuffer<uint> workQueueCounters          : register(u1, space0);
+RWStructuredBuffer<S_WorkQueueEntry> workQueue              : register(u0, space0);
+RWStructuredBuffer<S_WorkQueueCounters> workQueueCounters   : register(u1, space0);
 
 // bindless buffers
-StructuredBuffer<S_Meshlet> meshletBuffers[]        : register(t0, space1);
+StructuredBuffer<S_Meshlet> meshletBuffers[]                : register(t0, space1);
 
 
 // Payload will be used in the mesh shader.
@@ -30,29 +25,26 @@ groupshared uint gs_MeshletCount;
 void appendTask(S_WorkQueueEntry new_task)
 {
     uint task_index = 0;
-    InterlockedAdd(workQueueCounters[1], 1, task_index);    // Atomically increment endCounter
+    InterlockedAdd(workQueueCounters[0].tail, 1, task_index);    // Atomically increment endCounter
     workQueue[task_index % WORK_QUEUE_SIZE] = new_task;     // loop index because of ring buffer structure
 }
 
 
 bool consumeTask(out S_WorkQueueEntry out_task)
 {
-    if (gs_MeshletCount >= MAX_EMITTED_MESHLETS_PER_WORK_GROUP - GROUP_SIZE)
-        return false;
-    
     uint task_index, prev_index;
     do
     {
-        prev_index = workQueueCounters[0]; // Read beginCounter
-        uint end   = workQueueCounters[1]; // Read endCounter
+        prev_index = workQueueCounters[0].head; 
+        uint end   = workQueueCounters[0].tail; 
 
-        if (prev_index >= end)
+        if ((prev_index >= end) || (gs_MeshletCount >= MAX_EMITTED_MESHLETS_PER_WORK_GROUP - GROUP_SIZE))
             return false; // No work available
         
         // Try to atomically update 'beginCounter' only if it hasn’t changed
-        InterlockedCompareExchange(workQueueCounters[0], prev_index, prev_index + 1, task_index);
+        InterlockedCompareExchange(workQueueCounters[0].head, prev_index, prev_index + 1, task_index);
         
-    } while (task_index != prev_index); // lost race condition in between checking for available work and incrementing counter --> so check if there is other work available to grab
+    } while ((task_index != prev_index)); // lost race condition in between checking for available work and incrementing counter --> so check if there is other work available to grab
     
     // Load the task safely as thread won race condition after checking that there was still work to do
     out_task = workQueue[task_index % WORK_QUEUE_SIZE];
@@ -212,19 +204,19 @@ void main(in uint I : SV_GroupIndex,
     S_WorkQueueEntry current_task;
     // check if new task have been added aslong as there are still tasks beeing processed by other threads
     //while (consumeTask(current_task))
-    bool keepSpinLock = ((I == 0) && (workQueueCounters[2] < workQueueCounters[1]) && (gs_MeshletCount < MAX_EMITTED_MESHLETS_PER_WORK_GROUP - GROUP_SIZE));
-    do 
+    bool keepSpinLock = ((workQueueCounters[0].done_processing < workQueueCounters[0].tail) && (gs_MeshletCount < MAX_EMITTED_MESHLETS_PER_WORK_GROUP - GROUP_SIZE));
+    
+    while (keepSpinLock)
     {
         if (consumeTask(current_task))
         {
             processTask(current_task);
             uint last_task_index = 0;
-            InterlockedAdd(workQueueCounters[2], 1, last_task_index);
+            InterlockedAdd(workQueueCounters[0].done_processing, 1, last_task_index);
         }
             
-        keepSpinLock = ((I == 0) && (workQueueCounters[2] < workQueueCounters[1]) && (gs_MeshletCount < MAX_EMITTED_MESHLETS_PER_WORK_GROUP - GROUP_SIZE));
-    } while (keepSpinLock);
-    
+        keepSpinLock = ((workQueueCounters[0].done_processing < workQueueCounters[0].tail) && (gs_MeshletCount < MAX_EMITTED_MESHLETS_PER_WORK_GROUP - GROUP_SIZE));
+    }     
     //after work queue is empty dispatch all collected meshlets
     GroupMemoryBarrierWithGroupSync();
     DispatchMesh(gs_MeshletCount, 1, 1, gs_Payload);

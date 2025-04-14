@@ -361,7 +361,7 @@ bool ViewDependentMeshletLoD::LoadContent()
                       copyBuffers, commandList, descriptorSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 
     // work queue counters buffer and clear values
-    std::vector<uint> temporaryCpuWorkQueueCountersData(3, 0);
+    std::vector<S_WorkQueueCounters> temporaryCpuWorkQueueCountersData(1, { 0, 0, 0 });
     setupSrvAndBuffer(m_WorkQueueCountersSrvHandle,
                       nextGpuSrvHandle, nextCpuSrvHandle,
                       temporaryCpuWorkQueueCountersData, m_WorkQueueCountersBuffer,

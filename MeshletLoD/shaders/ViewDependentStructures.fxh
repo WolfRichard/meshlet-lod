@@ -3,7 +3,7 @@
 
 #define GROUP_SIZE 32
 
-#define PERSISTENT_THREAD_COUNT 32 // 14 SM * GROUP_SIZE
+#define PERSISTENT_THREAD_COUNT 1024 // 14 SM * GROUP_SIZE
 
 #define WORK_QUEUE_SIZE 65536           // (2^16) Workqueue is implemented as ring-buffer, 
                                         //queue size allows correct indexing and should be able to contain the maximum of simultanious queue tasks
@@ -162,4 +162,11 @@ struct S_WorkQueueEntry
 {
     uint scene_object_id;
     uint meshlet_id;
+};
+
+struct S_WorkQueueCounters
+{
+    uint head; // index to first element of the FIFO ring buffer work queue (if head == tail then queue is empty)
+    uint tail; // index of the next free available space where the next element could be added (tail is not part of the queue)
+    uint done_processing; // counter of how many tasks have been already processed (if done processing == tail, the whole tree has been processed and no new expansion can happen)
 };
