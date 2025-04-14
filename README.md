@@ -13,6 +13,7 @@ vcpkg install directx-headers
 vcpkg install meshoptimizer
 vcpkg install assimp
 vcpkg install metis
+vcpkg install directxtex[dx12]
 ```
 ### Generate visual studio project files via cmake:<be>
 ```
