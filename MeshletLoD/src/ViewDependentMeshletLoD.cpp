@@ -295,6 +295,7 @@ bool ViewDependentMeshletLoD::LoadContent()
                                + 1                           // single work queue buffer
                                + 1                           // single work queue counter buffer
                                + 1                           // single work queue counter clear values buffer
+                               + 1                           // global mesh payload buffer
                                + (uint)m_scene.m_mesh_count  // meshlets buffer per unique mesh
                                + (uint)m_scene.m_mesh_count  // morph indices buffer per unique mesh
                                + (uint)m_scene.m_mesh_count  // vertex indices buffer per unique mesh
@@ -370,6 +371,13 @@ bool ViewDependentMeshletLoD::LoadContent()
                       nextGpuSrvHandle, nextCpuSrvHandle,
                       temporaryCpuWorkQueueCountersData, m_WorkQueueCountersClearValuesBuffer,
                       copyBuffers, commandList, descriptorSize, D3D12_RESOURCE_FLAG_NONE);
+
+    // work queue counters buffer and clear values
+    std::vector<S_PayloadEntry> temporaryMeshPaloadData(MAX_DISPATCH_MESH_GROUP_COUNT, { 0, 0, 0, 0 });
+    setupSrvAndBuffer(m_GlobalMeshPayloadSrvHandle,
+        nextGpuSrvHandle, nextCpuSrvHandle,
+        temporaryMeshPaloadData, m_GlobalMeshPayloadBuffer,
+        copyBuffers, commandList, descriptorSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
     
    
 
@@ -398,7 +406,7 @@ bool ViewDependentMeshletLoD::LoadContent()
         D3D12_ROOT_SIGNATURE_FLAG_NONE;
 
 
-    CD3DX12_ROOT_PARAMETER1 rootParameters[9];
+    CD3DX12_ROOT_PARAMETER1 rootParameters[10];
     // constants
     rootParameters[0].InitAsConstantBufferView(0, 0);
 
@@ -435,6 +443,9 @@ bool ViewDependentMeshletLoD::LoadContent()
 
     // work queue counters objects
     rootParameters[8].InitAsUnorderedAccessView(1, 0);
+
+    // global mesh payload
+    rootParameters[9].InitAsUnorderedAccessView(2, 0);
 
     
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDescription;
@@ -537,6 +548,7 @@ void ViewDependentMeshletLoD::UnloadContent()
     m_ConstantsBuffer.Reset();
     m_WorkQueueBuffer.Reset();
     m_WorkQueueCountersBuffer.Reset();
+    m_GlobalMeshPayloadBuffer.Reset();
 
     m_commandSignature.Reset();
 }
@@ -786,6 +798,9 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     commandList->CopyResource(m_WorkQueueCountersBuffer.Get(), m_WorkQueueCountersClearValuesBuffer.Get());
     commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_WorkQueueCountersBuffer.Get()));
     commandList->SetGraphicsRootUnorderedAccessView(8, m_WorkQueueCountersBuffer.Get()->GetGPUVirtualAddress());
+    // set global mesh payload buffer
+    commandList->SetGraphicsRootUnorderedAccessView(9, m_GlobalMeshPayloadBuffer.Get()->GetGPUVirtualAddress());
+
     
     
     assert((PERSISTENT_THREAD_COUNT % GROUP_SIZE) == 0);

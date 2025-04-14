@@ -6,8 +6,11 @@ struct PixelShaderInput
     float4 Color : COLOR;
 };
 
+
 ConstantBuffer<S_Constants> constants               : register(b0, space0);
 StructuredBuffer<S_SceneObject> objectsBuffer       : register(t0, space0);
+
+RWStructuredBuffer<S_PayloadEntry> payloadBuffer    : register(u2, space0);
 
 // bindless buffers
 StructuredBuffer<S_Meshlet> meshletBuffers[]        : register(t0, space1);
@@ -69,7 +72,8 @@ void main(in uint I : SV_GroupIndex,
 {
    
     
-    S_PayloadEntry payload_task = gs_Payload.tasks[gid];
+    S_PayloadEntry payload_task = payloadBuffer[gid + gs_Payload.global_payload_offset]; //    gs_Payload.tasks[gid];
+
     S_SceneObject scene_object = objectsBuffer[payload_task.object_id];
     S_Meshlet meshlet = meshletBuffers[scene_object.mesh_id][payload_task.meshlet_id];
     

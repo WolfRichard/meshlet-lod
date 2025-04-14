@@ -8,6 +8,8 @@ StructuredBuffer<S_SceneObject> objectsBuffer               : register(t0, space
 
 RWStructuredBuffer<S_WorkQueueEntry> workQueue              : register(u0, space0);
 RWStructuredBuffer<S_WorkQueueCounters> workQueueCounters   : register(u1, space0);
+RWStructuredBuffer<S_PayloadEntry> payloadBuffer            : register(u2, space0);
+
 
 // bindless buffers
 StructuredBuffer<S_Meshlet> meshletBuffers[]                : register(t0, space1);
@@ -25,7 +27,7 @@ groupshared uint gs_MeshletCount;
 void appendTask(S_WorkQueueEntry new_task)
 {
     uint task_index = 0;
-    InterlockedAdd(workQueueCounters[0].tail, 1, task_index);    // Atomically increment endCounter
+    InterlockedAdd(workQueueCounters[0].work_queue_tail, 1, task_index);    // Atomically increment endCounter
     workQueue[task_index % WORK_QUEUE_SIZE] = new_task;     // loop index because of ring buffer structure
 }
 
@@ -35,14 +37,14 @@ bool consumeTask(out S_WorkQueueEntry out_task)
     uint task_index, prev_index;
     do
     {
-        prev_index = workQueueCounters[0].head; 
-        uint end   = workQueueCounters[0].tail; 
+        prev_index = workQueueCounters[0].work_queue_head;
+        uint end = workQueueCounters[0].work_queue_tail;
 
-        if ((prev_index >= end) || (gs_MeshletCount >= MAX_EMITTED_MESHLETS_PER_WORK_GROUP - GROUP_SIZE))
+        if (prev_index >= end)
             return false; // No work available
         
         // Try to atomically update 'beginCounter' only if it hasn’t changed
-        InterlockedCompareExchange(workQueueCounters[0].head, prev_index, prev_index + 1, task_index);
+        InterlockedCompareExchange(workQueueCounters[0].work_queue_head, prev_index, prev_index + 1, task_index);
         
     } while ((task_index != prev_index)); // lost race condition in between checking for available work and incrementing counter --> so check if there is other work available to grab
     
@@ -50,9 +52,6 @@ bool consumeTask(out S_WorkQueueEntry out_task)
     out_task = workQueue[task_index % WORK_QUEUE_SIZE];
     return true;
 }
-
-
-
 
 // Frustum culling in world space
 bool isInFrustum(float3 center, float radius)
@@ -82,7 +81,6 @@ float ExtractMaxScaleFactor(float4x4 m)
 float getExpectedLoDLevel(S_BoundingSphere bounding_sphere)// bounding sphere must be in world space!
 {
     float cam_dist = max(distance(constants.CameraWorldPos, bounding_sphere.center) - bounding_sphere.radius, 0);
-    //float cam_dist = distance(constants.CameraWorldPos, bounding_sphere.center);
     return max(log2(cam_dist / constants.LoD_Scale), 0);
 }
 
@@ -116,17 +114,16 @@ void delayBeforeNextWorkQueueCheck(uint number_of_attemps_scince_last_work)
 
 void queueMeshletForDispatch(uint meshlet_index, uint object_index)
 {
-    S_SceneObject scene_object = objectsBuffer[object_index];
-    S_BoundingSphere world_space_bounding_sphere;
-    S_Meshlet current_meshlet = meshletBuffers[scene_object.mesh_id][meshlet_index];
-    world_space_bounding_sphere.center = mul(float4(current_meshlet.bounding_sphere.center, 1.0), scene_object.object_matrix).xyz;
-    world_space_bounding_sphere.radius = current_meshlet.bounding_sphere.radius * ExtractMaxScaleFactor(scene_object.object_matrix);
+    uint global_payload_index = 0;
+    InterlockedAdd(workQueueCounters[0].payload_tail, 1, global_payload_index);
+
+    uint local_meshlet_count = 0;
+    InterlockedAdd(gs_MeshletCount, 1, local_meshlet_count);  
     
-        uint payload_index = 0;
-        InterlockedAdd(gs_MeshletCount, 1, payload_index); // Undefined behavior if max meshlet count per work group is set to low 
-        gs_Payload.tasks[payload_index].meshlet_id = meshlet_index;
-        gs_Payload.tasks[payload_index].object_id = object_index;
-    
+    payloadBuffer[global_payload_index].meshlet_id = meshlet_index;
+    payloadBuffer[global_payload_index].object_id = object_index;
+    payloadBuffer[global_payload_index].tesselation_grade = 0;
+    payloadBuffer[global_payload_index].tesselation_triangle_offset = 0;
 }
 
 void processTask(S_WorkQueueEntry task)
@@ -201,23 +198,25 @@ void main(in uint I : SV_GroupIndex,
     AllMemoryBarrierWithGroupSync();
        
     // processing of work queue entries    
-    S_WorkQueueEntry current_task;
-    // check if new task have been added aslong as there are still tasks beeing processed by other threads
-    //while (consumeTask(current_task))
-    bool keepSpinLock = ((workQueueCounters[0].done_processing < workQueueCounters[0].tail) && (gs_MeshletCount < MAX_EMITTED_MESHLETS_PER_WORK_GROUP - GROUP_SIZE));
     
-    while (keepSpinLock)
+    S_WorkQueueEntry current_task;
+    while (consumeTask(current_task))
     {
-        if (consumeTask(current_task))
-        {
-            processTask(current_task);
-            uint last_task_index = 0;
-            InterlockedAdd(workQueueCounters[0].done_processing, 1, last_task_index);
-        }
-            
-        keepSpinLock = ((workQueueCounters[0].done_processing < workQueueCounters[0].tail) && (gs_MeshletCount < MAX_EMITTED_MESHLETS_PER_WORK_GROUP - GROUP_SIZE));
-    }     
+        processTask(current_task);
+    }
+      
     //after work queue is empty dispatch all collected meshlets
     GroupMemoryBarrierWithGroupSync();
+    
+    
+    if (I == 0)
+    {
+        uint global_offset = 0;
+        InterlockedAdd(workQueueCounters[0].payload_head, gs_MeshletCount, global_offset);
+        gs_Payload.global_payload_offset = global_offset;
+    }
+    
+    GroupMemoryBarrierWithGroupSync();
+    
     DispatchMesh(gs_MeshletCount, 1, 1, gs_Payload);
 }

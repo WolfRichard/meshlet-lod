@@ -3,12 +3,10 @@
 
 #define GROUP_SIZE 32
 
-#define PERSISTENT_THREAD_COUNT 1024 // 14 SM * GROUP_SIZE
+#define PERSISTENT_THREAD_COUNT 4096 // 14 SM * GROUP_SIZE
 
 #define WORK_QUEUE_SIZE 65536           // (2^16) Workqueue is implemented as ring-buffer, 
                                         //queue size allows correct indexing and should be able to contain the maximum of simultanious queue tasks
-
-#define MAX_EMITTED_MESHLETS_PER_WORK_GROUP 1024 // Maximum of 32 (1024 max meshlets divided by 32 task shader group size) Meshlets (on average) per Task Shader Thread (limited by maximum size of payload)
 
 #define MAX_DISPATCH_MESH_GROUP_COUNT 4194304 // 2^22 https://microsoft.github.io/DirectX-Specs/d3d/MeshShader.html#dispatchmesh-api
 
@@ -131,7 +129,7 @@ struct S_PayloadEntry
 // Payload size must be less than 16kb.
 struct S_Payload
 {
-    S_PayloadEntry tasks[MAX_EMITTED_MESHLETS_PER_WORK_GROUP];
+    uint global_payload_offset;
 };
 
 
@@ -166,7 +164,8 @@ struct S_WorkQueueEntry
 
 struct S_WorkQueueCounters
 {
-    uint head; // index to first element of the FIFO ring buffer work queue (if head == tail then queue is empty)
-    uint tail; // index of the next free available space where the next element could be added (tail is not part of the queue)
-    uint done_processing; // counter of how many tasks have been already processed (if done processing == tail, the whole tree has been processed and no new expansion can happen)
+    uint work_queue_head; // index to first element of the FIFO ring buffer work queue (if head == tail then queue is empty)
+    uint work_queue_tail; // index of the next free available space where the next element could be added (tail is not part of the queue)
+    uint payload_head; // index from what point the meshlets have not been emitted yet
+    uint payload_tail; // index to the next available free meshlet slot
 };

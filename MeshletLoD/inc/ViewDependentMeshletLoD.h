@@ -181,6 +181,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource>              m_WorkQueueBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource>              m_WorkQueueCountersBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource>              m_WorkQueueCountersClearValuesBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource>              m_GlobalMeshPayloadBuffer;
     UINT8* m_mappedConstantData                         = nullptr;
 
     // gpu handles
@@ -193,9 +194,11 @@ private:
     D3D12_GPU_DESCRIPTOR_HANDLE m_WorkQueueSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_WorkQueueCountersSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_WorkQueueCountersClearValuesSrvHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_GlobalMeshPayloadSrvHandle;
+
 
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
 
     Scene m_scene;
-    char  m_model_file_path[1024] = "./assets/Torus.glb";//"./assets/TestScene.glb";
+    char  m_model_file_path[1024] = "./assets/TorusInstances.glb";//"./assets/TestScene.glb";
 };
