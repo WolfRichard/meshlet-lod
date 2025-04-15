@@ -5,7 +5,7 @@
 
 #define PERSISTENT_THREAD_COUNT 4096 // 14 SM * GROUP_SIZE
 
-#define WORK_QUEUE_SIZE 65536           // (2^16) Workqueue is implemented as ring-buffer, 
+#define WORK_QUEUE_SIZE 4194304           // (2^22) Workqueue is implemented as ring-buffer, 
                                         //queue size allows correct indexing and should be able to contain the maximum of simultanious queue tasks
 
 #define MAX_DISPATCH_MESH_GROUP_COUNT 4194304 // 2^22 https://microsoft.github.io/DirectX-Specs/d3d/MeshShader.html#dispatchmesh-api

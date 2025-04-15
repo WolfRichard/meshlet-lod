@@ -20,8 +20,6 @@ groupshared S_Payload gs_Payload;
 groupshared uint gs_MeshletCount;
 
 
-
-
 void appendTask(S_WorkQueueEntry new_task)
 {
     uint task_index = 0;
@@ -54,13 +52,13 @@ bool consumeTask(out S_WorkQueueEntry out_task)
 // Frustum culling in world space
 bool isInFrustum(float3 center, float radius)
 {
-    // TODO: remove early termination 
-    return true;
+    if (!(constants.BoolConstants & FRUSTUM_CULLING_BIT_POS))
+        return true;
     // TODO: FIX CULLING currently cuts away to early
     float4 f4Center = float4(center, 1.0);
     for (int i = 0; i < 6; ++i)
     {
-        if (dot(constants.Frustum[i], f4Center) < -radius)
+        if (dot(constants.Frustum[i], f4Center) < -radius - 1)
             return false;
     }
     return true;
@@ -76,48 +74,31 @@ float ExtractMaxScaleFactor(float4x4 m)
     return max(sx, max(sy, sz));
 }
 
-float getExpectedLoDLevel(S_BoundingSphere bounding_sphere)// bounding sphere must be in world space!
-{
-    float cam_dist = max(distance(constants.CameraWorldPos, bounding_sphere.center) - bounding_sphere.radius, 0);
-    return max(log2(cam_dist / constants.LoD_Scale), 0);
-}
-
-
 bool groupSimplificationIsPreciseEnough(S_BoundingSphere bounding_sphere, uint lod_level) // bounding sphere must be in world space!
 {
-    //return lod_level <= 0;
-    return lod_level <= getExpectedLoDLevel(bounding_sphere);
+    float cam_dist = max(distance(constants.CameraWorldPos, bounding_sphere.center) - bounding_sphere.radius, 0);
+    return lod_level <= max(log2(cam_dist / constants.LoD_Scale), 0);;
 }
 
-float getScreenSpaceErrorInPixels(S_BoundingSphere bounding_sphere) // bounding sphere must be in clip space
+
+bool isPreciseEnough(S_BoundingSphere bounding_sphere) // bounding sphere must be in clip space
 {
     float d2 = dot(bounding_sphere.center, bounding_sphere.center);
     float r2 = bounding_sphere.radius * bounding_sphere.radius;
     float sphere_diameter_uv = max(constants.ProjMat[0][0], constants.ProjMat[1][1]) * bounding_sphere.radius / sqrt(d2 - r2);
     float view_size = max(constants.ScreenWidth, constants.ScreenHeight);
-    return sphere_diameter_uv * view_size;
-}
-
-bool isPreciseEnough(S_BoundingSphere bounding_sphere) // bounding sphere must be in clip space
-{
-    return getScreenSpaceErrorInPixels(bounding_sphere) < constants.LoD_Scale; //    1.0;
-}
-
-void delayBeforeNextWorkQueueCheck(uint number_of_attemps_scince_last_work)
-{
-    float dummy_work_load;
-    for (uint i = 0; i < number_of_attemps_scince_last_work * 1; i++)
-        dummy_work_load = sqrt(max(i, 2));
+    return (sphere_diameter_uv * view_size) < constants.LoD_Scale; //    1.0;
 }
 
 void queueMeshletForDispatch(uint meshlet_index, uint object_index)
 {
-    uint global_payload_index = 0;
-    InterlockedAdd(workQueueCounters[0].payload_tail, 1, global_payload_index);
+    
 
     uint local_meshlet_count = 0;
     InterlockedAdd(gs_MeshletCount, 1, local_meshlet_count);  
     
+    uint global_payload_index = 0;
+    InterlockedAdd(workQueueCounters[0].payload_tail, 1, global_payload_index);
     payloadBuffer[global_payload_index].meshlet_id = meshlet_index;
     payloadBuffer[global_payload_index].object_id = object_index;
     payloadBuffer[global_payload_index].tesselation_grade = 0;

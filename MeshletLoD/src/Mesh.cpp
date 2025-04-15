@@ -744,7 +744,7 @@ void Mesh::simplifiyTopLevelGroups()
             newMeshlet.bounding_sphere.radius = bounds.radius;
             newMeshlet.group_id = 0;
 
-            newMeshlet.bounding_sphere = current_group.bounding_sphere; // !!!!!!!!!!!!!!!!!?
+            newMeshlet.bounding_sphere = current_group.bounding_sphere; // !!!!!!!!!!!!!!!!!? TODO: ??
 
             m_current_hierarchy_top_level_meshlets.push_back((uint)m_meshlets.size());
 
@@ -782,12 +782,6 @@ void Mesh::simplifiyTopLevelGroups()
         }
 
 
-
-        
-        
-        // TODO!!!
-        // populate morph_indices buffer data
-        //std::vector<std::pair<uint, uint>>  simplified_group_boundary_edges = extractBoundaryEdges(current_group);
         m_morph_indices.resize(m_vertex_indices.size(), 0); // resize in case new meshlets got added in previous hierarchy expansion
         for (uint m = 0; m < current_group.meshlet_count; m++) // go over every meshlet of the current group
         {
@@ -807,43 +801,6 @@ void Mesh::simplifiyTopLevelGroups()
                     m_morph_indices[current_meshlet.vertex_offset + vi] = current_meshlet.vertex_offset + vi;
                     assert(false);
                 }
-                
-                
-                /*
-                S_Vertex current_vertex = m_vertices[vertex_index];
-                float min_dist2 = FLT_MAX;
-                uint closest_morph_target_vertex_index_index = current_meshlet.vertex_offset + vi;
-
-
-                for (uint m = 0; m < GROUP_SPLIT_COUNT; m++) // go over every simplified meshlet of the current group
-                {
-                    S_Meshlet& current_simplified_meshlet = m_meshlets[current_group.simplified_meshlets[m]];
-                    for (unsigned char svi = 0; svi < current_simplified_meshlet.vertex_count; svi++) 
-                    {
-                        uint simplified_vertex_index = m_vertex_indices[current_simplified_meshlet.vertex_offset + svi];
-                        if (vertex_index == simplified_vertex_index)
-                        {
-                            closest_morph_target_vertex_index_index = current_simplified_meshlet.vertex_offset + svi;
-                            min_dist2 = 0;
-                            break;
-                        }
-
-                        S_Vertex comparing_vertex = m_vertices[simplified_vertex_index];
-
-                        float dx = current_vertex.position.x - comparing_vertex.position.x;
-                        float dy = current_vertex.position.y - comparing_vertex.position.y;
-                        float dz = current_vertex.position.z - comparing_vertex.position.z;
-                        float dist2 = dx * dx + dy * dy + dz * dz;
-
-                        if (dist2 < min_dist2)
-                        {
-                            min_dist2 = dist2;
-                            closest_morph_target_vertex_index_index = current_simplified_meshlet.vertex_offset + svi;
-                        }
-                    }
-                }
-                m_morph_indices[current_meshlet.vertex_offset + vi] = closest_morph_target_vertex_index_index;
-                */
             }
         }
 

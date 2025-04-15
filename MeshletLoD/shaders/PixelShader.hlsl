@@ -11,6 +11,6 @@ struct PixelShaderInput
 
 float4 main( PixelShaderInput IN ) : SV_Target
 {
-    //return float4(heightMapTexture.SampleLevel(heightMapSampler, float2(0, 0), 0).xyz, 1);
+    return float4(heightMapTexture.SampleLevel(heightMapSampler, IN.UV, 0).xyz, 1);
     return IN.Color;
 }

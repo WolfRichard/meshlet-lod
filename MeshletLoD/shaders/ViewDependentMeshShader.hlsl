@@ -138,7 +138,7 @@ void main(in uint I : SV_GroupIndex,
         }
         else if (constants.shadingSelection == DEBUG_MESHLET_SHADING)
         {
-            verts[v].Color = Rainbow(Random(gid)) * brightness;
+            verts[v].Color = Rainbow(Random(payload_task.meshlet_id)) * brightness;
         }
         else if (constants.shadingSelection == DEBUG_LOD_SHADING)
         {

@@ -311,7 +311,7 @@ bool ViewDependentMeshletLoD::LoadContent()
     samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
     samplerDesc.MipLODBias = 0.0f;
     samplerDesc.MaxAnisotropy = 1;
-    samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+    //samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
 
     // Create the sampler
     device->CreateSampler(&samplerDesc, m_Sampler_Heap->GetCPUDescriptorHandleForHeapStart());
@@ -346,8 +346,7 @@ bool ViewDependentMeshletLoD::LoadContent()
 
     // height map texture
     ScratchImage height_map_test_image;
-    TexMetadata metadata;
-    HRESULT hr = LoadFromWICFile(L"./assets/textures/test_height_map.png", WIC_FLAGS_NONE, &metadata, height_map_test_image);
+    HRESULT hr = LoadFromWICFile(L"./assets/textures/test_height_map.png", WIC_FLAGS_NONE, nullptr, height_map_test_image);
     if (FAILED(hr)) {
         OutputDebugString("FAILED TO LOAD TEST TEXTURE!\n");
         assert(false);
@@ -380,7 +379,8 @@ bool ViewDependentMeshletLoD::LoadContent()
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srvDesc.Format = textureDesc.Format;
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-    srvDesc.Texture2D.MipLevels = 1;
+    srvDesc.Texture2D.MostDetailedMip = 0;
+    srvDesc.Texture2D.MipLevels = -1;
 
     device->CreateShaderResourceView(m_HeightMapTexture.Get(), &srvDesc, nextCpuSrvHandle);
     m_HeightMapTextureSrvHandle = nextGpuSrvHandle;
@@ -526,7 +526,10 @@ bool ViewDependentMeshletLoD::LoadContent()
     rootParameters[9].InitAsUnorderedAccessView(2, 0);
      
     // height map texture
-    rootParameters[10].InitAsShaderResourceView(1, 0);
+    CD3DX12_DESCRIPTOR_RANGE1 textureRange;
+    textureRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0);
+
+    rootParameters[10].InitAsDescriptorTable(1, &textureRange, D3D12_SHADER_VISIBILITY_ALL);
 
     // height map texture sampler
     CD3DX12_DESCRIPTOR_RANGE1 samplerRange;
@@ -887,7 +890,8 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     // set global mesh payload buffer
     commandList->SetGraphicsRootUnorderedAccessView(9, m_GlobalMeshPayloadBuffer.Get()->GetGPUVirtualAddress());
     // set height map texture
-    commandList->SetGraphicsRootShaderResourceView(10, m_HeightMapTexture.Get()->GetGPUVirtualAddress());
+    commandList->SetGraphicsRootDescriptorTable(10,m_HeightMapTextureSrvHandle);
+    //commandList->SetGraphicsRootShaderResourceView(10, m_HeightMapTexture.Get()->GetGPUVirtualAddress());
     // set hight map texture sampler
     commandList->SetGraphicsRootDescriptorTable(11, m_Sampler_Heap->GetGPUDescriptorHandleForHeapStart());
 
