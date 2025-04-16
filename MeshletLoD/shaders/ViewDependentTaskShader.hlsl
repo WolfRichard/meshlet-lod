@@ -74,10 +74,12 @@ float ExtractMaxScaleFactor(float4x4 m)
     return max(sx, max(sy, sz));
 }
 
-bool groupSimplificationIsPreciseEnough(S_BoundingSphere bounding_sphere, uint lod_level) // bounding sphere must be in world space!
+bool groupSimplificationIsPreciseEnough(S_BoundingSphere bounding_sphere, uint lod_level, out uint tessellation_level) // bounding sphere must be in world space!
 {
-    float cam_dist = max(distance(constants.CameraWorldPos, bounding_sphere.center) - bounding_sphere.radius, 0);
-    return lod_level <= max(log2(cam_dist / constants.LoD_Scale), 0);;
+    float cam_dist = max(distance(constants.CameraWorldPos, bounding_sphere.center) - bounding_sphere.radius, 0.000000001);
+    float expected_lod = log2(cam_dist / constants.LoD_Scale);
+    tessellation_level = uint(min(max(expected_lod * -1, 0), MAX_TESSELLATION_LEVEL));
+    return lod_level <= max(expected_lod, 0);
 }
 
 
@@ -90,19 +92,49 @@ bool isPreciseEnough(S_BoundingSphere bounding_sphere) // bounding sphere must b
     return (sphere_diameter_uv * view_size) < constants.LoD_Scale; //    1.0;
 }
 
-void queueMeshletForDispatch(uint meshlet_index, uint object_index)
-{
-    
 
-    uint local_meshlet_count = 0;
-    InterlockedAdd(gs_MeshletCount, 1, local_meshlet_count);  
+void queueMeshletForDispatch(uint meshlet_index, uint object_index, uint tessellation_level, uint meshlet_triangle_count)
+{
+    if (tessellation_level == 0)
+    {
+        uint local_meshlet_count = 0;
+        InterlockedAdd(gs_MeshletCount, 1, local_meshlet_count);
     
-    uint global_payload_index = 0;
-    InterlockedAdd(workQueueCounters[0].payload_tail, 1, global_payload_index);
-    payloadBuffer[global_payload_index].meshlet_id = meshlet_index;
-    payloadBuffer[global_payload_index].object_id = object_index;
-    payloadBuffer[global_payload_index].tesselation_grade = 0;
-    payloadBuffer[global_payload_index].tesselation_triangle_offset = 0;
+        uint global_payload_index = 0;
+        InterlockedAdd(workQueueCounters[0].payload_tail, 1, global_payload_index);
+        payloadBuffer[global_payload_index].meshlet_id = meshlet_index;
+        payloadBuffer[global_payload_index].object_id = object_index;
+        payloadBuffer[global_payload_index].tessellation_grade = 0;
+        payloadBuffer[global_payload_index].tessellation_triangle_offset = 0;
+        payloadBuffer[global_payload_index].tessellation_triangle_count = 0;
+    }
+    else
+    {
+        uint triangles_per_instance = TESSELLATION_INITIAL_TRIANGLE_COUNTS[tessellation_level];
+        uint required_mesh_shader_instances = (meshlet_triangle_count + triangles_per_instance - 1) / triangles_per_instance;
+        
+        uint local_meshlet_count = 0;
+        InterlockedAdd(gs_MeshletCount, required_mesh_shader_instances, local_meshlet_count);
+
+        uint global_payload_index = 0;
+        InterlockedAdd(workQueueCounters[0].payload_tail, required_mesh_shader_instances, global_payload_index);
+       
+        
+        for (uint i = 0; i < required_mesh_shader_instances - 1; i++)
+        {
+            payloadBuffer[global_payload_index + i].meshlet_id = meshlet_index;
+            payloadBuffer[global_payload_index + i].object_id = object_index;
+            payloadBuffer[global_payload_index + i].tessellation_grade = tessellation_level;
+            payloadBuffer[global_payload_index + i].tessellation_triangle_offset = triangles_per_instance * i;
+            payloadBuffer[global_payload_index + i].tessellation_triangle_count = triangles_per_instance;
+            
+        }
+        payloadBuffer[global_payload_index + required_mesh_shader_instances - 1].meshlet_id = meshlet_index;
+        payloadBuffer[global_payload_index + required_mesh_shader_instances - 1].object_id = object_index;
+        payloadBuffer[global_payload_index + required_mesh_shader_instances - 1].tessellation_grade = tessellation_level;
+        payloadBuffer[global_payload_index + required_mesh_shader_instances - 1].tessellation_triangle_offset = triangles_per_instance * (required_mesh_shader_instances - 1);
+        payloadBuffer[global_payload_index + required_mesh_shader_instances - 1].tessellation_triangle_count = meshlet_triangle_count % triangles_per_instance;
+    }
 }
 
 void processTask(S_WorkQueueEntry task)
@@ -115,6 +147,8 @@ void processTask(S_WorkQueueEntry task)
     S_BoundingSphere world_space_bounding_sphere;
     world_space_bounding_sphere.center = mul(float4(current_meshlet.bounding_sphere.center, 1.0), scene_object.object_matrix).xyz; // object --> world space
     world_space_bounding_sphere.radius = current_meshlet.base_error * ExtractMaxScaleFactor(scene_object.object_matrix);
+    
+    uint tessellation_level = 0;
         
     if (constants.BoolConstants & SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS)
     {
@@ -122,12 +156,12 @@ void processTask(S_WorkQueueEntry task)
         precise_enough = isPreciseEnough(world_space_bounding_sphere); // actually in screen clip space
     }
     else
-        precise_enough = groupSimplificationIsPreciseEnough(world_space_bounding_sphere, current_meshlet.discrete_level_of_detail);
+        precise_enough = groupSimplificationIsPreciseEnough(world_space_bounding_sphere, current_meshlet.discrete_level_of_detail, tessellation_level);
         
     if (precise_enough)
     {
         if (isInFrustum(world_space_bounding_sphere.center, world_space_bounding_sphere.radius))
-            queueMeshletForDispatch(task.meshlet_id, task.scene_object_id);
+            queueMeshletForDispatch(task.meshlet_id, task.scene_object_id, tessellation_level, current_meshlet.triangle_count);
     }
     else // append all child meshlets into work queue if current simplification isnt precise enough (zero children when current meshlet is a leaf node)
         for (uint child_meshlet_index_index = 0; child_meshlet_index_index < current_meshlet.child_count; child_meshlet_index_index++)
@@ -169,11 +203,8 @@ void main(in uint I : SV_GroupIndex,
             }
         }
     }
-        
-    AllMemoryBarrierWithGroupSync();
        
     // processing of work queue entries    
-    
     S_WorkQueueEntry current_task;
     while (consumeTask(current_task))
     {
@@ -182,16 +213,12 @@ void main(in uint I : SV_GroupIndex,
       
     //after work queue is empty dispatch all collected meshlets
     GroupMemoryBarrierWithGroupSync();
-    
-    
     if (I == 0)
     {
         uint global_offset = 0;
         InterlockedAdd(workQueueCounters[0].payload_head, gs_MeshletCount, global_offset);
         gs_Payload.global_payload_offset = global_offset;
     }
-    
     GroupMemoryBarrierWithGroupSync();
-    
     DispatchMesh(gs_MeshletCount, 1, 1, gs_Payload);
 }

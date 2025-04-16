@@ -10,8 +10,19 @@
 
 #define MAX_DISPATCH_MESH_GROUP_COUNT 4194304 // 2^22 https://microsoft.github.io/DirectX-Specs/d3d/MeshShader.html#dispatchmesh-api
 
+// tessellation constants
+#define MAX_TESSELLATION_LEVEL 3
+// look up table for triangle and vertex counts per tessellation level (from lvl 1-3)
+static const uint TESSELLATION_INITIAL_TRIANGLE_COUNTS[MAX_TESSELLATION_LEVEL]   = { 40 , 15 , 3   };
+static const uint TESSELLATION_RESULTING_TRIANGLE_COUNTS[MAX_TESSELLATION_LEVEL] = { 120, 240, 192 };
+static const uint TESSELLATION_INITIAL_VERTEX_COUNTS[MAX_TESSELLATION_LEVEL]     = { 40 , 15 , 3   };
+static const uint TESSELLATION_RESULTING_VERTEX_COUNTS[MAX_TESSELLATION_LEVEL]   = { 120, 240, 192 };
+
+
+
+
 //#define MAX_MESHLET_VERTEX_COUNT 64
-#define MAX_MESHLET_VERTEX_COUNT 128
+#define MAX_MESHLET_VERTEX_COUNT 254
 
 //#define MAX_MESHLET_PRIMITIVE_COUNT 124
 #define MAX_MESHLET_PRIMITIVE_COUNT 254
@@ -71,7 +82,7 @@ struct S_MeshletGroup
 #define FRUSTUM_CULLING_BIT_POS                 1  // 00000000000000000000000000000001
 #define SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS    2  // 00000000000000000000000000000010
 #define GEO_MORPHING_BIT_POS                    4  // 00000000000000000000000000000100
-#define TREE_INSTEAD_OF_FLAT_BIT_POS           16  // 00000000000000000000000000001000
+#define TRESSELLATION_BIT_POS                  16  // 00000000000000000000000000001000
 //#define DEBUG_BONES                          32  // 00000000000000000000000000010000
 //#define DEBUG_LOD                            64  // 00000000000000000000000000100000
 //#define ENABLE_OBJECT_LOD                   128  // 00000000000000000000000001000000
@@ -81,12 +92,11 @@ struct S_MeshletGroup
 enum ShadingMode
 {
     DEFAULT_SHADING,
-    DEBUG_MESHLET_SHADING,
-    DEBUG_LOD_SHADING,
-    DEBUG_WORLD_POS,
-    DEBUG_MESHLET_GROUP,
-    DEBUG_VERTICES,
-    DEBUG_VERTEX_BASED_LOD
+    MESHLETS_SHADING,
+    MESHLET_GROUP_SHADING,
+    LOD_SHADING,
+    TESSELLATION_LEVEL_SHADING,
+    HEIGHT_MAP_SHADING,
 };
 
 
@@ -121,8 +131,9 @@ struct S_PayloadEntry
 {
     uint meshlet_id;
     uint object_id;
-    uint tesselation_grade;
-    uint tesselation_triangle_offset;
+    uint tessellation_grade;
+    uint tessellation_triangle_offset;
+    uint tessellation_triangle_count;
 };
 
 // Payload from task shader stage to mesh shader

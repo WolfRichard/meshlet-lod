@@ -358,8 +358,8 @@ bool ViewDependentMeshletLoD::LoadContent()
     D3D12_RESOURCE_DESC textureDesc = {};
     textureDesc.MipLevels = 1;
     textureDesc.Format = img->format;
-    textureDesc.Width = img->width;
-    textureDesc.Height = img->height;
+    textureDesc.Width = (uint)img->width;
+    textureDesc.Height = (uint)img->height;
     textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
     textureDesc.DepthOrArraySize = 1;
     textureDesc.SampleDesc.Count = 1;
@@ -374,6 +374,10 @@ bool ViewDependentMeshletLoD::LoadContent()
         nullptr,
         IID_PPV_ARGS(&m_HeightMapTexture)
     );
+
+
+    
+
 
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -390,6 +394,22 @@ bool ViewDependentMeshletLoD::LoadContent()
 
 
 
+
+    D3D12_FEATURE_DATA_D3D12_OPTIONS21 options21 = {};
+    HRESULT hr2 = device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS21, &options21, sizeof(options21));
+
+    D3D12_FEATURE_DATA_SHADER_MODEL shaderModel = { D3D_SHADER_MODEL_6_8 };
+    HRESULT hr3 = device->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL, &shaderModel, sizeof(shaderModel));
+
+
+    if (SUCCEEDED(hr3)) {
+        OutputDebugString("Workgraphs not supported!\n");
+        assert(false);
+    }
+    else {
+        OutputDebugString("Workgraphs are supported!\n");
+        assert(false);
+    }
 
 
 
@@ -841,7 +861,8 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     if (m_frustumCulling) constants.BoolConstants |= FRUSTUM_CULLING_BIT_POS;
     if (m_geo_morphing) constants.BoolConstants |= GEO_MORPHING_BIT_POS;
     if (m_screen_space_LoD) constants.BoolConstants |= SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS;
-    if (m_tre_instead_of_flat) constants.BoolConstants |= TREE_INSTEAD_OF_FLAT_BIT_POS;
+    if (m_tessellation) constants.BoolConstants = TRESSELLATION_BIT_POS;
+    
 
     
     memcpy(m_mappedConstantData, &constants, sizeof(S_Constants));
@@ -1092,7 +1113,7 @@ void ViewDependentMeshletLoD::updateImGui()
         ImGui::Checkbox("Meshlet based Frustum Culling", &m_frustumCulling);
         ImGui::Checkbox("Screen Space Error based LoD selection", &m_screen_space_LoD);
         ImGui::Checkbox("Geo-Morphing", &m_geo_morphing);
-        ImGui::Checkbox("Hierarchical Tree-Traversal Instead of Flat Meshlet Processing", &m_tre_instead_of_flat);
+        ImGui::Checkbox("Tessellation", &m_tessellation);
         ImGui::Checkbox("Level Of Detail", &m_LoD_Enabled);
         if (m_screen_space_LoD)
             ImGui::InputFloat("Max error in pxl", &m_LoDScale, 0.01f, 1.0f, "%.2f");
@@ -1151,8 +1172,8 @@ void ViewDependentMeshletLoD::updateImGui()
         ImGui::SameLine();
         if (ImGui::Checkbox("Back Face Culling", &m_backFaceCulling)) createPSO();
         
-        static int selected = 0;  // Index of the selected option
-        const char* options[] = { "Disable Debug Visals", "Show Meshlets", "Show LoDs", "World Position", "Show Meshlet Grouping", "Show LoD Validation", "Show Vertex LoD" };
+        static int selected = static_cast<int>(m_shadingMode);  // Index of the selected option
+        const char* options[] = { "Disable Debug Visals", "Show Meshlets", "Show Meshlet Grouping", "Show LoDs", "Show Tessellation Level", "Visualize Height Map"};
         for (int i = 0; i < IM_ARRAYSIZE(options); i++) {
             if (ImGui::RadioButton(options[i], selected == i)) {
                 selected = i;  // Update selection when clicked

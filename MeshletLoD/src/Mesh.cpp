@@ -8,6 +8,7 @@
 
 #include "Windows.h"
 
+
 using namespace DirectX;
 
 Mesh::Mesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)

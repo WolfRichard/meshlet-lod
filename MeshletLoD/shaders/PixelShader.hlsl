@@ -1,6 +1,9 @@
+#include "ViewDependentStructures.fxh"
 
-Texture2D heightMapTexture      : register(t1, space0);
-SamplerState heightMapSampler   : register(s0, space0);
+ConstantBuffer<S_Constants> constants   : register(b0, space0);
+
+Texture2D heightMapTexture              : register(t1, space0);
+SamplerState heightMapSampler           : register(s0, space0);
 
 struct PixelShaderInput
 {
@@ -11,6 +14,8 @@ struct PixelShaderInput
 
 float4 main( PixelShaderInput IN ) : SV_Target
 {
-    return float4(heightMapTexture.SampleLevel(heightMapSampler, IN.UV, 0).xyz, 1);
-    return IN.Color;
+    if (constants.shadingSelection == HEIGHT_MAP_SHADING)
+        return float4(heightMapTexture.SampleLevel(heightMapSampler, IN.UV, 0).xyz, 1);
+    else
+        return IN.Color;
 }

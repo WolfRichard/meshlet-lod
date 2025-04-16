@@ -8,6 +8,8 @@
 
 #include "HLSLnames.h"
 
+#include "../shaders/ViewDependentStructures.fxh"
+
 #include <chrono>
 #include <map>
 #include <unordered_set>
@@ -24,12 +26,6 @@ struct PairHash {
 
 
 
-namespace
-{
-
-#include "../shaders/ViewDependentStructures.fxh"
-
-} // namespace
 
 class Mesh
 {
