@@ -920,7 +920,6 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     assert((PERSISTENT_THREAD_COUNT % GROUP_SIZE) == 0);
     commandList->DispatchMesh(PERSISTENT_THREAD_COUNT / GROUP_SIZE, 1, 1);
 
-    
 
     // Render Dear ImGui graphics
     commandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);

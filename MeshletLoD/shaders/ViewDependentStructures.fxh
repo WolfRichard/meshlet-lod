@@ -1,11 +1,10 @@
 # pragma once
 
-
 #define GROUP_SIZE 32
 
-#define PERSISTENT_THREAD_COUNT 4096 // 14 SM * GROUP_SIZE
+#define PERSISTENT_THREAD_COUNT 4096
 
-#define WORK_QUEUE_SIZE 4194304           // (2^22) Workqueue is implemented as ring-buffer, 
+#define WORK_QUEUE_SIZE 4194304         // (2^22) Workqueue is implemented as ring-buffer, 
                                         //queue size allows correct indexing and should be able to contain the maximum of simultanious queue tasks
 
 #define MAX_DISPATCH_MESH_GROUP_COUNT 4194304 // 2^22 https://microsoft.github.io/DirectX-Specs/d3d/MeshShader.html#dispatchmesh-api
@@ -17,7 +16,6 @@ static const uint TESSELLATION_INITIAL_TRIANGLE_COUNTS[3]   = {  40,  15,   3 };
 static const uint TESSELLATION_RESULTING_TRIANGLE_COUNTS[3] = { 120, 240, 192 };
 static const uint TESSELLATION_INITIAL_VERTEX_COUNTS[3]     = { 120,  45,   9 };
 static const uint TESSELLATION_RESULTING_VERTEX_COUNTS[3]   = { 240, 225, 135 };
-
 
 
 
