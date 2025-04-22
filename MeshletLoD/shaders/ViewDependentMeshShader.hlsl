@@ -86,22 +86,22 @@ void lvl2Tessellation(S_Vertex a, S_Vertex b, S_Vertex c)
     gs_vertices[vo + 14] = barycentricVertexInterpolation(a, b, c, float3(0.00, 0.75, 0.25));
     
     
-    gs_triangles[to +  0] = uint3( 0,  7,  6);
-    gs_triangles[to +  1] = uint3( 6,  8,  4);
-    gs_triangles[to +  2] = uint3( 6,  7,  8);
-    gs_triangles[to +  3] = uint3( 7,  3,  8);
-    gs_triangles[to +  4] = uint3( 4, 10,  9);
-    gs_triangles[to +  5] = uint3( 4,  8, 10);
-    gs_triangles[to +  6] = uint3( 8, 11, 10);
-    gs_triangles[to +  7] = uint3( 8,  3, 11);
-    gs_triangles[to +  8] = uint3( 3, 12, 11);
-    gs_triangles[to +  9] = uint3( 9, 13,  2);
-    gs_triangles[to + 10] = uint3( 9, 10, 13);
-    gs_triangles[to + 11] = uint3(10,  5, 13);
-    gs_triangles[to + 12] = uint3(10, 11,  5);
-    gs_triangles[to + 13] = uint3(11, 14,  5);
-    gs_triangles[to + 14] = uint3(11, 12, 14);
-    gs_triangles[to + 15] = uint3(12,  1, 14);
+    gs_triangles[to +  0] = uint3(vo +  0, vo +  7, vo +  6);
+    gs_triangles[to +  1] = uint3(vo +  6, vo +  8, vo +  4);
+    gs_triangles[to +  2] = uint3(vo +  6, vo +  7, vo +  8);
+    gs_triangles[to +  3] = uint3(vo +  7, vo +  3, vo +  8);
+    gs_triangles[to +  4] = uint3(vo +  4, vo + 10, vo +  9);
+    gs_triangles[to +  5] = uint3(vo +  4, vo +  8, vo + 10);
+    gs_triangles[to +  6] = uint3(vo +  8, vo + 11, vo + 10);
+    gs_triangles[to +  7] = uint3(vo +  8, vo +  3, vo + 11);
+    gs_triangles[to +  8] = uint3(vo +  3, vo + 12, vo + 11);
+    gs_triangles[to +  9] = uint3(vo +  9, vo + 13, vo +  2);
+    gs_triangles[to + 10] = uint3(vo +  9, vo + 10, vo + 13);
+    gs_triangles[to + 11] = uint3(vo + 10, vo +  5, vo + 13);
+    gs_triangles[to + 12] = uint3(vo + 10, vo + 11, vo +  5);
+    gs_triangles[to + 13] = uint3(vo + 11, vo + 14, vo +  5);
+    gs_triangles[to + 14] = uint3(vo + 11, vo + 12, vo + 14);
+    gs_triangles[to + 15] = uint3(vo + 12, vo +  1, vo + 14);
 }
 
 
@@ -130,7 +130,7 @@ void lvl3Tessellation(S_Vertex a, S_Vertex b, S_Vertex c)
     gs_vertices[vo +  2] = barycentricVertexInterpolation(a, b, c, float3(0.750, 0.250, 0.000));
     gs_vertices[vo +  3] = barycentricVertexInterpolation(a, b, c, float3(0.625, 0.375, 0.000));
     gs_vertices[vo +  4] = barycentricVertexInterpolation(a, b, c, float3(0.500, 0.500, 0.000));
-    gs_vertices[vo +  5] = barycentricVertexInterpolation(a, b, c, float3(0.375, 0.615, 0.000));
+    gs_vertices[vo +  5] = barycentricVertexInterpolation(a, b, c, float3(0.375, 0.625, 0.000));
     gs_vertices[vo +  6] = barycentricVertexInterpolation(a, b, c, float3(0.250, 0.750, 0.000));
     gs_vertices[vo +  7] = barycentricVertexInterpolation(a, b, c, float3(0.125, 0.875, 0.000));
     gs_vertices[vo +  8] = b;
@@ -168,7 +168,7 @@ void lvl3Tessellation(S_Vertex a, S_Vertex b, S_Vertex c)
     gs_vertices[vo + 40] = barycentricVertexInterpolation(a, b, c, float3(0.125, 0.125, 0.750));
     gs_vertices[vo + 41] = barycentricVertexInterpolation(a, b, c, float3(0.000, 0.250, 0.750));
     gs_vertices[vo + 42] = barycentricVertexInterpolation(a, b, c, float3(0.125, 0.000, 0.875));
-    gs_vertices[vo + 43] = barycentricVertexInterpolation(a, b, c, float3(0.125, 0.000, 0.875));
+    gs_vertices[vo + 43] = barycentricVertexInterpolation(a, b, c, float3(0.000, 0.125, 0.875));
     gs_vertices[vo + 44] = c;
     
     
@@ -297,7 +297,7 @@ void main(in uint I : SV_GroupIndex,
     S_Meshlet meshlet = meshletBuffers[scene_object.mesh_id][payload_task.meshlet_id];
     
     
-    /*
+    
     
     // optional tessellation
     bool do_tessellation = ((constants.BoolConstants & TRESSELLATION_BIT_POS) && payload_task.tessellation_grade);
@@ -306,16 +306,17 @@ void main(in uint I : SV_GroupIndex,
         // Reset the group shared counter variables from the first thread in the group
         if (I == 0)
         {
-            gs_MeshletCount = 0;
+            gs_triangle_count = 0;
+            gs_vertex_count = 0;
         }
         GroupMemoryBarrierWithGroupSync();
         
         // tessellate each individual triangle
         for (uint p = payload_task.tessellation_triangle_offset + I; p < payload_task.tessellation_triangle_count + payload_task.tessellation_triangle_offset; p += GROUP_SIZE)
         {
-            S_Vertex a = verticesBuffers[scene_object.mesh_id][vertexIndicesBuffers[scene_object.mesh_id][SampleTriangleBufferAsCharArray(meshlet.triangle_offset + p * 3 + 0, scene_object.mesh_id)]];
-            S_Vertex b = verticesBuffers[scene_object.mesh_id][vertexIndicesBuffers[scene_object.mesh_id][SampleTriangleBufferAsCharArray(meshlet.triangle_offset + p * 3 + 1, scene_object.mesh_id)]];
-            S_Vertex c = verticesBuffers[scene_object.mesh_id][vertexIndicesBuffers[scene_object.mesh_id][SampleTriangleBufferAsCharArray(meshlet.triangle_offset + p * 3 + 2, scene_object.mesh_id)]];
+            S_Vertex a = verticesBuffers[scene_object.mesh_id][vertexIndicesBuffers[scene_object.mesh_id][meshlet.vertex_offset + SampleTriangleBufferAsCharArray(meshlet.triangle_offset + p * 3 + 0, scene_object.mesh_id)]];
+            S_Vertex b = verticesBuffers[scene_object.mesh_id][vertexIndicesBuffers[scene_object.mesh_id][meshlet.vertex_offset + SampleTriangleBufferAsCharArray(meshlet.triangle_offset + p * 3 + 1, scene_object.mesh_id)]];
+            S_Vertex c = verticesBuffers[scene_object.mesh_id][vertexIndicesBuffers[scene_object.mesh_id][meshlet.vertex_offset + SampleTriangleBufferAsCharArray(meshlet.triangle_offset + p * 3 + 2, scene_object.mesh_id)]];
         
             if (payload_task.tessellation_grade == 3)
                 lvl3Tessellation(a, b, c);
@@ -325,13 +326,37 @@ void main(in uint I : SV_GroupIndex,
                 lvl1Tessellation(a, b, c);
         }
     }
+    else
+    {
+        // Reset the group shared counter variables from the first thread in the group
+        if (I == 0)
+        {
+            gs_triangle_count = meshlet.triangle_count;
+            gs_vertex_count = meshlet.vertex_count;
+        }
+    }
     GroupMemoryBarrierWithGroupSync();
     
     
-    */
+    SetMeshOutputCounts(gs_vertex_count, gs_triangle_count);
     
+    if (do_tessellation)
+    {
+        for (uint v = I; v < gs_vertex_count; v += GROUP_SIZE)
+        {
+            verts[v].Pos = mul(mul(float4(gs_vertices[v].position.xyz, 1.0), scene_object.object_matrix), constants.ViewProjMat);
+            verts[v].UV = gs_vertices[v].uv.xy;
+            verts[v].Color = float4(1, 1, 1, 1);
+        }
+        
+        for (uint p = I; p < gs_triangle_count; p += GROUP_SIZE)
+        {
+            tris[p] = gs_triangles[p];
+        }
+        
+        return;
+    }
     
-    SetMeshOutputCounts(meshlet.vertex_count, meshlet.triangle_count);
     
     // process meshlet vertices
     const uint vertexLoops = (MAX_MESHLET_VERTEX_COUNT + GROUP_SIZE - 1) / GROUP_SIZE;

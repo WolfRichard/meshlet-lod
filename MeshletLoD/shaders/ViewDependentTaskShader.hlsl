@@ -110,7 +110,7 @@ void queueMeshletForDispatch(uint meshlet_index, uint object_index, uint tessell
     }
     else
     {
-        uint triangles_per_instance = TESSELLATION_INITIAL_TRIANGLE_COUNTS[tessellation_level];
+        uint triangles_per_instance = TESSELLATION_INITIAL_TRIANGLE_COUNTS[tessellation_level - 1];
         uint required_mesh_shader_instances = (meshlet_triangle_count + triangles_per_instance - 1) / triangles_per_instance;
         
         uint local_meshlet_count = 0;

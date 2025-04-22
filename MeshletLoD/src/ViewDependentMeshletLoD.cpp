@@ -402,7 +402,7 @@ bool ViewDependentMeshletLoD::LoadContent()
     HRESULT hr3 = device->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL, &shaderModel, sizeof(shaderModel));
 
 
-    if (SUCCEEDED(hr3)) {
+    if (SUCCEEDED(hr2)) {
         OutputDebugString("Workgraphs not supported!\n");
         assert(false);
     }
@@ -410,7 +410,6 @@ bool ViewDependentMeshletLoD::LoadContent()
         OutputDebugString("Workgraphs are supported!\n");
         assert(false);
     }
-
 
 
     std::vector<ComPtr<ID3D12Resource>> copyBuffers;
@@ -766,7 +765,7 @@ void ViewDependentMeshletLoD::OnUpdate(UpdateEventArgs& e)
 
     // Update the projection matrix.
     float aspectRatio = GetClientWidth() / static_cast<float>(GetClientHeight());
-    m_ProjectionMatrix = XMMatrixPerspectiveFovLH(XMConvertToRadians(m_FoV), aspectRatio, 0.1f, 100000.0f);
+    m_ProjectionMatrix = XMMatrixPerspectiveFovLH(XMConvertToRadians(m_FoV), aspectRatio, 0.001f, 100000.0f);
 
     updateImGui();
 }
@@ -861,7 +860,7 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     if (m_frustumCulling) constants.BoolConstants |= FRUSTUM_CULLING_BIT_POS;
     if (m_geo_morphing) constants.BoolConstants |= GEO_MORPHING_BIT_POS;
     if (m_screen_space_LoD) constants.BoolConstants |= SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS;
-    if (m_tessellation) constants.BoolConstants = TRESSELLATION_BIT_POS;
+    if (m_tessellation) constants.BoolConstants |= TRESSELLATION_BIT_POS;
     
 
     
@@ -920,6 +919,7 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     
     assert((PERSISTENT_THREAD_COUNT % GROUP_SIZE) == 0);
     commandList->DispatchMesh(PERSISTENT_THREAD_COUNT / GROUP_SIZE, 1, 1);
+
     
 
     // Render Dear ImGui graphics

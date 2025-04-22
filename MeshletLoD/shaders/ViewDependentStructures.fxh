@@ -13,10 +13,10 @@
 // tessellation constants
 #define MAX_TESSELLATION_LEVEL 3
 // look up table for triangle and vertex counts per tessellation level (from lvl 1-3)
-static const uint TESSELLATION_INITIAL_TRIANGLE_COUNTS[MAX_TESSELLATION_LEVEL]   = { 40 , 15 , 3   };
-static const uint TESSELLATION_RESULTING_TRIANGLE_COUNTS[MAX_TESSELLATION_LEVEL] = { 120, 240, 192 };
-static const uint TESSELLATION_INITIAL_VERTEX_COUNTS[MAX_TESSELLATION_LEVEL]     = { 40 , 15 , 3   };
-static const uint TESSELLATION_RESULTING_VERTEX_COUNTS[MAX_TESSELLATION_LEVEL]   = { 120, 240, 192 };
+static const uint TESSELLATION_INITIAL_TRIANGLE_COUNTS[3]   = {  40,  15,   3 };
+static const uint TESSELLATION_RESULTING_TRIANGLE_COUNTS[3] = { 120, 240, 192 };
+static const uint TESSELLATION_INITIAL_VERTEX_COUNTS[3]     = { 120,  45,   9 };
+static const uint TESSELLATION_RESULTING_VERTEX_COUNTS[3]   = { 240, 225, 135 };
 
 
 
