@@ -28,24 +28,54 @@ groupshared uint gs_triangle_count;
 groupshared uint3 gs_triangles[MAX_MESHLET_PRIMITIVE_COUNT];
 groupshared S_Vertex gs_vertices[MAX_MESHLET_VERTEX_COUNT];
 
-S_Vertex barycentricVertexInterpolation(S_Vertex a, S_Vertex b, S_Vertex c, float3 w)
+groupshared uint gs_tessellation_levels[MAX_MESHLET_VERTEX_COUNT];          // per vertex tessellation level (even lvl3 tessellation produces lvl1 and lvl2 tessellation vertices) 
+groupshared uint gs_tessellation_morph_targets[MAX_MESHLET_VERTEX_COUNT];   // indices into what tessellation vertex the current vertex should be interpolated towards when applying geo-morphing.  for tessellation lvl0 vertices (base vertices of the triangle, the morph target index is the original morph target index of the morph-target global buffer)
+
+
+// generate single hash value from a vertex position
+float hash31(float3 v_pos)
+{
+    v_pos = frac(v_pos * 0.3183099 + float3(0.1, 0.2, 0.3));
+    v_pos += dot(v_pos, v_pos.yzx + 19.19);
+    return frac((v_pos.x + v_pos.y) * v_pos.z);
+}
+
+S_Vertex linearVertexInterpolation(S_Vertex a, S_Vertex b, float w)
 {
     S_Vertex result;
-    result.position = a.position * w.x + b.position * w.y + c.position * w.z;
-    result.color = a.color * w.x + b.color * w.y + c.color * w.z;
-    result.normal = normalize(a.normal * w.x + b.normal * w.y + c.normal * w.z);
-    result.uv = a.uv * w.x + b.uv * w.y + c.uv * w.z;
+    result.position = lerp(a.position, b.position, w);
+    result.color    = lerp(a.color   , b.color   , w);
+    result.normal   = lerp(a.normal  , b.normal  , w);
+    result.uv       = lerp(a.uv      , b.uv      , w);
+    
+    result.normal   = normalize(result.normal);
     return result;
 }
 
+S_Vertex barycentricVertexInterpolation(S_Vertex a, S_Vertex b, S_Vertex c, float3 w)
+{
+    S_Vertex result;
+    
+    result.position = a.position * w.x + b.position * w.y + c.position * w.z;
+    result.color    = a.color    * w.x + b.color    * w.y + c.color    * w.z;
+    result.normal   = a.normal   * w.x + b.normal   * w.y + c.normal   * w.z;
+    result.uv       = a.uv       * w.x + b.uv       * w.y + c.uv       * w.z;
+    
+    result.normal   = normalize(result.normal);
+    return result;
+}
+
+
+
 // level 1 tesselation results in 4 triangles and 6 vertices from a single primitive
-void lvl1Tessellation(S_Vertex a, S_Vertex b, S_Vertex c)
+void lvl1Tessellation(S_Vertex a, S_Vertex b, S_Vertex c, uint3 original_morph_target_indices)
 {
     uint to = 0; // triangle offset
     InterlockedAdd(gs_triangle_count, 4, to);
     uint vo = 0; // vertex offset
     InterlockedAdd(gs_vertex_count, 6, vo);
     
+    // generate tesselated vertices
     gs_vertices[vo + 0] = a;
     gs_vertices[vo + 1] = b;
     gs_vertices[vo + 2] = c;
@@ -53,16 +83,43 @@ void lvl1Tessellation(S_Vertex a, S_Vertex b, S_Vertex c)
     gs_vertices[vo + 4] = barycentricVertexInterpolation(a, b, c, float3(0.5, 0, 0.5));
     gs_vertices[vo + 5] = barycentricVertexInterpolation(a, b, c, float3(0, 0.5, 0.5));
     
+    //generate connectivity between newly produced vertices
     gs_triangles[to + 0] = uint3(vo + 0, vo + 3, vo + 4);
     gs_triangles[to + 1] = uint3(vo + 3, vo + 1, vo + 5);
     gs_triangles[to + 2] = uint3(vo + 3, vo + 5, vo + 4);
     gs_triangles[to + 3] = uint3(vo + 4, vo + 5, vo + 2);
+    
+    
+    // generation of Geo-Morph informatin
+    
+    // check what winding order edge tessellation should be morphed to, to avoid that opposing T-junktions drift appart they must decide to morph into the same vertices
+    float3 vertices_hash_values = float3(hash31(a.position.xyz), hash31(b.position.xyz), hash31(c.position.xyz));
+    // always morph to the higher hash, default assumption is that ordered by hash A > B > C > A. (this can/should never be true, and just represents their original winding order)
+    // inverse edge morphing for specific edges if hash order deveates from default assumption
+    bool i_ab = vertices_hash_values.x < vertices_hash_values.y;
+    bool i_bc = vertices_hash_values.y < vertices_hash_values.z;
+    bool i_ca = vertices_hash_values.z < vertices_hash_values.x;
+    
+    gs_tessellation_levels[vo + 0] = 0;
+    gs_tessellation_levels[vo + 1] = 0;
+    gs_tessellation_levels[vo + 2] = 0;
+    gs_tessellation_levels[vo + 3] = 1;
+    gs_tessellation_levels[vo + 4] = 1;
+    gs_tessellation_levels[vo + 5] = 1;
+    
+    
+    gs_tessellation_morph_targets[vo + 0] = original_morph_target_indices.x;
+    gs_tessellation_morph_targets[vo + 1] = original_morph_target_indices.y;
+    gs_tessellation_morph_targets[vo + 2] = original_morph_target_indices.z;
+    gs_tessellation_morph_targets[vo + 3] = vo + (i_ab ? 1 : 0);
+    gs_tessellation_morph_targets[vo + 4] = vo + (i_ca ? 0 : 2);
+    gs_tessellation_morph_targets[vo + 5] = vo + (i_bc ? 2 : 1);
 }
 
 
 
 // level 2 tesselation results in 16 triangles and 15 vertices from a single primitive
-void lvl2Tessellation(S_Vertex a, S_Vertex b, S_Vertex c)
+void lvl2Tessellation(S_Vertex a, S_Vertex b, S_Vertex c, uint3 original_morph_target_indices)
 {
     uint to = 0; // triangle offset
     InterlockedAdd(gs_triangle_count, 16, to);
@@ -102,6 +159,50 @@ void lvl2Tessellation(S_Vertex a, S_Vertex b, S_Vertex c)
     gs_triangles[to + 13] = uint3(vo + 11, vo + 14, vo +  5);
     gs_triangles[to + 14] = uint3(vo + 11, vo + 12, vo + 14);
     gs_triangles[to + 15] = uint3(vo + 12, vo +  1, vo + 14);
+    
+    
+    // generation of Geo-Morph informatin
+    
+    // check what winding order edge tessellation should be morphed to, to avoid that opposing T-junktions drift appart they must decide to morph into the same vertices
+    float3 vertices_hash_values = float3(hash31(a.position.xyz), hash31(b.position.xyz), hash31(c.position.xyz));
+    // always morph to the higher hash, default assumption is that ordered by hash A > B > C > A. (this can/should never be true, and just represents their original winding order)
+    // inverse edge morphing for specific edges if hash order deveates from default assumption
+    bool i_ab = vertices_hash_values.x < vertices_hash_values.y;
+    bool i_bc = vertices_hash_values.y < vertices_hash_values.z;
+    bool i_ca = vertices_hash_values.z < vertices_hash_values.x;
+    
+    gs_tessellation_levels[vo +  0] = 0;
+    gs_tessellation_levels[vo +  1] = 0;
+    gs_tessellation_levels[vo +  2] = 0;
+    gs_tessellation_levels[vo +  3] = 1;
+    gs_tessellation_levels[vo +  4] = 1;
+    gs_tessellation_levels[vo +  5] = 1;
+    gs_tessellation_levels[vo +  6] = 2;
+    gs_tessellation_levels[vo +  7] = 2;
+    gs_tessellation_levels[vo +  8] = 2;
+    gs_tessellation_levels[vo +  9] = 2;
+    gs_tessellation_levels[vo + 10] = 2;
+    gs_tessellation_levels[vo + 11] = 2;
+    gs_tessellation_levels[vo + 12] = 2;
+    gs_tessellation_levels[vo + 13] = 2;
+    gs_tessellation_levels[vo + 14] = 2;
+    
+    
+    gs_tessellation_morph_targets[vo +  0] = original_morph_target_indices.x;
+    gs_tessellation_morph_targets[vo +  1] = original_morph_target_indices.y;
+    gs_tessellation_morph_targets[vo +  2] = original_morph_target_indices.z;
+    gs_tessellation_morph_targets[vo +  3] = vo + (i_ab ? 1 : 0);
+    gs_tessellation_morph_targets[vo +  4] = vo + (i_ca ? 0 : 2);
+    gs_tessellation_morph_targets[vo +  5] = vo + (i_bc ? 2 : 1);
+    gs_tessellation_morph_targets[vo +  6] = vo + 4;
+    gs_tessellation_morph_targets[vo +  7] = vo + 3;
+    gs_tessellation_morph_targets[vo +  8] = vo + 3;
+    gs_tessellation_morph_targets[vo +  9] = vo + 4;
+    gs_tessellation_morph_targets[vo + 10] = vo + 4;
+    gs_tessellation_morph_targets[vo + 11] = vo + 5;
+    gs_tessellation_morph_targets[vo + 12] = vo + 3;
+    gs_tessellation_morph_targets[vo + 13] = vo + 5;
+    gs_tessellation_morph_targets[vo + 14] = vo + 5; 
 }
 
 
@@ -118,7 +219,7 @@ void lvl2Tessellation(S_Vertex a, S_Vertex b, S_Vertex c)
 */
 
 
-void lvl3Tessellation(S_Vertex a, S_Vertex b, S_Vertex c)
+void lvl3Tessellation(S_Vertex a, S_Vertex b, S_Vertex c, uint3 original_morph_target_indices)
 {
     uint to = 0; // triangle offset
     InterlockedAdd(gs_triangle_count, 64, to);
@@ -236,6 +337,113 @@ void lvl3Tessellation(S_Vertex a, S_Vertex b, S_Vertex c)
     gs_triangles[to + 61] = uint3(vo + 40, vo + 43, vo + 42);
     gs_triangles[to + 62] = uint3(vo + 40, vo + 41, vo + 43);
     gs_triangles[to + 63] = uint3(vo + 42, vo + 43, vo + 44);
+    
+    
+    
+    // generation of Geo-Morph informatin
+    
+    // check what winding order edge tessellation should be morphed to, to avoid that opposing T-junktions drift appart they must decide to morph into the same vertices
+    float3 vertices_hash_values = float3(hash31(a.position.xyz), hash31(b.position.xyz), hash31(c.position.xyz));
+    // always morph to the higher hash, default assumption is that ordered by hash A > B > C > A. (this can/should never be true, and just represents their original winding order)
+    // inverse edge morphing for specific edges if hash order deveates from default assumption
+    bool i_ab = vertices_hash_values.x < vertices_hash_values.y;
+    bool i_bc = vertices_hash_values.y < vertices_hash_values.z;
+    bool i_ca = vertices_hash_values.z < vertices_hash_values.x;
+    
+    
+    gs_tessellation_levels[vo +  0] = 0;
+    gs_tessellation_levels[vo +  1] = 3;
+    gs_tessellation_levels[vo +  2] = 2;
+    gs_tessellation_levels[vo +  3] = 3;
+    gs_tessellation_levels[vo +  4] = 1;
+    gs_tessellation_levels[vo +  5] = 3;
+    gs_tessellation_levels[vo +  6] = 2;
+    gs_tessellation_levels[vo +  7] = 3;
+    gs_tessellation_levels[vo +  8] = 0;
+    gs_tessellation_levels[vo +  9] = 3;
+    gs_tessellation_levels[vo + 10] = 3;
+    gs_tessellation_levels[vo + 11] = 3;
+    gs_tessellation_levels[vo + 12] = 3;
+    gs_tessellation_levels[vo + 13] = 3;
+    gs_tessellation_levels[vo + 14] = 3;
+    gs_tessellation_levels[vo + 15] = 3;
+    gs_tessellation_levels[vo + 16] = 3;
+    gs_tessellation_levels[vo + 17] = 2;
+    gs_tessellation_levels[vo + 18] = 3;
+    gs_tessellation_levels[vo + 19] = 2;
+    gs_tessellation_levels[vo + 20] = 3;
+    gs_tessellation_levels[vo + 21] = 2;
+    gs_tessellation_levels[vo + 22] = 3;
+    gs_tessellation_levels[vo + 23] = 2;
+    gs_tessellation_levels[vo + 24] = 3;
+    gs_tessellation_levels[vo + 25] = 3;
+    gs_tessellation_levels[vo + 26] = 3;
+    gs_tessellation_levels[vo + 27] = 3;
+    gs_tessellation_levels[vo + 28] = 3;
+    gs_tessellation_levels[vo + 29] = 3;
+    gs_tessellation_levels[vo + 30] = 1;
+    gs_tessellation_levels[vo + 31] = 3;
+    gs_tessellation_levels[vo + 32] = 2;
+    gs_tessellation_levels[vo + 33] = 3;
+    gs_tessellation_levels[vo + 34] = 1;
+    gs_tessellation_levels[vo + 35] = 3;
+    gs_tessellation_levels[vo + 36] = 3;
+    gs_tessellation_levels[vo + 37] = 3;
+    gs_tessellation_levels[vo + 38] = 3;
+    gs_tessellation_levels[vo + 39] = 2;
+    gs_tessellation_levels[vo + 40] = 3;
+    gs_tessellation_levels[vo + 41] = 2;
+    gs_tessellation_levels[vo + 42] = 3;
+    gs_tessellation_levels[vo + 43] = 3;
+    gs_tessellation_levels[vo + 44] = 0;
+    
+
+    gs_tessellation_morph_targets[vo +  0] = original_morph_target_indices.x;
+    gs_tessellation_morph_targets[vo +  1] = vo + 2;
+    gs_tessellation_morph_targets[vo +  2] = vo + 4;
+    gs_tessellation_morph_targets[vo +  3] = vo + 2;
+    gs_tessellation_morph_targets[vo +  4] = vo + (i_ab ? 8 : 0);
+    gs_tessellation_morph_targets[vo +  5] = vo + 6;
+    gs_tessellation_morph_targets[vo +  6] = vo + 4;
+    gs_tessellation_morph_targets[vo +  7] = vo + 6;
+    gs_tessellation_morph_targets[vo +  8] = original_morph_target_indices.y;
+    gs_tessellation_morph_targets[vo +  9] = vo + 17;
+    gs_tessellation_morph_targets[vo + 10] = vo + 17;
+    gs_tessellation_morph_targets[vo + 11] = vo + 2;
+    gs_tessellation_morph_targets[vo + 12] = vo + 19;
+    gs_tessellation_morph_targets[vo + 13] = vo + 21;//4;
+    gs_tessellation_morph_targets[vo + 14] = vo + 21;
+    gs_tessellation_morph_targets[vo + 15] = vo + 6;
+    gs_tessellation_morph_targets[vo + 16] = vo + 23;
+    gs_tessellation_morph_targets[vo + 17] = vo + 30;
+    gs_tessellation_morph_targets[vo + 18] = vo + 19;
+    gs_tessellation_morph_targets[vo + 19] = vo + 4;
+    gs_tessellation_morph_targets[vo + 20] = vo + 21;
+    gs_tessellation_morph_targets[vo + 21] = vo + 34;
+    gs_tessellation_morph_targets[vo + 22] = vo + 23;
+    gs_tessellation_morph_targets[vo + 23] = vo + 34;
+    gs_tessellation_morph_targets[vo + 24] = vo + 17;
+    gs_tessellation_morph_targets[vo + 25] = vo + 19;//30;
+    gs_tessellation_morph_targets[vo + 26] = vo + 19;
+    gs_tessellation_morph_targets[vo + 27] = vo + 32; 
+    gs_tessellation_morph_targets[vo + 28] = vo + 21;
+    gs_tessellation_morph_targets[vo + 29] = vo + 23;
+    gs_tessellation_morph_targets[vo + 30] = vo + (i_ca ? 0 : 44);
+    gs_tessellation_morph_targets[vo + 31] = vo + 32;
+    gs_tessellation_morph_targets[vo + 32] = vo + 30;
+    gs_tessellation_morph_targets[vo + 33] = vo + 32;//34;
+    gs_tessellation_morph_targets[vo + 34] = vo + (i_bc ? 44 : 8);
+    gs_tessellation_morph_targets[vo + 35] = vo + 39;
+    gs_tessellation_morph_targets[vo + 36] = vo + 39;
+    gs_tessellation_morph_targets[vo + 37] = vo + 32;
+    gs_tessellation_morph_targets[vo + 38] = vo + 41;
+    gs_tessellation_morph_targets[vo + 39] = vo + 30;
+    gs_tessellation_morph_targets[vo + 40] = vo + 41;
+    gs_tessellation_morph_targets[vo + 41] = vo + 34;
+    gs_tessellation_morph_targets[vo + 42] = vo + 39;
+    gs_tessellation_morph_targets[vo + 43] = vo + 41;
+    gs_tessellation_morph_targets[vo + 44] = original_morph_target_indices.z;
+
 }
 
 
@@ -268,15 +476,14 @@ float Random(uint seed)
 // generate color
 float4 Rainbow(float factor)
 {
-    float h = factor / 1.35;
-    float3 col = float3(abs(h * 6.0 - 3.0) - 1.0, 2.0 - abs(h * 6.0 - 2.0), 2.0 - abs(h * 6.0 - 4.0));
+    float3 col = float3(abs(factor * 6.0 - 3.0) - 1.0, 2.0 - abs(factor * 6.0 - 2.0), 2.0 - abs(factor * 6.0 - 4.0));
     return float4(clamp(col, float3(0.0, 0.0, 0.0), float3(1.0, 1.0, 1.0)), 1.0);
 }
 
 float getExpectedLoDLevel(float4 position)// position must be in world space!
 {
     float cam_dist = distance(constants.CameraWorldPos, position.xyz);
-    return max(log2(cam_dist / constants.LoD_Scale), 0);
+    return log2(cam_dist / constants.LoD_Scale);
 }
 
 
@@ -314,16 +521,25 @@ void main(in uint I : SV_GroupIndex,
         // tessellate each individual triangle
         for (uint p = payload_task.tessellation_triangle_offset + I; p < payload_task.tessellation_triangle_count + payload_task.tessellation_triangle_offset; p += GROUP_SIZE)
         {
-            S_Vertex a = verticesBuffers[scene_object.mesh_id][vertexIndicesBuffers[scene_object.mesh_id][meshlet.vertex_offset + SampleTriangleBufferAsCharArray(meshlet.triangle_offset + p * 3 + 0, scene_object.mesh_id)]];
-            S_Vertex b = verticesBuffers[scene_object.mesh_id][vertexIndicesBuffers[scene_object.mesh_id][meshlet.vertex_offset + SampleTriangleBufferAsCharArray(meshlet.triangle_offset + p * 3 + 1, scene_object.mesh_id)]];
-            S_Vertex c = verticesBuffers[scene_object.mesh_id][vertexIndicesBuffers[scene_object.mesh_id][meshlet.vertex_offset + SampleTriangleBufferAsCharArray(meshlet.triangle_offset + p * 3 + 2, scene_object.mesh_id)]];
+            uint vertex_index_a = meshlet.vertex_offset + SampleTriangleBufferAsCharArray(meshlet.triangle_offset + p * 3 + 0, scene_object.mesh_id);
+            uint vertex_index_b = meshlet.vertex_offset + SampleTriangleBufferAsCharArray(meshlet.triangle_offset + p * 3 + 1, scene_object.mesh_id);
+            uint vertex_index_c = meshlet.vertex_offset + SampleTriangleBufferAsCharArray(meshlet.triangle_offset + p * 3 + 2, scene_object.mesh_id);
+            
+            S_Vertex a = verticesBuffers[scene_object.mesh_id][vertexIndicesBuffers[scene_object.mesh_id][vertex_index_a]];
+            S_Vertex b = verticesBuffers[scene_object.mesh_id][vertexIndicesBuffers[scene_object.mesh_id][vertex_index_b]];
+            S_Vertex c = verticesBuffers[scene_object.mesh_id][vertexIndicesBuffers[scene_object.mesh_id][vertex_index_c]];
+            
+            uint3 morph_target_indices = uint3(morphIndicesBuffers[scene_object.mesh_id][vertex_index_a],
+                                               morphIndicesBuffers[scene_object.mesh_id][vertex_index_b],
+                                               morphIndicesBuffers[scene_object.mesh_id][vertex_index_c]);
         
             if (payload_task.tessellation_grade == 3)
-                lvl3Tessellation(a, b, c);
+                lvl3Tessellation(a, b, c, morph_target_indices);
             else if ( payload_task.tessellation_grade == 2)
-                lvl2Tessellation(a, b, c);
+                lvl2Tessellation(a, b, c, morph_target_indices);
             else
-                lvl1Tessellation(a, b, c);
+                lvl1Tessellation(a, b, c, morph_target_indices); //uint3(vertex_index_a, vertex_index_b, vertex_index_c));
+
         }
     }
     else
@@ -344,9 +560,93 @@ void main(in uint I : SV_GroupIndex,
     {
         for (uint v = I; v < gs_vertex_count; v += GROUP_SIZE)
         {
-            verts[v].Pos = mul(mul(float4(gs_vertices[v].position.xyz, 1.0), scene_object.object_matrix), constants.ViewProjMat);
-            verts[v].UV = gs_vertices[v].uv.xy;
-            verts[v].Color = float4(1, 1, 1, 1);
+            S_Vertex vertex = gs_vertices[v];
+            
+            float4 original_world_pos = mul(float4(vertex.position.xyz, 1.0), scene_object.object_matrix);
+            int current_vertex_lod = gs_tessellation_levels[v] * -1;
+            float expected_lod = max(getExpectedLoDLevel(original_world_pos), MAX_TESSELLATION_LEVEL * -1);
+            //expected_lod = constants.DebugFloatSliderValue;
+            float lerp_value = max(expected_lod - current_vertex_lod, 0);
+            
+            if ((constants.BoolConstants & GEO_MORPHING_BIT_POS) && !(constants.BoolConstants & SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS))
+            {
+                int vertex_index = v;
+                // for vertex lod >= 0 the vertex_index variable actually represents a vertex-index-index and points into the regular vertex-indices / morph buffer
+                while (lerp_value > 1)
+                {
+                    if (current_vertex_lod <= 0)
+                    {
+      
+                        vertex_index = gs_tessellation_morph_targets[vertex_index];
+                        current_vertex_lod++;
+
+                        lerp_value--;
+                    }
+                    else
+                    {
+                        vertex_index = morphIndicesBuffers[scene_object.mesh_id][vertex_index];
+                        current_vertex_lod++;
+                        lerp_value--;
+                    }
+                }
+                
+                S_Vertex morph_target_vertex;
+                
+                if (current_vertex_lod < 0)
+                {
+                    vertex = gs_vertices[vertex_index];
+                    morph_target_vertex = gs_vertices[gs_tessellation_morph_targets[vertex_index]];
+                }
+                
+                else if (current_vertex_lod == 0)
+                {
+                    vertex = gs_vertices[vertex_index];
+                    morph_target_vertex = verticesBuffers[scene_object.mesh_id][vertexIndicesBuffers[scene_object.mesh_id][gs_tessellation_morph_targets[vertex_index]]];
+                }
+                else
+                {
+                    vertex = verticesBuffers[scene_object.mesh_id][vertexIndicesBuffers[scene_object.mesh_id][vertex_index]];
+                    morph_target_vertex = verticesBuffers[scene_object.mesh_id][vertexIndicesBuffers[scene_object.mesh_id][morphIndicesBuffers[scene_object.mesh_id][vertex_index]]];
+                }
+                
+                
+                vertex = linearVertexInterpolation(vertex, morph_target_vertex, lerp_value);
+            }
+            
+            verts[v].Pos = mul(mul(float4(vertex.position.xyz, 1.0), scene_object.object_matrix), constants.ViewProjMat);
+            verts[v].UV = vertex.uv.xy;
+            
+            
+            float4 normal = mul(float4(vertex.normal.xyz, 0), scene_object.object_matrix);
+            float brightness = clamp(clamp(dot(normalize(float3(1, 1, 1)), normal.xyz), 0, 1) + clamp(dot(normalize(float3(-2, 1, -1)), normal.xyz), 0, 0.6), 0.05, 1);
+            if (constants.shadingSelection == DEFAULT_SHADING)
+            {
+                verts[v].Color = brightness;
+            }
+            else if (constants.shadingSelection == MESHLETS_SHADING)
+            {
+                verts[v].Color = Rainbow(Random(payload_task.meshlet_id)) * brightness;
+            }
+            else if (constants.shadingSelection == LOD_SHADING)
+            {
+                if ((constants.BoolConstants & GEO_MORPHING_BIT_POS) && !(constants.BoolConstants & SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS))
+                    verts[v].Color = Rainbow(frac((DEBUG_COLOR_SPREAD + max(expected_lod, -MAX_TESSELLATION_LEVEL) / DEBUG_COLOR_SPREAD))) * brightness;
+                else
+                    verts[v].Color = Rainbow(frac((DEBUG_COLOR_SPREAD - payload_task.tessellation_grade) / DEBUG_COLOR_SPREAD)) * brightness;
+            }
+            else if (constants.shadingSelection == MESHLET_GROUP_SHADING)
+            {
+                verts[v].Color = Rainbow(Random(meshlet.group_id)) * brightness;
+            }
+            else if (constants.shadingSelection == TESSELLATION_LEVEL_SHADING)
+            {
+                verts[v].Color = float4(1, 1, 1, 1) * brightness;
+            }
+            else
+            {
+            // should not be shown. resulting color is probably going to be overwritten by pixel shader
+                verts[v].Color = float4(1, 1, 0, 1);
+            }
         }
         
         for (uint p = I; p < gs_triangle_count; p += GROUP_SIZE)
@@ -370,8 +670,8 @@ void main(in uint I : SV_GroupIndex,
         
         float4 original_world_pos = mul(float4(vertex.position.xyz, 1.0), scene_object.object_matrix);
         
-        float expected_LoD = getExpectedLoDLevel(original_world_pos);
-        float lerp_value = clamp(expected_LoD - meshlet.discrete_level_of_detail, -100, 100);
+        float expected_LoD = max(getExpectedLoDLevel(original_world_pos), 0);
+        float lerp_value = expected_LoD - meshlet.discrete_level_of_detail;
         int morphTargetIndex = morphIndicesBuffers[scene_object.mesh_id][meshlet.vertex_offset + v];
         
         if ((constants.BoolConstants & GEO_MORPHING_BIT_POS) && !(constants.BoolConstants & SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS))
@@ -413,9 +713,9 @@ void main(in uint I : SV_GroupIndex,
         else if (constants.shadingSelection == LOD_SHADING)
         {
             if ((constants.BoolConstants & GEO_MORPHING_BIT_POS) && !(constants.BoolConstants & SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS))
-                verts[v].Color = Rainbow(expected_LoD / 5.0);
+                verts[v].Color = Rainbow(expected_LoD / 6.0) * brightness;
             else
-                verts[v].Color = Rainbow(meshlet.discrete_level_of_detail / 5.0) * brightness;
+                verts[v].Color = Rainbow(meshlet.discrete_level_of_detail / 6.0) * brightness;
             
         }
         else if (constants.shadingSelection == MESHLET_GROUP_SHADING)
@@ -424,7 +724,7 @@ void main(in uint I : SV_GroupIndex,
         }
         else if (constants.shadingSelection == TESSELLATION_LEVEL_SHADING)
         {
-            verts[v].Color = Rainbow(payload_task.tessellation_grade / 2.75) * brightness;
+            verts[v].Color = float4(0.2, 0.2, 0.2, 1) * brightness;
         }
         else
         {

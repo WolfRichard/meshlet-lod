@@ -1118,7 +1118,7 @@ void ViewDependentMeshletLoD::updateImGui()
             ImGui::InputFloat("Max error in pxl", &m_LoDScale, 0.01f, 1.0f, "%.2f");
         else 
             ImGui::InputFloat("LoD_0 Distance", &m_LoDScale, 0.01f, 1.0f, "%.2f");
-        ImGui::SliderFloat("Debug Float", &m_debugFloatSlider, 0.0f, 1.0f, "%.2f");
+        ImGui::SliderFloat("Debug Float", &m_debugFloatSlider, -3.0f, 2.0f, "%.2f");
         if (ImGui::Checkbox("Lock Camera Position Shader Constant", &m_lockCameraShaderConstant))
         {
             m_lockedCameraPos = m_cameraPos;

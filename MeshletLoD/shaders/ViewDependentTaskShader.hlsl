@@ -78,7 +78,7 @@ bool groupSimplificationIsPreciseEnough(S_BoundingSphere bounding_sphere, uint l
 {
     float cam_dist = max(distance(constants.CameraWorldPos, bounding_sphere.center) - bounding_sphere.radius, 0.000000001);
     float expected_lod = log2(cam_dist / constants.LoD_Scale);
-    tessellation_level = uint(min(max(expected_lod * -1, 0), MAX_TESSELLATION_LEVEL));
+    tessellation_level = uint(min(max(expected_lod * -1 + 1, 0), MAX_TESSELLATION_LEVEL));
     return lod_level <= max(expected_lod, 0);
 }
 
@@ -146,16 +146,17 @@ void processTask(S_WorkQueueEntry task)
             
     S_BoundingSphere world_space_bounding_sphere;
     world_space_bounding_sphere.center = mul(float4(current_meshlet.bounding_sphere.center, 1.0), scene_object.object_matrix).xyz; // object --> world space
-    world_space_bounding_sphere.radius = current_meshlet.base_error * ExtractMaxScaleFactor(scene_object.object_matrix);
     
     uint tessellation_level = 0;
         
     if (constants.BoolConstants & SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS)
     {
+        world_space_bounding_sphere.radius = current_meshlet.base_error * ExtractMaxScaleFactor(scene_object.object_matrix);
         world_space_bounding_sphere.center = mul(float4(world_space_bounding_sphere.center, 1), constants.ViewMat).xyz; // world --> clip space
         precise_enough = isPreciseEnough(world_space_bounding_sphere); // actually in screen clip space
     }
     else
+        world_space_bounding_sphere.radius = current_meshlet.bounding_sphere.radius * ExtractMaxScaleFactor(scene_object.object_matrix);
         precise_enough = groupSimplificationIsPreciseEnough(world_space_bounding_sphere, current_meshlet.discrete_level_of_detail, tessellation_level);
         
     if (precise_enough)
