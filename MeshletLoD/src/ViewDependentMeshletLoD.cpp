@@ -309,9 +309,8 @@ bool ViewDependentMeshletLoD::LoadContent()
     samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
     samplerDesc.MinLOD = 0;
     samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
-    samplerDesc.MipLODBias = 0.0f;
+    //samplerDesc.MipLODBias = 0.0f;
     samplerDesc.MaxAnisotropy = 1;
-    //samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
 
     // Create the sampler
     device->CreateSampler(&samplerDesc, m_Sampler_Heap->GetCPUDescriptorHandleForHeapStart());
@@ -341,12 +340,15 @@ bool ViewDependentMeshletLoD::LoadContent()
     D3D12_CPU_DESCRIPTOR_HANDLE nextCpuSrvHandle(m_CBV_SRV_UAV_Heap->GetCPUDescriptorHandleForHeapStart());
     D3D12_GPU_DESCRIPTOR_HANDLE nextGpuSrvHandle(m_CBV_SRV_UAV_Heap->GetGPUDescriptorHandleForHeapStart());
 
-
+    std::vector<ComPtr<ID3D12Resource>> copyBuffers;
 
 
     // height map texture
     ScratchImage height_map_test_image;
-    HRESULT hr = LoadFromWICFile(L"./assets/textures/test_height_map.png", WIC_FLAGS_NONE, nullptr, height_map_test_image);
+    
+    
+
+    HRESULT hr = LoadFromWICFile(L"./assets/textures/heightmap.png", WIC_FLAGS_NONE, nullptr, height_map_test_image);
     if (FAILED(hr)) {
         OutputDebugString("FAILED TO LOAD TEST TEXTURE!\n");
         assert(false);
@@ -356,7 +358,7 @@ bool ViewDependentMeshletLoD::LoadContent()
 
     
     D3D12_RESOURCE_DESC textureDesc = {};
-    textureDesc.MipLevels = 1;
+    textureDesc.MipLevels = 0;
     textureDesc.Format = img->format;
     textureDesc.Width = (uint)img->width;
     textureDesc.Height = (uint)img->height;
@@ -366,17 +368,64 @@ bool ViewDependentMeshletLoD::LoadContent()
     textureDesc.SampleDesc.Quality = 0;
     textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 
-    device->CreateCommittedResource(
+    copyBuffers.push_back(ComPtr<ID3D12Resource>());
+
+
+    UINT64 bufferSize = 0;
+    UINT numRows = 0;
+    UINT64 rowSizeInBytes = 0;
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint = {};
+    device->GetCopyableFootprints(
+        &textureDesc,
+        0,                  // First subresource
+        1,                  // Num subresources
+        0,                  // Base offset
+        &footprint,
+        &numRows,
+        &rowSizeInBytes,
+        &bufferSize   // <- This is what you want!
+    );
+ 
+
+    
+
+    // Create a committed resource for the GPU resource in a default heap.
+    ThrowIfFailed(device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
         &textureDesc,
-        D3D12_RESOURCE_STATE_COPY_DEST,
+        D3D12_RESOURCE_STATE_COMMON,
         nullptr,
-        IID_PPV_ARGS(&m_HeightMapTexture)
-    );
+        IID_PPV_ARGS(m_HeightMapTexture.GetAddressOf())));
+
+    // Create an committed resource for the upload.
+    if (img->pixels)
+    {
+        ThrowIfFailed(device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+            D3D12_HEAP_FLAG_NONE,
+            &CD3DX12_RESOURCE_DESC::Buffer(bufferSize),
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(copyBuffers.back().GetAddressOf())));
+
+        D3D12_SUBRESOURCE_DATA subresourceData = {};
+        subresourceData.pData = img->pixels;
+        subresourceData.RowPitch = img->rowPitch;
+        subresourceData.SlicePitch = img->slicePitch;
+
+        UpdateSubresources(commandList.Get(),
+            *m_HeightMapTexture.GetAddressOf(), *copyBuffers.back().GetAddressOf(),
+            0, 0, 1, &subresourceData);
+    }
+    else
+        while (true)
+            OutputDebugString("FAIL\n");
 
 
-    
+
+
+
 
 
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
@@ -384,7 +433,7 @@ bool ViewDependentMeshletLoD::LoadContent()
     srvDesc.Format = textureDesc.Format;
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srvDesc.Texture2D.MostDetailedMip = 0;
-    srvDesc.Texture2D.MipLevels = -1;
+    srvDesc.Texture2D.MipLevels = height_map_test_image.GetMetadata().mipLevels;
 
     device->CreateShaderResourceView(m_HeightMapTexture.Get(), &srvDesc, nextCpuSrvHandle);
     m_HeightMapTextureSrvHandle = nextGpuSrvHandle;
@@ -394,7 +443,8 @@ bool ViewDependentMeshletLoD::LoadContent()
 
 
 
-
+    /*
+    * Check if work graphs would run on this system
     D3D12_FEATURE_DATA_D3D12_OPTIONS21 options21 = {};
     HRESULT hr2 = device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS21, &options21, sizeof(options21));
 
@@ -403,16 +453,15 @@ bool ViewDependentMeshletLoD::LoadContent()
 
 
     if (SUCCEEDED(hr2)) {
+        OutputDebugString("Workgraphs are supported!\n");
+    }
+    else {
         OutputDebugString("Workgraphs not supported!\n");
         assert(false);
     }
-    else {
-        OutputDebugString("Workgraphs are supported!\n");
-        assert(false);
-    }
+    */
 
-
-    std::vector<ComPtr<ID3D12Resource>> copyBuffers;
+    
     
     // vertex-indices buffers
     setupBindlessSrvAndBuffers(m_VertexIndicesSrvHandle, 
@@ -840,16 +889,12 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     float scale_z = sqrtf(m._13 * m._13 + m._23 * m._23 + m._33 * m._33);
     constants.MaxScaleFactor_ViewProjMat = std::max(scale_x, std::max(scale_y, scale_z));
 
+    // do not update camera position constant when camera is locked for debug purposes
     if (m_lockCameraShaderConstant)
         constants.CameraWorldPos = m_lockedCameraPos;
     else
         constants.CameraWorldPos = m_cameraPos;
-
-
-    OutputDebugString(("Camera Constant Position: ("
-        + std::to_string(constants.CameraWorldPos.x) + ", "
-        + std::to_string(constants.CameraWorldPos.y) + ", "
-        + std::to_string(constants.CameraWorldPos.z) + ")\n").c_str());
+    
     constants.CoTanHalfFoV = 1 / std::tan(m_FoV / 2.0f);
     constants.LoD_Scale = m_LoDScale;
     constants.CurrTime = (float)m_totalRunTime;
@@ -857,10 +902,16 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     constants.BoolConstants = 0;
     constants.SceneObjectCount = (uint)m_scene.m_scene_objects.size();
     constants.DebugFloatSliderValue = m_debugFloatSlider;
-    if (m_frustumCulling) constants.BoolConstants |= FRUSTUM_CULLING_BIT_POS;
-    if (m_geo_morphing) constants.BoolConstants |= GEO_MORPHING_BIT_POS;
-    if (m_screen_space_LoD) constants.BoolConstants |= SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS;
-    if (m_tessellation) constants.BoolConstants |= TRESSELLATION_BIT_POS;
+    constants.TriPlanarMappingScale = m_triplanarScale;
+    constants.TriPlanarBlendGrade = m_triplanarBlendGrade;
+    constants.HeightMapDisplacementScale = m_displacementScale;
+
+    //bool constants
+    if (m_frustumCulling)           constants.BoolConstants |= FRUSTUM_CULLING_BIT_POS;
+    if (m_geo_morphing)             constants.BoolConstants |= GEO_MORPHING_BIT_POS;
+    if (m_screen_space_LoD)         constants.BoolConstants |= SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS;
+    if (m_tessellation)             constants.BoolConstants |= TRESSELLATION_BIT_POS;
+    if (m_triplanarMapping)         constants.BoolConstants |= TRI_PLANAR_TEXTURE_MAPPING_BIT_POS;
     
 
     
@@ -1118,7 +1169,19 @@ void ViewDependentMeshletLoD::updateImGui()
             ImGui::InputFloat("Max error in pxl", &m_LoDScale, 0.01f, 1.0f, "%.2f");
         else 
             ImGui::InputFloat("LoD_0 Distance", &m_LoDScale, 0.01f, 1.0f, "%.2f");
-        ImGui::SliderFloat("Debug Float", &m_debugFloatSlider, -3.0f, 2.0f, "%.2f");
+        ImGui::SliderFloat("Debug Float", &m_debugFloatSlider, 0.1f, 10.0f, "%.2f");
+
+    
+        ImGui::SliderFloat("Displacement Scale", &m_displacementScale, 0.0f, 0.1f);
+      
+
+        ImGui::Checkbox("Triplanar Mapping instead of UV-coordiantes", &m_triplanarMapping);
+        if (m_triplanarMapping)
+        {
+            ImGui::SliderFloat("Triplanar Texture Scale", &m_triplanarScale, 0.1f, 10.0f);
+            ImGui::SliderFloat("Triplanar Blend Grade", &m_triplanarBlendGrade, 0.1f, 10.0f);
+        }
+
         if (ImGui::Checkbox("Lock Camera Position Shader Constant", &m_lockCameraShaderConstant))
         {
             m_lockedCameraPos = m_cameraPos;

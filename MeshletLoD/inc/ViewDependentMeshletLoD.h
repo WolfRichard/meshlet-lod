@@ -146,11 +146,15 @@ private:
     ShadingMode m_shadingMode           = LOD_SHADING;
     bool        m_LoD_Enabled           = true;
     float       m_LoDScale              = 1;
-    float       m_debugFloatSlider      = 0;
+    float       m_debugFloatSlider      = 1;
     bool        m_geo_morphing          = true;
     bool        m_tessellation          = true;
     bool        m_screen_space_LoD      = false;
     bool        m_backFaceCulling       = true;
+    bool        m_triplanarMapping      = false;
+    float       m_triplanarScale        = 1;
+    float       m_triplanarBlendGrade   = 5;
+    float       m_displacementScale     = 0.0;
 
     // camera related variables
     float3      m_cameraPos             = float3(0, 0, 0);

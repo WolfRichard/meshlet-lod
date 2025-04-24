@@ -2,9 +2,11 @@
 
 struct PixelShaderInput
 {
-    float4 Pos : SV_POSITION;
-    float4 Color : COLOR;
-    float2 UV : TEXCOORD;
+    float4 Pos      : SV_POSITION;
+    float4 Color    : COLOR;
+    float3 WPos     : TEXCOORD0;
+    float3 WNormal  : TEXCOORD1;
+    float2 UV       : TEXCOORD2;
 };
 
 
@@ -486,6 +488,30 @@ float getExpectedLoDLevel(float4 position)// position must be in world space!
     return log2(cam_dist / constants.LoD_Scale);
 }
 
+float4 TriplanarSample(float3 worldPos, float3 worldNormal)
+{
+    // Normalize and abs the normal for blending weights
+    float3 blend = pow(abs(worldNormal), constants.TriPlanarBlendGrade);
+    blend /= dot(blend, 1.0);
+
+    // World-space UVs
+    float2 uvX = worldPos.yz * constants.TriPlanarMappingScale;
+    float2 uvY = worldPos.zx * constants.TriPlanarMappingScale;
+    float2 uvZ = worldPos.xy * constants.TriPlanarMappingScale;
+
+    
+    // Sample from each projection axis
+    float4 xTex = heightMapTexture.SampleLevel(heightMapSampler, uvX, 0);
+    float4 yTex = heightMapTexture.SampleLevel(heightMapSampler, uvY, 0);
+    float4 zTex = heightMapTexture.SampleLevel(heightMapSampler, uvZ, 0);
+
+    // Weighted blend
+    float4 result = xTex * blend.x + yTex * blend.y + zTex * blend.z;
+    //result = clamp(result, float4(0, 0, 0, 1), float4(1, 1, 1, 1));
+    //return float4(1, 1, 1, 1);
+    return result;
+}
+
 
 [shader("mesh")]
 [numthreads(GROUP_SIZE, 1, 1)]
@@ -496,15 +522,10 @@ void main(in uint I : SV_GroupIndex,
           out indices uint3 tris[MAX_MESHLET_PRIMITIVE_COUNT],
           out vertices PixelShaderInput verts[MAX_MESHLET_VERTEX_COUNT])
 {
-   
-    
     S_PayloadEntry payload_task = payloadBuffer[gid + gs_Payload.global_payload_offset]; //    gs_Payload.tasks[gid];
 
     S_SceneObject scene_object = objectsBuffer[payload_task.object_id];
     S_Meshlet meshlet = meshletBuffers[scene_object.mesh_id][payload_task.meshlet_id];
-    
-    
-    
     
     // optional tessellation
     bool do_tessellation = ((constants.BoolConstants & TRESSELLATION_BIT_POS) && payload_task.tessellation_grade);
@@ -539,7 +560,6 @@ void main(in uint I : SV_GroupIndex,
                 lvl2Tessellation(a, b, c, morph_target_indices);
             else
                 lvl1Tessellation(a, b, c, morph_target_indices); //uint3(vertex_index_a, vertex_index_b, vertex_index_c));
-
         }
     }
     else
@@ -613,11 +633,19 @@ void main(in uint I : SV_GroupIndex,
                 vertex = linearVertexInterpolation(vertex, morph_target_vertex, lerp_value);
             }
             
-            verts[v].Pos = mul(mul(float4(vertex.position.xyz, 1.0), scene_object.object_matrix), constants.ViewProjMat);
-            verts[v].UV = vertex.uv.xy;
             
-            
+            float4 w_pos = mul(float4(vertex.position.xyz, 1.0), scene_object.object_matrix);
             float4 normal = mul(float4(vertex.normal.xyz, 0), scene_object.object_matrix);
+            verts[v].WPos = w_pos.xyz;
+            if (constants.BoolConstants & TRI_PLANAR_TEXTURE_MAPPING_BIT_POS)
+                w_pos = float4(w_pos.xyz + normal.xyz * TriplanarSample(w_pos.xyz, normal.xyz).x * constants.HeightMapDisplacementScale, 1);
+            else
+                w_pos = float4(w_pos.xyz + normal.xyz * heightMapTexture.SampleLevel(heightMapSampler, vertex.uv.xy, 0).x * constants.HeightMapDisplacementScale, 1);
+            verts[v].Pos = mul(w_pos, constants.ViewProjMat);
+            verts[v].UV = vertex.uv.xy;
+            verts[v].WNormal = normal.xyz;
+            
+            
             float brightness = clamp(clamp(dot(normalize(float3(1, 1, 1)), normal.xyz), 0, 1) + clamp(dot(normalize(float3(-2, 1, -1)), normal.xyz), 0, 0.6), 0.05, 1);
             if (constants.shadingSelection == DEFAULT_SHADING)
             {
@@ -697,10 +725,20 @@ void main(in uint I : SV_GroupIndex,
         }
         
         
-        verts[v].Pos = mul(mul(float4(vertex.position.xyz, 1.0), scene_object.object_matrix), constants.ViewProjMat);
-        verts[v].UV = vertex.uv.xy;
         
+        float4 w_pos = mul(float4(vertex.position.xyz, 1.0), scene_object.object_matrix);
         float4 normal = mul(float4(vertex.normal.xyz, 0), scene_object.object_matrix);
+        verts[v].WPos = w_pos.xyz;
+        if (constants.BoolConstants & TRI_PLANAR_TEXTURE_MAPPING_BIT_POS)
+            w_pos = float4(w_pos.xyz + normal.xyz * TriplanarSample(w_pos.xyz, normal.xyz).x * constants.HeightMapDisplacementScale, 1);
+        else
+            w_pos = float4(w_pos.xyz + normal.xyz * heightMapTexture.SampleLevel(heightMapSampler, vertex.uv.xy, 0).x * constants.HeightMapDisplacementScale, 1);
+        verts[v].Pos = mul(w_pos, constants.ViewProjMat);
+        verts[v].UV = vertex.uv.xy;
+        verts[v].WNormal = normal.xyz;
+        
+        
+        
         float brightness = clamp(clamp(dot(normalize(float3(1, 1, 1)), normal.xyz), 0, 1) + clamp(dot(normalize(float3(-2, 1, -1)), normal.xyz), 0, 0.6), 0.05, 1);
         if (constants.shadingSelection == DEFAULT_SHADING)
         {

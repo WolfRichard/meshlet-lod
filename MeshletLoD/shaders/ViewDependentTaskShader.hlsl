@@ -175,6 +175,7 @@ void processTask(S_WorkQueueEntry task)
 }
 
 
+
 [numthreads(GROUP_SIZE, 1, 1)]
 void main(in uint I : SV_GroupIndex,
           in uint wg : SV_GroupID)
