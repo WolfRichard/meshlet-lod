@@ -535,7 +535,7 @@ bool ViewDependentMeshletLoD::LoadContent()
     ThrowIfFailed(device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&m_DSVHeap)));
 
     // Load shaders.
-    ThrowIfFailed(D3DReadFileToBlob(L"PixelShader.cso", &m_pixelShaderBlob));
+    ThrowIfFailed(D3DReadFileToBlob(L"ViewDependentPixelShader.cso", &m_pixelShaderBlob));
     ThrowIfFailed(D3DReadFileToBlob(L"ViewDependentMeshShader.cso", &m_meshShaderBlob));
     ThrowIfFailed(D3DReadFileToBlob(L"ViewDependentTaskShader.cso", &m_taskShaderBlob));
 
