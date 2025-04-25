@@ -725,7 +725,6 @@ void main(in uint I : SV_GroupIndex,
         }
         
         
-        
         float4 w_pos = mul(float4(vertex.position.xyz, 1.0), scene_object.object_matrix);
         float4 normal = mul(float4(vertex.normal.xyz, 0), scene_object.object_matrix);
         verts[v].WPos = w_pos.xyz;
@@ -736,7 +735,6 @@ void main(in uint I : SV_GroupIndex,
         verts[v].Pos = mul(w_pos, constants.ViewProjMat);
         verts[v].UV = vertex.uv.xy;
         verts[v].WNormal = normal.xyz;
-        
         
         
         float brightness = clamp(clamp(dot(normalize(float3(1, 1, 1)), normal.xyz), 0, 1) + clamp(dot(normalize(float3(-2, 1, -1)), normal.xyz), 0, 0.6), 0.05, 1);

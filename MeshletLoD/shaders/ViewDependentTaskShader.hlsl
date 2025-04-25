@@ -19,6 +19,10 @@ groupshared S_Payload gs_Payload;
 // The number of meshlets that are dispatched by this thread group,
 groupshared uint gs_MeshletCount;
 
+// bool to threads of a group alive that did not catch work
+groupshared uint group_assigned_work_count;
+
+
 
 void appendTask(S_WorkQueueEntry new_task)
 {
@@ -27,25 +31,40 @@ void appendTask(S_WorkQueueEntry new_task)
     workQueue[task_index % WORK_QUEUE_SIZE] = new_task;     // loop index because of ring buffer structure
 }
 
-
-bool consumeTask(out S_WorkQueueEntry out_task)
+groupshared uint work_queue_task_group_offset;
+bool consumeTask(out S_WorkQueueEntry out_task, uint group_index)
 {
-    uint task_index, prev_index;
-    do
+    if (group_index == 0)
     {
-        prev_index = workQueueCounters[0].work_queue_head;
-        uint end = workQueueCounters[0].work_queue_tail;
+        group_assigned_work_count = 0;
+        uint task_index, prev_index;
+        do
+        {
+            prev_index = workQueueCounters[0].work_queue_head;
+            uint end = workQueueCounters[0].work_queue_tail;
 
-        if (prev_index >= end)
-            return false; // No work available
+            if (prev_index >= end)
+                break; // No work available
+        
+            uint intended_work_claim_count = min(end - prev_index, GROUP_SIZE);
         
         // Try to atomically update 'beginCounter' only if it hasn’t changed
-        InterlockedCompareExchange(workQueueCounters[0].work_queue_head, prev_index, prev_index + 1, task_index);
+            InterlockedCompareExchange(workQueueCounters[0].work_queue_head, prev_index, prev_index + intended_work_claim_count, task_index);
         
-    } while ((task_index != prev_index)); // lost race condition in between checking for available work and incrementing counter --> so check if there is other work available to grab
+            group_assigned_work_count = (task_index == prev_index) ? intended_work_claim_count : 0;
+        
+        } while (group_assigned_work_count == 0); // lost race condition in between checking for available work and incrementing counter --> so check if there is other work available to grab
+        
+        work_queue_task_group_offset = task_index;
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    if (group_index >= group_assigned_work_count)
+        return false;
+    
     
     // Load the task safely as thread won race condition after checking that there was still work to do
-    out_task = workQueue[task_index % WORK_QUEUE_SIZE];
+    out_task = workQueue[(work_queue_task_group_offset + group_index) % WORK_QUEUE_SIZE];
     return true;
 }
 
@@ -208,13 +227,17 @@ void main(in uint I : SV_GroupIndex,
        
     // processing of work queue entries    
     S_WorkQueueEntry current_task;
-    while (consumeTask(current_task))
+    do
     {
-        processTask(current_task);
+        if (consumeTask(current_task, I))
+        {
+            processTask(current_task);
+        }
     }
+    while (group_assigned_work_count);
       
     //after work queue is empty dispatch all collected meshlets
-    GroupMemoryBarrierWithGroupSync();
+        GroupMemoryBarrierWithGroupSync();
     if (I == 0)
     {
         uint global_offset = 0;

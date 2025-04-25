@@ -13,9 +13,13 @@ using namespace DirectX;
 
 Mesh::Mesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
 {
+    OutputDebugString("Started Mesh Initialisation\n");
     parseMesh(assimp_mesh, assimp_scene);
+    OutputDebugString("Done parsing\n");
     generateLeafMeshlets();
+    OutputDebugString("Generated Leaf Meshlets\n");
     buildMeshletHierachy();
+    OutputDebugString("Finished Hierarchy Generation\n");
 
     printTreeFromTop(m_hierarchy_root_group);
     printAllMeshlets();
@@ -295,7 +299,9 @@ void Mesh::groupMeshlets()
 
     OutputDebugString(("Number of Meshlets: " + std::to_string(m_current_hierarchy_top_level_meshlets.size())).c_str());
 
+    
     int debugCounter = 0;
+    /*
     for (auto& meshletSharedEdgesList : connectivity_matrix)
     {
         OutputDebugString(("\nMeshlet_" + std::to_string(debugCounter++) + ": ").c_str());
@@ -309,6 +315,7 @@ void Mesh::groupMeshlets()
         else OutputDebugString("\nMeshlet shares no Edge!!!!!");
 
     }
+    */
 
     OutputDebugString("\nRESULT: ");
     for (auto assignedGroupIndex : MATIS_outputPartitionsArray)
