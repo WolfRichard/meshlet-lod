@@ -19,9 +19,9 @@ groupshared S_Payload gs_Payload;
 // The number of meshlets that are dispatched by this thread group,
 groupshared uint gs_MeshletCount;
 
-// bool to threads of a group alive that did not catch work
+// count and offset to keep all threads of a group alive that did not catch work
 groupshared uint group_assigned_work_count;
-
+groupshared uint work_queue_task_group_offset;
 
 
 void appendTask(S_WorkQueueEntry new_task)
@@ -31,10 +31,11 @@ void appendTask(S_WorkQueueEntry new_task)
     workQueue[task_index % WORK_QUEUE_SIZE] = new_task;     // loop index because of ring buffer structure
 }
 
-groupshared uint work_queue_task_group_offset;
+
 bool consumeTask(out S_WorkQueueEntry out_task, uint group_index)
 {
-    if (group_index == 0)
+    GroupMemoryBarrierWithGroupSync();
+    if (group_index == 0) // only first thread of a group tries to catch work, and then dsitributes it to the whole group
     {
         group_assigned_work_count = 0;
         uint task_index, prev_index;
