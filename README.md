@@ -25,13 +25,13 @@ cmake . -B build -A x64
 
 __Due to Linker issues related to the used DirectXTex library, the project currently only compiles in release mode!__
 
-## Screen Shot
+## Show Case
 ### Visualization of the Geo-Morph Solution
 Geo-Morphing allows a free quality scale for the LOD-System by removing the limitations on triangle/screen-space-error size related to the display resolution. This allows Virtual Geometry to be a more viable LOD-Method for less performant hardware even on higher resolution displays, while maintaining no visual pop-in artefacts.
-![failed to load preview](MeshletLoD/assets/screenshots/geo_morphing_480p.png)
+![failed to load preview](MeshletLoD/assets/screenshots/geo_morphing_480p.gif)
 ### Comparison with / without Tessellation
 Tessellation can be toggled on/off and offers the possibility of generating more detail in the camera near-field at run-time without any extra pre-compute overhead. The tessellation is used in combination with height-map based vertex displacement.
-![failed to load preview](MeshletLoD/assets/screenshots/placeholder_480p.png)
+![failed to load preview](MeshletLoD/assets/screenshots/tessellation_480p.gif)
 ### Virtual Geometry without Geo-Morphing
 Geo-Morphing is fully optional and can be disabled, resulting in a more traditional virtualized geometry approach.
-![failed to load preview](MeshletLoD/assets/screenshots/placeholder_480p.png)
+![failed to load preview](MeshletLoD/assets/screenshots/virtual_geometry_480p.gif)
