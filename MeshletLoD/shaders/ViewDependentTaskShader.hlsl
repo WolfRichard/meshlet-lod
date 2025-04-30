@@ -20,8 +20,8 @@ groupshared S_Payload gs_Payload;
 groupshared uint gs_MeshletCount;
 
 // count and offset to keep all threads of a group alive that did not catch work
-groupshared uint group_assigned_work_count;
-groupshared uint work_queue_task_group_offset;
+//groupshared uint group_assigned_work_count;
+//groupshared uint work_queue_task_group_offset;
 
 
 void appendTask(S_WorkQueueEntry new_task)
@@ -32,12 +32,13 @@ void appendTask(S_WorkQueueEntry new_task)
 }
 
 
-bool consumeTask(out S_WorkQueueEntry out_task, uint group_index)
+bool consumeTask(out S_WorkQueueEntry out_task)
 {
-    GroupMemoryBarrierWithGroupSync();
-    if (group_index == 0) // only first thread of a group tries to catch work, and then dsitributes it to the whole group
+    uint group_assigned_work_count = 0;     // counter of how much tasks the first lane of the wave did manage to claim for the thread group
+    uint work_queue_task_group_offset = 0;  // index to the first task inside the work queue that got claimed by the group
+    
+    if (WaveIsFirstLane()) // only first thread of a group tries to catch work, and then dsitributes it to the whole group
     {
-        group_assigned_work_count = 0;
         uint task_index, prev_index;
         do
         {
@@ -58,14 +59,16 @@ bool consumeTask(out S_WorkQueueEntry out_task, uint group_index)
         
         work_queue_task_group_offset = task_index;
     }
-    GroupMemoryBarrierWithGroupSync();
+    
+    // broadcast tasks from first lane to whole wave
+    group_assigned_work_count = WaveReadLaneFirst(group_assigned_work_count);
+    work_queue_task_group_offset = WaveReadLaneFirst(work_queue_task_group_offset);
 
-    if (group_index >= group_assigned_work_count)
+    if (WaveGetLaneIndex() >= group_assigned_work_count)
         return false;
     
-    
     // Load the task safely as thread won race condition after checking that there was still work to do
-    out_task = workQueue[(work_queue_task_group_offset + group_index) % WORK_QUEUE_SIZE];
+    out_task = workQueue[(work_queue_task_group_offset + WaveGetLaneIndex()) % WORK_QUEUE_SIZE];
     return true;
 }
 
@@ -228,14 +231,16 @@ void main(in uint I : SV_GroupIndex,
        
     // processing of work queue entries    
     S_WorkQueueEntry current_task;
+    bool got_work;
     do
     {
-        if (consumeTask(current_task, I))
+        got_work = consumeTask(current_task);
+        if (got_work)
         {
             processTask(current_task);
         }
     }
-    while (group_assigned_work_count);
+    while (WaveActiveAnyTrue(got_work));
       
     //after work queue is empty dispatch all collected meshlets
         GroupMemoryBarrierWithGroupSync();

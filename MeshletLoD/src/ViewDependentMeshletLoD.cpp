@@ -1164,7 +1164,6 @@ void ViewDependentMeshletLoD::updateImGui()
         ImGui::Checkbox("Screen Space Error based LoD selection", &m_screen_space_LoD);
         ImGui::Checkbox("Geo-Morphing", &m_geo_morphing);
         ImGui::Checkbox("Tessellation", &m_tessellation);
-        ImGui::Checkbox("Level Of Detail", &m_LoD_Enabled);
         if (m_screen_space_LoD)
             ImGui::InputFloat("Max error in pxl", &m_LoDScale, 0.01f, 1.0f, "%.2f");
         else 

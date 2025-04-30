@@ -144,7 +144,6 @@ private:
     bool        m_wireframe             = true;
     bool        m_frustumCulling        = true;
     ShadingMode m_shadingMode           = LOD_SHADING;
-    bool        m_LoD_Enabled           = true;
     float       m_LoDScale              = 1;
     float       m_debugFloatSlider      = 1;
     bool        m_geo_morphing          = true;
