@@ -1,6 +1,6 @@
 # meshlet-lod
 ![failed to load preview](MeshletLoD/assets/screenshots/close_up_donut_1080p.png)
-This project contains a custom virtual geometry implementation fully realized through the mesh shading pipeline in DirectX 12 as part of my Master Thesis at the [Professur Graphische Datenverarbeitung und Visualisierung](https://www.tu-chemnitz.de/informatik/GDV/). The Level-of-Detail approach of Virtual Geometry is further expanded upon with Tessellation and Geo-Morphing, allowing a free quality scale without the limitations of screen resolution effecting triangle size as well as adding more Detail in the camera near-field, all without any visual pop-in artefacts. The application provides a simple model/scene renderer that visualizes the implemented Level-of-Detail Methods. 
+This project contains a custom virtual geometry implementation fully realized within the mesh shading pipeline in DirectX 12 as part of my Master Thesis at the [Professur Graphische Datenverarbeitung und Visualisierung](https://www.tu-chemnitz.de/informatik/GDV/). The Level-of-Detail approach of Virtual Geometry is further expanded upon with Tessellation and Geo-Morphing resulting in a removal of any visual pop-in artefacts even at a lower LoD-Scale. The application provides a simple model/scene renderer that visualizes the implemented Level-of-Detail Methods. 
 
 ![failed to load preview](MeshletLoD/assets/screenshots/placeholder_1080p.png)
 
@@ -29,7 +29,7 @@ __Due to Linker issues related to the used DirectXTex library, the project curre
 
 ## Screen Shot
 ### Visualization of the Geo-Morph Solution
-Geo-Morphing allows a free quality scale for the LoD-System by removing the limitations on triangle/screen-space-error size related to the display resolution. This allows Virtual Geometry to be a more viable LoD-Method for less performant hardware even on higher resolution displays.
+Geo-Morphing allows a free quality scale for the LoD-System by removing the limitations on triangle/screen-space-error size related to the display resolution. This allows Virtual Geometry to be a more viable LoD-Method for less performant hardware even on higher resolution displays, while maintaining no visual pop-in artefacts.
 ![failed to load preview](MeshletLoD/assets/screenshots/placeholder_480p.png)
 ### Comparison with / without Tessellation
 Tessellation can be toggled on/off and offers the possibility of generating more detail in the camera near-field at run-time without any extra pre-compute overhead. The tessellation is used in combination with height-map based vertex displacement.
