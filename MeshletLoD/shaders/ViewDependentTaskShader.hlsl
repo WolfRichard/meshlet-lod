@@ -1,37 +1,37 @@
 #include "ViewDependentStructures.fxh"
 
 
+// read only buffers
 ConstantBuffer<S_Constants> constants                       : register(b0, space0);
 StructuredBuffer<S_SceneObject> objectsBuffer               : register(t0, space0);
 
+// read-write buffers
 RWStructuredBuffer<S_WorkQueueEntry> workQueue              : register(u0, space0);
 RWStructuredBuffer<S_WorkQueueCounters> workQueueCounters   : register(u1, space0);
 RWStructuredBuffer<S_PayloadEntry> payloadBuffer            : register(u2, space0);
 
-
 // bindless buffers
 StructuredBuffer<S_Meshlet> meshletBuffers[]                : register(t0, space1);
 
-
-// Payload will be used in the mesh shader.
-groupshared S_Payload gs_Payload;
-
-// The number of meshlets that are dispatched by this thread group,
-groupshared uint gs_MeshletCount;
-
-// count and offset to keep all threads of a group alive that did not catch work
-//groupshared uint group_assigned_work_count;
-//groupshared uint work_queue_task_group_offset;
+// group shared variables
+groupshared S_Payload gs_Payload; // payload that will be passed to the mesh shader.
+groupshared uint gs_MeshletCount; // The number of meshlets that are dispatched by this thread group.
 
 
+
+// pushes the given task into the FIFO work queue
+// and atomically adjusts the tail pointer accordingly
 void appendTask(S_WorkQueueEntry new_task)
 {
     uint task_index = 0;
     InterlockedAdd(workQueueCounters[0].work_queue_tail, 1, task_index);    // Atomically increment endCounter
-    workQueue[task_index % WORK_QUEUE_SIZE] = new_task;     // loop index because of ring buffer structure
+    workQueue[task_index % WORK_QUEUE_SIZE] = new_task;                     // loop index because of ring buffer structure
 }
 
 
+// tries to retrieve a task from the work queue, while returning false if the queue was empty
+// to save resources only the first lane of a warp allocates upt to GROUP_SIZE tasks which are then distributed to the other threads
+// it also updates the head pointer of the work queue accordingly (also atomic)
 bool consumeTask(out S_WorkQueueEntry out_task)
 {
     uint group_assigned_work_count = 0;     // counter of how much tasks the first lane of the wave did manage to claim for the thread group
@@ -46,11 +46,12 @@ bool consumeTask(out S_WorkQueueEntry out_task)
             uint end = workQueueCounters[0].work_queue_tail;
 
             if (prev_index >= end)
-                break; // No work available
+                break; // No work available, break out of the while loop
         
+            // only claim up to one task per thread of the work group
             uint intended_work_claim_count = min(end - prev_index, GROUP_SIZE);
         
-        // Try to atomically update 'beginCounter' only if it hasn’t changed
+            // Try to atomically update the head pointer, but only if it hasn’t changed
             InterlockedCompareExchange(workQueueCounters[0].work_queue_head, prev_index, prev_index + intended_work_claim_count, task_index);
         
             group_assigned_work_count = (task_index == prev_index) ? intended_work_claim_count : 0;
@@ -60,7 +61,7 @@ bool consumeTask(out S_WorkQueueEntry out_task)
         work_queue_task_group_offset = task_index;
     }
     
-    // broadcast tasks from first lane to whole wave
+    // broadcast tasks from first lane to the whole wave
     group_assigned_work_count = WaveReadLaneFirst(group_assigned_work_count);
     work_queue_task_group_offset = WaveReadLaneFirst(work_queue_task_group_offset);
 
@@ -72,7 +73,9 @@ bool consumeTask(out S_WorkQueueEntry out_task)
     return true;
 }
 
-// Frustum culling in world space
+
+// perform frustum culling check on a sphere in world space
+// frustum is defined as 6 planes within the constant buffer
 bool isInFrustum(float3 center, float radius)
 {
     if (!(constants.BoolConstants & FRUSTUM_CULLING_BIT_POS))
@@ -81,13 +84,15 @@ bool isInFrustum(float3 center, float radius)
     float4 f4Center = float4(center, 1.0);
     for (int i = 0; i < 6; ++i)
     {
-        if (dot(constants.Frustum[i], f4Center) < -radius - 1)
+        if (dot(constants.Frustum[i], f4Center) < -radius - 1) // the "-1" is just a bandage-fix
             return false;
     }
     return true;
 }
 
 
+// returns the highest scale factor considering each axis of a matrix
+// usefull for conservative radius estimation when transforming a sphere into another coordinate space 
 float ExtractMaxScaleFactor(float4x4 m)
 {
     float sx = length(m[0].xyz);
@@ -97,7 +102,11 @@ float ExtractMaxScaleFactor(float4x4 m)
     return max(sx, max(sy, sz));
 }
 
-bool groupSimplificationIsPreciseEnough(S_BoundingSphere bounding_sphere, uint lod_level, out uint tessellation_level) // bounding sphere must be in world space!
+
+// returns if the provided bounding sphere would be precise enough for the given camera position
+// bounding sphere parameter has to be passed in world space coordiantes
+// also returns the tessellation level that would be necessary for the given sphere
+bool groupSimplificationIsPreciseEnough(S_BoundingSphere bounding_sphere, uint lod_level, out uint tessellation_level)
 {
     float cam_dist = max(distance(constants.CameraWorldPos, bounding_sphere.center) - bounding_sphere.radius, 0.000000001);
     float expected_lod = log2(cam_dist / constants.LoD_Scale);
@@ -106,20 +115,27 @@ bool groupSimplificationIsPreciseEnough(S_BoundingSphere bounding_sphere, uint l
 }
 
 
-bool isPreciseEnough(S_BoundingSphere bounding_sphere) // bounding sphere must be in clip space
+
+// similar to groupSimplificationIsPreciseEnough() but uses screen space size instead of camera distance
+// the provided bounding sphere has to be provided in clip space
+bool isPreciseEnough(S_BoundingSphere bounding_sphere)
 {
     float d2 = dot(bounding_sphere.center, bounding_sphere.center);
     float r2 = bounding_sphere.radius * bounding_sphere.radius;
     float sphere_diameter_uv = max(constants.ProjMat[0][0], constants.ProjMat[1][1]) * bounding_sphere.radius / sqrt(d2 - r2);
     float view_size = max(constants.ScreenWidth, constants.ScreenHeight);
-    return (sphere_diameter_uv * view_size) < constants.LoD_Scale; //    1.0;
+    // through the LoD_Scale constant, screen space error is allowed to be bigger than 1 pxl but this can result in visual pop-in artefacts
+    return (sphere_diameter_uv * view_size) < constants.LoD_Scale; 
 }
 
 
+// pushes a certain number of payload entries into the global payload buffer
+// the number is automatically adjusted according to tessellation grade, such that the limitations of the mesh shader output is not exceeded when generating aditional primitives
 void queueMeshletForDispatch(uint meshlet_index, uint object_index, uint tessellation_level, uint meshlet_triangle_count)
 {
     if (tessellation_level == 0)
     {
+        // as there is no tessellation planed for this meshlet, the original structure can be directly used
         uint local_meshlet_count = 0;
         InterlockedAdd(gs_MeshletCount, 1, local_meshlet_count);
     
@@ -133,6 +149,7 @@ void queueMeshletForDispatch(uint meshlet_index, uint object_index, uint tessell
     }
     else
     {
+        // for tessellated meshlets, use the look up table to check into how many sub-meshlet-tasks it has to be divided
         uint triangles_per_instance = TESSELLATION_INITIAL_TRIANGLE_COUNTS[tessellation_level - 1];
         uint required_mesh_shader_instances = (meshlet_triangle_count + triangles_per_instance - 1) / triangles_per_instance;
         
@@ -160,6 +177,8 @@ void queueMeshletForDispatch(uint meshlet_index, uint object_index, uint tessell
     }
 }
 
+
+// evaluate if the currently worked on task is precise enough to be rendered to the screen, if not add its children back into the work queue
 void processTask(S_WorkQueueEntry task)
 {
     S_SceneObject scene_object = objectsBuffer[task.scene_object_id];
@@ -176,7 +195,7 @@ void processTask(S_WorkQueueEntry task)
     {
         world_space_bounding_sphere.radius = current_meshlet.base_error * ExtractMaxScaleFactor(scene_object.object_matrix);
         world_space_bounding_sphere.center = mul(float4(world_space_bounding_sphere.center, 1), constants.ViewMat).xyz; // world --> clip space
-        precise_enough = isPreciseEnough(world_space_bounding_sphere); // actually in screen clip space
+        precise_enough = isPreciseEnough(world_space_bounding_sphere); 
     }
     else
         world_space_bounding_sphere.radius = current_meshlet.bounding_sphere.radius * ExtractMaxScaleFactor(scene_object.object_matrix);
@@ -187,7 +206,7 @@ void processTask(S_WorkQueueEntry task)
         if (isInFrustum(world_space_bounding_sphere.center, world_space_bounding_sphere.radius))
             queueMeshletForDispatch(task.meshlet_id, task.scene_object_id, tessellation_level, current_meshlet.triangle_count);
     }
-    else // append all child meshlets into work queue if current simplification isnt precise enough (zero children when current meshlet is a leaf node)
+    else // append all child meshlets into work queue if current simplification isnt precise enough
         for (uint child_meshlet_index_index = 0; child_meshlet_index_index < current_meshlet.child_count; child_meshlet_index_index++)
         {
             S_WorkQueueEntry new_task;
@@ -198,7 +217,7 @@ void processTask(S_WorkQueueEntry task)
 }
 
 
-
+// task shader entry point
 [numthreads(GROUP_SIZE, 1, 1)]
 void main(in uint I : SV_GroupIndex,
           in uint wg : SV_GroupID)
@@ -243,7 +262,7 @@ void main(in uint I : SV_GroupIndex,
     while (WaveActiveAnyTrue(got_work));
       
     //after work queue is empty dispatch all collected meshlets
-        GroupMemoryBarrierWithGroupSync();
+    GroupMemoryBarrierWithGroupSync();
     if (I == 0)
     {
         uint global_offset = 0;

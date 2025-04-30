@@ -9,13 +9,15 @@ struct PixelShaderInput
     float2 UV       : TEXCOORD2;
 };
 
-
+// read only buffers
 ConstantBuffer<S_Constants> constants               : register(b0, space0);
 StructuredBuffer<S_SceneObject> objectsBuffer       : register(t0, space0);
 
+// displacement map 
 Texture2D heightMapTexture                          : register(t1, space0);
 SamplerState heightMapSampler                       : register(s0, space0);
 
+// read-write buffer
 RWStructuredBuffer<S_PayloadEntry> payloadBuffer    : register(u2, space0);
 
 // bindless buffers
@@ -25,6 +27,7 @@ StructuredBuffer<uint> vertexIndicesBuffers[]       : register(t0, space3);
 StructuredBuffer<uint> primitiveIndicesBuffers[]    : register(t0, space4);
 StructuredBuffer<uint> morphIndicesBuffers[]        : register(t0, space5);
 
+// group shared variables
 groupshared uint gs_vertex_count;
 groupshared uint gs_triangle_count;
 groupshared uint3 gs_triangles[MAX_MESHLET_PRIMITIVE_COUNT];
@@ -34,14 +37,7 @@ groupshared uint gs_tessellation_levels[MAX_MESHLET_VERTEX_COUNT];          // p
 groupshared uint gs_tessellation_morph_targets[MAX_MESHLET_VERTEX_COUNT];   // indices into what tessellation vertex the current vertex should be interpolated towards when applying geo-morphing.  for tessellation lvl0 vertices (base vertices of the triangle, the morph target index is the original morph target index of the morph-target global buffer)
 
 
-// generate single hash value from a vertex position
-float hash31(float3 v_pos)
-{
-    v_pos = frac(v_pos * 0.3183099 + float3(0.1, 0.2, 0.3));
-    v_pos += dot(v_pos, v_pos.yzx + 19.19);
-    return frac((v_pos.x + v_pos.y) * v_pos.z);
-}
-
+// helper function that linearly interpolates all components of a S_Vertex
 S_Vertex linearVertexInterpolation(S_Vertex a, S_Vertex b, float w)
 {
     S_Vertex result;
@@ -54,6 +50,8 @@ S_Vertex linearVertexInterpolation(S_Vertex a, S_Vertex b, float w)
     return result;
 }
 
+
+// helper function that uses barycentric coordinates to interpolate all components of a S_Vertex
 S_Vertex barycentricVertexInterpolation(S_Vertex a, S_Vertex b, S_Vertex c, float3 w)
 {
     S_Vertex result;
@@ -70,7 +68,6 @@ S_Vertex barycentricVertexInterpolation(S_Vertex a, S_Vertex b, S_Vertex c, floa
 
 
 // level 1 tesselation results in 4 triangles and 6 vertices from a single primitive
-//void lvl1Tessellation(S_Vertex a, S_Vertex b, S_Vertex c, uint3 original_morph_target_indices)
 void lvl1Tessellation(uint3 vertex_indices, uint mesh_id)
 {
     uint index_a = vertexIndicesBuffers[mesh_id][vertex_indices.x];
@@ -106,12 +103,11 @@ void lvl1Tessellation(uint3 vertex_indices, uint mesh_id)
     gs_triangles[to + 3] = uint3(vo + 4, vo + 5, vo + 2);
     
     
-    // generation of Geo-Morph informatin
+    // generation of Geo-Morph information
     
     // check what winding order edge tessellation should be morphed to, to avoid that opposing T-junktions drift appart they must decide to morph into the same vertices
-    //float3 vertices_hash_values = float3(hash31(a.position.xyz), hash31(b.position.xyz), hash31(c.position.xyz));
-    // always morph to the higher hash, default assumption is that ordered by hash A > B > C > A. (this can/should never be true, and just represents their original winding order)
-    // inverse edge morphing for specific edges if hash order deveates from default assumption
+    // always morph to the higher index, default assumption is that ordered by hash A > B > C > A. (this can/should never be true, and just represents their original winding order)
+    // inverse edge morphing for specific edges if indices order deveates from default assumption
     bool i_ab = index_a < index_b;
     bool i_bc = index_b < index_c;
     bool i_ca = index_c < index_a;
@@ -122,7 +118,6 @@ void lvl1Tessellation(uint3 vertex_indices, uint mesh_id)
     gs_tessellation_levels[vo + 3] = 1;
     gs_tessellation_levels[vo + 4] = 1;
     gs_tessellation_levels[vo + 5] = 1;
-    
     
     gs_tessellation_morph_targets[vo + 0] = morph_target_a;
     gs_tessellation_morph_targets[vo + 1] = morph_target_b;
@@ -191,11 +186,6 @@ void lvl2Tessellation(uint3 vertex_indices, uint mesh_id)
     
     
     // generation of Geo-Morph informatin
-    
-    // check what winding order edge tessellation should be morphed to, to avoid that opposing T-junktions drift appart they must decide to morph into the same vertices
-    //float3 vertices_hash_values = float3(hash31(a.position.xyz), hash31(b.position.xyz), hash31(c.position.xyz));
-    // always morph to the higher hash, default assumption is that ordered by hash A > B > C > A. (this can/should never be true, and just represents their original winding order)
-    // inverse edge morphing for specific edges if hash order deveates from default assumption
     bool i_ab = index_a < index_b;
     bool i_bc = index_b < index_c;
     bool i_ca = index_c < index_a;
@@ -236,6 +226,7 @@ void lvl2Tessellation(uint3 vertex_indices, uint mesh_id)
 
 
 /* level 3 tesselation results in 64 triangles and 45 vertices from a single primitive
+   TODO: this is quite a heavy load for a single thread, this should be distributed among all threads in the future
 
              44(c)
             /   \
@@ -314,7 +305,6 @@ void lvl3Tessellation(uint3 vertex_indices, uint mesh_id)
     gs_vertices[vo + 43] = barycentricVertexInterpolation(a, b, c, float3(0.000, 0.125, 0.875));
     gs_vertices[vo + 44] = c;
     
-    
     gs_triangles[to +  0] = uint3(vo +  0, vo +  1, vo +  9);
     gs_triangles[to +  1] = uint3(vo +  1, vo + 10, vo +  9);
     gs_triangles[to +  2] = uint3(vo +  1, vo +  2, vo + 10);
@@ -380,14 +370,7 @@ void lvl3Tessellation(uint3 vertex_indices, uint mesh_id)
     gs_triangles[to + 62] = uint3(vo + 40, vo + 41, vo + 43);
     gs_triangles[to + 63] = uint3(vo + 42, vo + 43, vo + 44);
     
-    
-    
     // generation of Geo-Morph informatin
-    
-    // check what winding order edge tessellation should be morphed to, to avoid that opposing T-junktions drift appart they must decide to morph into the same vertices
-    //float3 vertices_hash_values = float3(hash31(a.position.xyz), hash31(b.position.xyz), hash31(c.position.xyz));
-    // always morph to the higher hash, default assumption is that ordered by hash A > B > C > A. (this can/should never be true, and just represents their original winding order)
-    // inverse edge morphing for specific edges if hash order deveates from default assumption
     bool i_ab = index_a < index_b;
     bool i_bc = index_b < index_c;
     bool i_ca = index_c < index_a;
@@ -438,7 +421,6 @@ void lvl3Tessellation(uint3 vertex_indices, uint mesh_id)
     gs_tessellation_levels[vo + 43] = 3;
     gs_tessellation_levels[vo + 44] = 0;
     
-
     gs_tessellation_morph_targets[vo +  0] = morph_target_a;
     gs_tessellation_morph_targets[vo +  1] = vo + 2;
     gs_tessellation_morph_targets[vo +  2] = vo + 4;
@@ -452,7 +434,7 @@ void lvl3Tessellation(uint3 vertex_indices, uint mesh_id)
     gs_tessellation_morph_targets[vo + 10] = vo + 17;
     gs_tessellation_morph_targets[vo + 11] = vo + 2;
     gs_tessellation_morph_targets[vo + 12] = vo + 19;
-    gs_tessellation_morph_targets[vo + 13] = vo + 21;//4;
+    gs_tessellation_morph_targets[vo + 13] = vo + 21;
     gs_tessellation_morph_targets[vo + 14] = vo + 21;
     gs_tessellation_morph_targets[vo + 15] = vo + 6;
     gs_tessellation_morph_targets[vo + 16] = vo + 23;
@@ -464,7 +446,7 @@ void lvl3Tessellation(uint3 vertex_indices, uint mesh_id)
     gs_tessellation_morph_targets[vo + 22] = vo + 23;
     gs_tessellation_morph_targets[vo + 23] = vo + 34;
     gs_tessellation_morph_targets[vo + 24] = vo + 17;
-    gs_tessellation_morph_targets[vo + 25] = vo + 19;//30;
+    gs_tessellation_morph_targets[vo + 25] = vo + 19;
     gs_tessellation_morph_targets[vo + 26] = vo + 19;
     gs_tessellation_morph_targets[vo + 27] = vo + 32; 
     gs_tessellation_morph_targets[vo + 28] = vo + 21;
@@ -472,7 +454,7 @@ void lvl3Tessellation(uint3 vertex_indices, uint mesh_id)
     gs_tessellation_morph_targets[vo + 30] = vo + (i_ca ? 0 : 44);
     gs_tessellation_morph_targets[vo + 31] = vo + 32;
     gs_tessellation_morph_targets[vo + 32] = vo + 30;
-    gs_tessellation_morph_targets[vo + 33] = vo + 32;//34;
+    gs_tessellation_morph_targets[vo + 33] = vo + 32;
     gs_tessellation_morph_targets[vo + 34] = vo + (i_bc ? 44 : 8);
     gs_tessellation_morph_targets[vo + 35] = vo + 39;
     gs_tessellation_morph_targets[vo + 36] = vo + 39;
@@ -484,7 +466,6 @@ void lvl3Tessellation(uint3 vertex_indices, uint mesh_id)
     gs_tessellation_morph_targets[vo + 42] = vo + 39;
     gs_tessellation_morph_targets[vo + 43] = vo + 41;
     gs_tessellation_morph_targets[vo + 44] = morph_target_c;
-
 }
 
 

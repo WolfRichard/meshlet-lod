@@ -474,7 +474,7 @@ void Mesh::simplifiyTopLevelGroups()
         size_t simplifiedIndexCount = meshopt_simplify(
             simplified_indices.data(), merged_deduplicated_indices.data(), merged_deduplicated_indices.size(),
             reinterpret_cast<const float*>(&m_vertices.data()[0].position.x), m_vertices.size(), sizeof(S_Vertex),
-            target_index_count, FLT_MAX, meshopt_SimplifyLockBorder, &lod_error); // TODO: & meshopt_SimplifyErrorAbsolute bitmask option leads to cracks??? why??
+            target_index_count, FLT_MAX, meshopt_SimplifyLockBorder, &lod_error); // & meshopt_SimplifyErrorAbsolute bitmask option leads to cracks??? why??
         simplified_indices.resize(simplifiedIndexCount);
         //current_group.bounding_sphere.radius = lod_error;
 
@@ -795,7 +795,6 @@ void Mesh::simplifiyTopLevelGroups()
         {
             S_Meshlet& current_meshlet = m_meshlets[current_group.meshlets[m]];
 
-            // find closest vertex that survived simplification to set as morph target //TODO also morph to boundary vertices from inner ones
             for (uint vi = 0; vi < current_meshlet.vertex_count; vi++) 
             {
                 uint vertex_index = m_vertex_indices[current_meshlet.vertex_offset + vi];

@@ -254,8 +254,6 @@ bool Scene::loadSceneFromBackUp(std::string file_path)
     
 }
 
-// TODO: SCENE CURRENTLY ONLY HOLDS POINTERS TO MESH CLASS BUFFERS, NOT THE ACTUAL DATA ITSELF, THUS THIS LOAD FUNKTION HAS TO BE REWRITTEN OR THE SCENE CLASS HAS TO BE ALTERED!!!!!!
-
 void Scene::free()
 {
     m_mesh_count = 0;
