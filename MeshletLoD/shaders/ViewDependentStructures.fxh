@@ -17,7 +17,7 @@ static const uint TESSELLATION_INITIAL_TRIANGLE_COUNTS[3]   = {  40,  15,   3 };
 //static const uint TESSELLATION_INITIAL_VERTEX_COUNTS[3]     = { 120,  45,   9 };
 //static const uint TESSELLATION_RESULTING_VERTEX_COUNTS[3]   = { 240, 225, 135 };
 
-#define DEBUG_COLOR_SPREAD 5.0
+#define DEBUG_COLOR_SPREAD 5.0 // the number of individual colors used for debugging 
 
 //#define MAX_MESHLET_VERTEX_COUNT 64
 #define MAX_MESHLET_VERTEX_COUNT 254
@@ -43,20 +43,20 @@ struct S_Meshlet
 {
     S_BoundingSphere bounding_sphere; // in object space
     uint vertex_count;      
-    uint triangle_count;    // how many primitives does the meshlet consists of
+    uint triangle_count;              // how many primitives does the meshlet consists of
     uint vertex_offset;
-    uint triangle_offset;   // offset to the first triangle of the meshlet (offset is counted in indices not triangles !!!)
+    uint triangle_offset;             // offset to the first triangle of the meshlet (offset is counted in indices not triangles !!!)
     
     S_BoundingSphere simplified_group_bounds;
-    float base_error;           // if the meshlet is a sub-mesh of the original geometry this is set to 0
-    float simplification_error; // (parent error) if meshlet has no parent because its part of the root then this is set to FLOAT_MAX
-    uint discrete_level_of_detail;  // the discrete level of innacuracy for the meshlet (higher number means less precise mesh resolution)
-    uint group_id;              // currently just for debug-rendering
+    float base_error;                       // if the meshlet is a sub-mesh of the original geometry this is set to 0
+    float simplification_error;             // (parent error) if meshlet has no parent because its part of the root then this is set to FLOAT_MAX
+    uint discrete_level_of_detail;          // the discrete level of innacuracy for the meshlet (higher number means less precise mesh resolution)
+    uint group_id;                          // currently just for debug-rendering
     
     uint child_meshlets[GROUP_MERGE_COUNT]; // indices that point into the meshlet buffer towards the child meshlets that were used during group simplification to produce the simplififed geometry of the current meshlet
     
     uint child_count;
-    float3 byte_allignement; // used to keep 16 byte allignement for structured buffer
+    float3 byte_allignement;                // used to keep 16 byte allignement for structured buffer
 };
 
 
@@ -92,8 +92,6 @@ struct S_MeshletGroup
 //#define PLACEHOLDER_BIT_POS                8192  // 00000000000000000001000000000000
 
 
-
-
 enum ShadingMode
 {
     DEFAULT_SHADING,
@@ -105,6 +103,7 @@ enum ShadingMode
 };
 
 
+// defines constant buffer structure
 struct S_Constants
 {
     float4x4 ViewProjMat;
@@ -146,13 +145,13 @@ struct S_PayloadEntry
     uint tessellation_triangle_count;
 };
 
+
 // Payload from task shader stage to mesh shader
 // Payload size must be less than 16kb.
 struct S_Payload
 {
     uint global_payload_offset;
 };
-
 
 
 struct S_Vertex
@@ -187,7 +186,7 @@ struct S_WorkQueueCounters
 {
     uint work_queue_head; // index to first element of the FIFO ring buffer work queue (if head == tail then queue is empty)
     uint work_queue_tail; // index of the next free available space where the next element could be added (tail is not part of the queue)
-    uint payload_head; // index from what point the meshlets have not been emitted yet
-    uint payload_tail; // index to the next available free meshlet slot
+    uint payload_head;    // index from what point the meshlets have not been emitted yet
+    uint payload_tail;    // index to the next available free meshlet slot
 };
 

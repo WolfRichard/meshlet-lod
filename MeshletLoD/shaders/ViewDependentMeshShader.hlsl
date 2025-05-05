@@ -469,6 +469,8 @@ void lvl3Tessellation(uint3 vertex_indices, uint mesh_id)
 }
 
 
+// unpacks the tightly packed primitive-indices buffer from unsigned chars back to uint_32 
+// needed, as HLSL not nativly supports single byte-sized variables
 uint SampleTriangleBufferAsCharArray(uint i, uint mesh_id)
 {
     uint array_pos = i / 4;
@@ -477,6 +479,7 @@ uint SampleTriangleBufferAsCharArray(uint i, uint mesh_id)
     ret = ret >> (inner_pos * 8);
     return ret & 0x000000ff;
 }
+
 
 // Hash function from H. Schechter & R. Bridson, goo.gl/RXiKaH
 uint Hash(uint s)
@@ -490,24 +493,35 @@ uint Hash(uint s)
     return s;
 }
 
+
+// Generates a pseudo random float by hasing the provided seed
+// Resulting float value lies between -1 and 1
 float Random(uint seed)
 {
     return float(Hash(seed)) / 4294967295.0; // 2^32-1
 }
 
-// generate color
+
+// Returns a cheap approximation for a fully saturated Color value for the provided HUE
 float4 Rainbow(float factor)
 {
     float3 col = float3(abs(factor * 6.0 - 3.0) - 1.0, 2.0 - abs(factor * 6.0 - 2.0), 2.0 - abs(factor * 6.0 - 4.0));
     return float4(clamp(col, float3(0.0, 0.0, 0.0), float3(1.0, 1.0, 1.0)), 1.0);
 }
 
-float getExpectedLoDLevel(float4 position)// position must be in world space!
+
+// Returns the expected LOD on a vertex level while using the same distance function as its Task-Shader equivalent
+// bounding sphere parameter has to be passed in world space coordiantes
+// tessellation is represented as negative return value
+float getExpectedLoDLevel(float4 position)
 {
     float cam_dist = distance(constants.CameraWorldPos, position.xyz);
     return log2(cam_dist / constants.LoD_Scale);
 }
 
+
+// Samples the displacement map according to the provided world position and normal using triplanar mapping
+// Texture sampling scale and blend ratio for tilted surfaces is adjusted by the associated constants
 float4 TriplanarSample(float3 worldPos, float3 worldNormal)
 {
     // Normalize and abs the normal for blending weights
@@ -533,6 +547,7 @@ float4 TriplanarSample(float3 worldPos, float3 worldNormal)
 }
 
 
+// mesh shader entry point
 [shader("mesh")]
 [numthreads(GROUP_SIZE, 1, 1)]
 [outputtopology("triangle")]
@@ -542,7 +557,8 @@ void main(in uint I : SV_GroupIndex,
           out indices uint3 tris[MAX_MESHLET_PRIMITIVE_COUNT],
           out vertices PixelShaderInput verts[MAX_MESHLET_VERTEX_COUNT])
 {
-    S_PayloadEntry payload_task = payloadBuffer[gid + gs_Payload.global_payload_offset]; //    gs_Payload.tasks[gid];
+    // retrieve a unique task from the global payload buffer for each individual mesh shader workgroup
+    S_PayloadEntry payload_task = payloadBuffer[gid + gs_Payload.global_payload_offset];
 
     S_SceneObject scene_object = objectsBuffer[payload_task.object_id];
     S_Meshlet meshlet = meshletBuffers[scene_object.mesh_id][payload_task.meshlet_id];
@@ -598,9 +614,10 @@ void main(in uint I : SV_GroupIndex,
             float4 original_world_pos = mul(float4(vertex.position.xyz, 1.0), scene_object.object_matrix);
             int current_vertex_lod = gs_tessellation_levels[v] * -1;
             float expected_lod = max(getExpectedLoDLevel(original_world_pos), MAX_TESSELLATION_LEVEL * -1);
-            //expected_lod = constants.DebugFloatSliderValue;
             float lerp_value = max(expected_lod - current_vertex_lod, 0);
             
+            // itterativly determine the correct vertex indices according to the vertex specific LOD
+            // vertex LOD is generally lower than that of the whole meshlet. Geo-Morphing smootly blends between discrete levels 
             if ((constants.BoolConstants & GEO_MORPHING_BIT_POS) && !(constants.BoolConstants & SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS))
             {
                 int vertex_index = v;
@@ -624,13 +641,12 @@ void main(in uint I : SV_GroupIndex,
                 }
                 
                 S_Vertex morph_target_vertex;
-                
+                // set both vertex and morph target according to current_lod case
                 if (current_vertex_lod < 0)
                 {
                     vertex = gs_vertices[vertex_index];
                     morph_target_vertex = gs_vertices[gs_tessellation_morph_targets[vertex_index]];
                 }
-                
                 else if (current_vertex_lod == 0)
                 {
                     vertex = gs_vertices[vertex_index];
@@ -647,6 +663,9 @@ void main(in uint I : SV_GroupIndex,
             }
             
             
+            // transform vertices from object to world to clip space
+            // optional vertex displacement according to heightmap
+            // populate outpiut buffers
             float4 w_pos = mul(float4(vertex.position.xyz, 1.0), scene_object.object_matrix);
             float4 normal = mul(float4(vertex.normal.xyz, 0), scene_object.object_matrix);
             verts[v].WPos = w_pos.xyz;
@@ -659,6 +678,7 @@ void main(in uint I : SV_GroupIndex,
             verts[v].WNormal = normal.xyz;
             
             
+            // set vertex color according to debug shading selection
             float brightness = clamp(clamp(dot(normalize(float3(1, 1, 1)), normal.xyz), 0, 1) + clamp(dot(normalize(float3(-2, 1, -1)), normal.xyz), 0, 0.6), 0.05, 1);
             if (constants.shadingSelection == DEFAULT_SHADING)
             {
@@ -689,6 +709,7 @@ void main(in uint I : SV_GroupIndex,
                 verts[v].Color = float4(1, 1, 0, 1);
             }
         }
+        
         
         for (uint p = I; p < gs_triangle_count; p += GROUP_SIZE)
         {

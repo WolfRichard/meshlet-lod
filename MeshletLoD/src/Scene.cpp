@@ -58,7 +58,6 @@ void Scene::processSceneNode(aiNode* node, const aiScene* scene, float4x4 parent
         so.mesh_id = node->mMeshes[i];
 
         // transform object space bounding sphere ti world space
-
         XMVECTOR wSpaceCentre = XMVector3Transform(XMLoadFloat3(&(m_meshes[so.mesh_id]->m_bounding_sphere.center)), XMMatrixTranspose(model_matrix));
         XMStoreFloat3(&so.bounding_sphere.center, wSpaceCentre);
         // scale bounding radius by highest axis scale factor
@@ -69,16 +68,16 @@ void Scene::processSceneNode(aiNode* node, const aiScene* scene, float4x4 parent
         so.bounding_sphere.radius = m_meshes[so.mesh_id]->m_bounding_sphere.radius * maxScale;
         so.mesh_meshlet_count = (uint)m_meshes[so.mesh_id]->m_meshlets.size();
 
-        
+        // update scene meta data counters
         m_total_meshlet_count   += (uint)m_meshes[so.mesh_id]->m_meshlets.size();
         m_totoal_triangle_count += (uint)m_meshes[so.mesh_id]->m_original_indices.size() / 3;
         m_total_vertex_count    += (uint)m_meshes[so.mesh_id]->m_vertices.size();
-
-
-
+        
+        // store the fully loaded scene object instance
         m_scene_objects.push_back(so);
     }
 
+    // repeat the process for each child node of the currently processed node until whole tree is traversed
     for (uint i = 0; i < node->mNumChildren; i++)
     {
         processSceneNode(node->mChildren[i], scene, model_matrix);
@@ -256,16 +255,17 @@ bool Scene::loadSceneFromBackUp(std::string file_path)
 
 void Scene::free()
 {
+    // reset counter variables
     m_mesh_count = 0;
     m_total_meshlet_count = 0;
     m_totoal_triangle_count = 0;
     m_total_vertex_count = 0;
     m_preProcessingTime = m_preProcessingTime.zero();
 
+    // clear all data vectors
     m_scene_objects.clear();
     for (auto mesh : m_meshes) delete mesh;
     m_meshes.clear();
-
     m_vertices.clear();
     m_vertex_indices.clear();
     m_primitive_indices.clear();

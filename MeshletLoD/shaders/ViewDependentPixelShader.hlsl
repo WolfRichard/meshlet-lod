@@ -1,20 +1,25 @@
 #include "ViewDependentStructures.fxh"
 
-ConstantBuffer<S_Constants> constants   : register(b0, space0);
-
-Texture2D heightMapTexture              : register(t1, space0);
-SamplerState heightMapSampler           : register(s0, space0);
-
 struct PixelShaderInput
 {
-    float4 Pos      : SV_POSITION;
-    float4 Color    : COLOR;
-    float3 WPos     : TEXCOORD0;
-    float3 WNormal  : TEXCOORD1;
-    float2 UV       : TEXCOORD2;
+    float4 Pos : SV_POSITION;
+    float4 Color : COLOR;
+    float3 WPos : TEXCOORD0;
+    float3 WNormal : TEXCOORD1;
+    float2 UV : TEXCOORD2;
 };
 
 
+// read only buffers
+ConstantBuffer<S_Constants> constants   : register(b0, space0);
+
+// displacement map 
+Texture2D heightMapTexture              : register(t1, space0);
+SamplerState heightMapSampler           : register(s0, space0);
+
+
+// Samples the displacement map according to the provided world position and normal using triplanar mapping
+// Texture sampling scale and blend ratio for tilted surfaces is adjusted by the associated constants
 float4 TriplanarSample(float3 worldPos, float3 worldNormal)
 {
     // Normalize and abs the normal for blending weights
@@ -36,11 +41,13 @@ float4 TriplanarSample(float3 worldPos, float3 worldNormal)
 }
 
 
-
+// pixel shader entry point
 float4 main( PixelShaderInput IN ) : SV_Target
 {
+    // visualize displacement map if debug shading is selected, otherwise use interpolated vertex color
     if (constants.shadingSelection == HEIGHT_MAP_SHADING)
     {
+        // option to use triplanar mapping for meshes that lack proper UV-cooridinates
         if (constants.BoolConstants & TRI_PLANAR_TEXTURE_MAPPING_BIT_POS)
             return TriplanarSample(IN.WPos, IN.WNormal);
         else

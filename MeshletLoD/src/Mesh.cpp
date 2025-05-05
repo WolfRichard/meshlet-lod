@@ -203,11 +203,6 @@ void Mesh::buildMeshletHierachy()
     for (uint count : m_hierarchy_per_level_group_count) OutputDebugString((std::to_string(count) + ", ").c_str());
     findParentsItterative();
     OutputDebugString("\n\n");
-
-    
-
-    
-
     OutputDebugString(("Size vertex_indices vector: " + std::to_string(m_vertex_indices.size()) + " Size morph_indices vector: " + std::to_string(m_morph_indices.size()) + "\n").c_str());
 }
 
