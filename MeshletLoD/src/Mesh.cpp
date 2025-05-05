@@ -21,6 +21,7 @@ Mesh::Mesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
     buildMeshletHierachy();
     OutputDebugString("Finished Hierarchy Generation\n");
 
+    // debug output meshlet hierarchy
     printTreeFromTop(m_hierarchy_root_group);
     printAllMeshlets();
 }
@@ -28,8 +29,12 @@ Mesh::Mesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
 
 void Mesh::parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
 {
+    // initialize bounding sphere approximation with zero
+    // --> set bounding sphere radius ontop of average vertex position
+    // --> set radius = furthest vertex distance from center
     m_bounding_sphere.center = float3(0, 0, 0);
     m_bounding_sphere.radius = 0;
+
     // parse raw indices
     std::vector<unsigned int> raw_indices;
     for (uint face = 0; face < assimp_mesh->mNumFaces; face++)
@@ -84,7 +89,7 @@ void Mesh::parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
 
         raw_vertices.push_back(new_vert);
 
-        // calc bounding sphere 
+        // calculate average vertex position 
         m_bounding_sphere.center.x += new_vert.position.x;
         m_bounding_sphere.center.y += new_vert.position.y;
         m_bounding_sphere.center.z += new_vert.position.z;
@@ -93,6 +98,7 @@ void Mesh::parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
     m_bounding_sphere.center.y /= (uint)raw_vertices.size();
     m_bounding_sphere.center.z /= (uint)raw_vertices.size();
 
+    // calculate conservative bounding sphere radius
     for (uint i = 0; i < (uint)raw_vertices.size(); i++)
     {
         float dx = raw_vertices[i].position.x - m_bounding_sphere.center.x;
@@ -102,8 +108,6 @@ void Mesh::parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
         m_bounding_sphere.radius = m_bounding_sphere.radius < distSq ? distSq : m_bounding_sphere.radius;
     }
     m_bounding_sphere.radius = std::sqrt(m_bounding_sphere.radius);
-
-
 
     // mesh optimize as preperation for lod and meshlet generation
     std::vector<unsigned int> remap(raw_indices.size());
@@ -115,20 +119,33 @@ void Mesh::parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
     meshopt_remapIndexBuffer(m_original_indices.data(), raw_indices.data(), raw_indices.size(), &remap[0]);
     meshopt_remapVertexBuffer(m_vertices.data(), raw_vertices.data(), raw_vertices.size(), sizeof(S_Vertex), &remap[0]);
     meshopt_optimizeVertexCache(m_original_indices.data(), m_original_indices.data(), raw_indices.size(), vertex_count);
+
+    // simplify mesh if triangle count is larger than maximum to prevent excessive pre-compute times
+    size_t target_index_count = m_maximum_mesh_triangle_count * 3; 
+    std::vector<uint> simplified_indices(m_original_indices);
+    float lod_error = 0.0f;  
+    size_t simplifiedIndexCount = meshopt_simplify(
+        simplified_indices.data(), m_original_indices.data(), m_original_indices.size(),
+        reinterpret_cast<const float*>(&m_vertices.data()[0].position.x), m_vertices.size(), sizeof(S_Vertex),
+        target_index_count, FLT_MAX, meshopt_SimplifyLockBorder, &lod_error); // & meshopt_SimplifyErrorAbsolute bitmask option leads to cracks??? why??
+    simplified_indices.resize(simplifiedIndexCount);
+    m_original_indices = simplified_indices;
 }
 
 void Mesh::generateLeafMeshlets()
 {
+    // generate meshlets using the meshoptimizer library
     const float cone_weight = 0.0f;
     size_t      max_meshlets = meshopt_buildMeshletsBound(m_original_indices.size(), MAX_MESHLET_VERTEX_COUNT, MAX_MESHLET_PRIMITIVE_COUNT);
     std::vector<meshopt_Meshlet> meshlets(max_meshlets);
     m_vertex_indices.resize(max_meshlets * MAX_MESHLET_VERTEX_COUNT);
     m_primitive_indices.resize(max_meshlets * MAX_MESHLET_PRIMITIVE_COUNT * 3);
-
     uint meshlet_count = (uint)meshopt_buildMeshlets(meshlets.data(), m_vertex_indices.data(), m_primitive_indices.data(), m_original_indices.data(), m_original_indices.size(), &m_vertices[0].position.x, m_vertices.size(), sizeof(S_Vertex), MAX_MESHLET_VERTEX_COUNT, MAX_MESHLET_PRIMITIVE_COUNT, cone_weight);
     meshlets.resize(meshlet_count);
 
-    S_Meshlet dummyMeshlet; // used to balance holes in groups that cant be filled up to 4 meshlets, always at id 0
+    // set the first meshlet to be an empty meshlet
+    // this will be used to balance holes in groups that cant be filled up to 4 meshlets, always at id 0
+    S_Meshlet dummyMeshlet; 
     dummyMeshlet.triangle_count = 0;
     dummyMeshlet.triangle_offset = 0;
     dummyMeshlet.vertex_count = 0;
@@ -143,6 +160,7 @@ void Mesh::generateLeafMeshlets()
 
     m_meshlets.push_back(dummyMeshlet);
 
+    // parse meshoptimizer meshlets into own data structures
     for (uint i = 0; i < meshlet_count; i++)
     {
         S_Meshlet newMeshlet;
@@ -158,6 +176,7 @@ void Mesh::generateLeafMeshlets()
             newMeshlet.child_meshlets[i] = 0;
         newMeshlet.child_count = 0;
 
+        // generate and parse bounding data for the meshlets
         meshopt_Bounds bounds = meshopt_computeMeshletBounds(&m_vertex_indices[newMeshlet.vertex_offset],
             &m_primitive_indices[newMeshlet.triangle_offset],
             newMeshlet.triangle_count,
@@ -168,6 +187,7 @@ void Mesh::generateLeafMeshlets()
         newMeshlet.bounding_sphere.center = float3(bounds.center[0], bounds.center[1], bounds.center[2]);
         newMeshlet.bounding_sphere.radius = bounds.radius;
 
+        // set newly generated meshlets as the currently processed level of the hierarchy, so that the other functions know what to work on
         m_current_hierarchy_top_level_meshlets.push_back((int)m_meshlets.size());
         m_meshlets.push_back(newMeshlet);
     }
@@ -175,14 +195,17 @@ void Mesh::generateLeafMeshlets()
 
 void Mesh::buildMeshletHierachy() 
 {
+    // group and simplify as long as there are enough meshlets to do so
     while ((uint)m_current_hierarchy_top_level_meshlets.size() >= GROUP_MERGE_COUNT * 2)
     {
         groupMeshlets();
         simplifiyTopLevelGroups();
     }
-    
+   
     assert(m_current_hierarchy_top_level_groups.size() == 2);
     OutputDebugString(("\n\n\nNumber of Top Level Meshlets at tree top: " + std::to_string(m_current_hierarchy_top_level_meshlets.size())).c_str());
+    
+    // edge case handeling for root nodes
     finalTopLevelMeshletGrouping();
     simplifiyTopLevelGroups();
 
@@ -197,11 +220,10 @@ void Mesh::buildMeshletHierachy()
 
     // Check if one of a groups simplfied Meshlets is part of another groups base meshlets, if so declare it its parent
     // with the limitation of only one parent and two children per group
-
     OutputDebugString(("\n\nNumber of Groups: " + std::to_string(m_meshlet_groups.size()) + "\n\n").c_str());
     OutputDebugString(("\nRecursion Tree Depth: " + std::to_string(m_hierarchy_per_level_group_count.size()) + "\n\n").c_str());
     for (uint count : m_hierarchy_per_level_group_count) OutputDebugString((std::to_string(count) + ", ").c_str());
-    findParentsItterative();
+    //findParentsItterative();
     OutputDebugString("\n\n");
     OutputDebugString(("Size vertex_indices vector: " + std::to_string(m_vertex_indices.size()) + " Size morph_indices vector: " + std::to_string(m_morph_indices.size()) + "\n").c_str());
 }
@@ -210,9 +232,6 @@ void Mesh::buildMeshletHierachy()
 
 void Mesh::groupMeshlets()
 {
-    //while ((int)m_current_hierarchy_top_level_meshlets.size() % GROUP_MERGE_COUNT != 0)
-    //    m_current_hierarchy_top_level_meshlets.push_back(0); // fill with dummy meshlets until equal meshlet distribution is possible between all groups
-
     // build METIS graph representation of meshlet connectivity to each other
     idx_t MATIS_numNodes = (int)m_current_hierarchy_top_level_meshlets.size();
     std::vector<idx_t> MATIS_vertexWeights(MATIS_numNodes, 100);
@@ -466,13 +485,15 @@ void Mesh::simplifiyTopLevelGroups()
         size_t target_index_count = GROUP_SPLIT_COUNT * MAX_MESHLET_VERTEX_COUNT * 3; //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! should be "GROUP_SPLIT_COUNT * MAX_MESHLET_PRIMITIVE_COUNT * 3", but that would blow past the vertex limit and generate to many meshlets
         std::vector<uint> simplified_indices(merged_deduplicated_indices.size());
         float lod_error = 0.0f;
-        size_t simplifiedIndexCount = meshopt_simplify(
-            simplified_indices.data(), merged_deduplicated_indices.data(), merged_deduplicated_indices.size(),
-            reinterpret_cast<const float*>(&m_vertices.data()[0].position.x), m_vertices.size(), sizeof(S_Vertex),
-            target_index_count, FLT_MAX, meshopt_SimplifyLockBorder, &lod_error); // & meshopt_SimplifyErrorAbsolute bitmask option leads to cracks??? why??
-        simplified_indices.resize(simplifiedIndexCount);
-        //current_group.bounding_sphere.radius = lod_error;
-
+        if (!m_useCustomSimplification) 
+        {
+            size_t simplifiedIndexCount = meshopt_simplify(
+                simplified_indices.data(), merged_deduplicated_indices.data(), merged_deduplicated_indices.size(),
+                reinterpret_cast<const float*>(&m_vertices.data()[0].position.x), m_vertices.size(), sizeof(S_Vertex),
+                target_index_count, FLT_MAX, meshopt_SimplifyLockBorder, &lod_error); // & meshopt_SimplifyErrorAbsolute bitmask option leads to cracks??? why??
+            simplified_indices.resize(simplifiedIndexCount);
+            //current_group.bounding_sphere.radius = lod_error;
+        }
 
 
 
@@ -487,7 +508,7 @@ void Mesh::simplifiyTopLevelGroups()
 
 
         // Custom simplification algorithm that tracks vertex decimation indices
-        if (useCustomSimplification)
+        if (m_useCustomSimplification)
         {
             // copy original index buffer into resulting simplified index buffer
             simplified_indices = merged_deduplicated_indices;

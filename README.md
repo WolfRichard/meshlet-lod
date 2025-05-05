@@ -1,7 +1,7 @@
 # meshlet-lod
 ![failed to load preview](MeshletLoD/assets/screenshots/close_up_donut_1080p.png)
 
-This project contains a custom virtual geometry implementation that has been fully realized within the mesh shading pipeline and DirectX 12. The project was developed as part of my Master Thesis at the [Professur Graphische Datenverarbeitung und Visualisierung](https://www.tu-chemnitz.de/informatik/GDV/). The Level-of-Detail (LOD) approach of Virtual Geometry is expanded upon with Tessellation and Geo-Morphing resulting in the removal of any visual pop-in artefacts, even at lower LOD-Scales. The application provides a simple model/scene renderer that visualizes the implemented LOD-Methods. 
+This repository contains a custom virtual geometry implementation that has been fully realized within the mesh shading pipeline and DirectX 12. The project was developed as part of my Master Thesis at the [University of Technology Chemnitz](https://www.tu-chemnitz.de/index.html.en) within the [Professur Graphische Datenverarbeitung und Visualisierung](https://www.tu-chemnitz.de/informatik/GDV/). The Level-of-Detail (LOD) approach of Virtual Geometry is expanded upon with Tessellation and Geo-Morphing resulting in the removal of any visual pop-in artefacts, even at lower LOD-Scales. The application provides a simple model/scene renderer that visualizes the implemented LOD-Methods. 
 
 ## System Requirements
 - DirectX 12 Ultimate compliant GPU
@@ -24,7 +24,7 @@ vcpkg install directxtex[dx12]
 cmake . -B build -A x64
 ```
 
-__Due to Linker issues related to the used DirectXTex library, the project currently only compiles in release mode!__
+Due to Linker issues related to the used DirectXTex library, the project currently only compiles in release mode!
 
 ## Show Case
 ### Visualization of the Geo-Morph Solution

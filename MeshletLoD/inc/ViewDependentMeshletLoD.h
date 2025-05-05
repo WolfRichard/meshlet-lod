@@ -210,5 +210,5 @@ private:
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
 
     Scene m_scene;
-    char  m_model_file_path[1024] = "./assets/scenes/TorusInstances.glb";//"C:/Users/wolfr/Desktop/bun_zipper.ply";//"C:/Users/wolfr/Desktop/bun_zipper.ply";//"C:/Users/wolfr/Downloads/xyzrgb_dragon.ply/xyzrgb_dragon.ply";//"./assets/scenes/TestScene.glb";
+    char  m_model_file_path[1024] = "C:/Users/wolfr/Downloads/xyzrgb_dragon.ply/xyzrgb_dragon.ply";//"./assets/scenes/TestScene.glb";
 };
