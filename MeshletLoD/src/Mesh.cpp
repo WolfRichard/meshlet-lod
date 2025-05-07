@@ -240,14 +240,15 @@ void Mesh::groupMeshlets()
     std::vector<idx_t> MATIS_adjacencyList;
     std::vector<idx_t> MATIS_edgeWeights; // represents the number of shared edges between each meshlet
 
-    // extract all edges from the current top level meshlets
+    // extract all boundary edges from the current top level meshlets
     std::vector<std::unordered_set<std::pair<uint, uint>, PairHash>> meshlet_edges;
     for (auto meshlet_index : m_current_hierarchy_top_level_meshlets)
     {
-        meshlet_edges.push_back(extractEdges(m_meshlets[meshlet_index]));
+        meshlet_edges.push_back(extractBoundaryEdgeSet(m_meshlets[meshlet_index]));
     }
     std::vector<std::vector<uint>> connectivity_matrix;
 
+    // count shared edges between every meshlet
     for (uint a = 0; a < m_current_hierarchy_top_level_meshlets.size(); a++)
     {
         uint meshlet_A_index = m_current_hierarchy_top_level_meshlets[a];
@@ -343,10 +344,10 @@ void Mesh::groupMeshlets()
                 debugCounter++;
         OutputDebugString((std::to_string(debugCounter) + ", ").c_str());
     }
-
     OutputDebugString("\n\n\n");
     
 
+    // mark newly gnerated meshlet grous as current top level 
     m_current_hierarchy_top_level_groups.clear();
     for (int k = 0; k < MATIS_numPartitions; k++)
     {
@@ -370,14 +371,12 @@ void Mesh::groupMeshlets()
 }
 
 
-// Sorts indices of an edge from small to big
 std::pair<uint, uint> Mesh::sortEdgeIndices(uint v0, uint v1) 
 {
     return (v0 < v1) ? std::make_pair(v0, v1) : std::make_pair(v1, v0);
 }
 
 
-// Function to extract edges from a meshlet
 std::unordered_set<std::pair<uint, uint>, PairHash> Mesh::extractEdges(S_Meshlet meshlet) 
 {
     std::unordered_set<std::pair<uint, uint>, PairHash> edge_set;
@@ -396,7 +395,35 @@ std::unordered_set<std::pair<uint, uint>, PairHash> Mesh::extractEdges(S_Meshlet
     return edge_set;
 }
 
-// Function to count shared edges between two meshlets
+
+std::unordered_set<std::pair<uint, uint>, PairHash> Mesh::extractBoundaryEdgeSet(S_Meshlet meshlet)
+{
+    std::unordered_set<std::pair<uint, uint>, PairHash> edge_set;
+    std::unordered_map<std::pair<uint, uint>, int, PairHash> edgeCount;
+
+    for (uint i = 0; i < meshlet.triangle_count; i++)
+    {
+        uint vertex_index_0 = m_vertex_indices[meshlet.vertex_offset + m_primitive_indices[meshlet.triangle_offset + i * 3 + 0]];
+        uint vertex_index_1 = m_vertex_indices[meshlet.vertex_offset + m_primitive_indices[meshlet.triangle_offset + i * 3 + 1]];
+        uint vertex_index_2 = m_vertex_indices[meshlet.vertex_offset + m_primitive_indices[meshlet.triangle_offset + i * 3 + 2]];
+
+        // Step 1: Count occurrences of each edge
+        edgeCount[sortEdgeIndices(vertex_index_0, vertex_index_1)]++;
+        edgeCount[sortEdgeIndices(vertex_index_1, vertex_index_2)]++;
+        edgeCount[sortEdgeIndices(vertex_index_2, vertex_index_0)]++;
+    }
+
+    // Step 2: Collect edges that appear only once (boundary edges)
+    for (const auto& [edge, count] : edgeCount) {
+        if (count == 1) {  // Boundary edges appear only once
+            edge_set.insert(edge);
+        }
+    }
+
+    return edge_set;
+}
+
+
 uint Mesh::count_shared_edges(const std::unordered_set<std::pair<uint, uint>, PairHash>& edgesA, const std::unordered_set<std::pair<uint, uint>, PairHash>& edgesB) 
 {
     int shared_count = 0;
@@ -409,6 +436,7 @@ uint Mesh::count_shared_edges(const std::unordered_set<std::pair<uint, uint>, Pa
     }
     return shared_count;
 }
+
 
 std::vector<std::pair<uint, uint>> Mesh::extractBoundaryEdges(std::vector<uint>& indices)
 {
@@ -432,6 +460,7 @@ std::vector<std::pair<uint, uint>> Mesh::extractBoundaryEdges(std::vector<uint>&
 
     return boundaryEdges;
 }
+
 
 void Mesh::simplifiyTopLevelGroups()
 {

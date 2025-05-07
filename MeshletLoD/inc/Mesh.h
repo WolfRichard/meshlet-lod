@@ -66,6 +66,8 @@ private:
     std::pair<uint, uint> sortEdgeIndices(uint v0, uint v1);
     // extracts all edges of a specified meshlet and stores them inside a hash map for faster look up
     std::unordered_set<std::pair<uint, uint>, PairHash> extractEdges(S_Meshlet meshlet);
+    // extracts all boundary edges of a specified meshlet and stores them inside a hash map for faster look up
+    std::unordered_set<std::pair<uint, uint>, PairHash> Mesh::extractBoundaryEdgeSet(S_Meshlet meshlet);
     // ccompares the number of boundary edges that are shared between two meshlets
     uint count_shared_edges(const std::unordered_set<std::pair<uint, uint>, PairHash>& edgesA, const std::unordered_set<std::pair<uint, uint>, PairHash>& edgesB);
     // extract all edges that form the border of a meshlet (all edges that are only part of one triangle)
