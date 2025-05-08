@@ -14,7 +14,6 @@ This repository contains a custom virtual geometry implementation that has been 
 ```
 vcpkg install imgui[core,dx12-binding,win32-binding]:x64-windows
 vcpkg install directx-headers
-vcpkg install meshoptimizer
 vcpkg install assimp
 vcpkg install metis
 vcpkg install directxtex[dx12]
