@@ -116,6 +116,7 @@ target_link_libraries( MeshletLoD
     DX12Lib
     D3DCompiler.lib
     Shlwapi.lib
+    meshoptimizer
 )
 
 add_dependencies(MeshletLoD CopyAssets)

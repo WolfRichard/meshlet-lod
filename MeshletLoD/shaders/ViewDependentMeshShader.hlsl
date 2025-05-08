@@ -736,6 +736,7 @@ void main(in uint I : SV_GroupIndex,
         
         float expected_LoD = max(getExpectedLoDLevel(original_world_pos), 0);
         float lerp_value = expected_LoD - meshlet.discrete_level_of_detail;
+        //lerp_value = constants.DebugFloatSliderValue;
         int morphTargetIndex = morphIndicesBuffers[scene_object.mesh_id][meshlet.vertex_offset + v];
         
         if ((constants.BoolConstants & GEO_MORPHING_BIT_POS) && !(constants.BoolConstants & SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS))

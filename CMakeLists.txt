@@ -10,8 +10,9 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin) # Output directory f
 
 project( MeshletLoD LANGUAGES CXX )
 
-add_subdirectory( DX12Lib )
+add_subdirectory( thirdparty/DX12Lib )
 add_subdirectory( MeshletLoD )
+add_subdirectory( thirdparty/meshoptimizer )
 
 # Set the startup project.
 set_directory_properties( PROPERTIES 

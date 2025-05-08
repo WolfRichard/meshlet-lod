@@ -534,10 +534,31 @@ void Mesh::simplifiyTopLevelGroups()
 
         // key == original vertex index, value == morph target vertex index
         std::unordered_map<uint, uint> morph_target_index_indices;
+      
+
+        if (true)
+        {
+            // extract unique vertex indices from index buffer
+            std::unordered_set<uint> unique_vertex_indices;
+            for (uint i : merged_deduplicated_indices)
+                if (unique_vertex_indices.insert(i).second)
+                    morph_target_index_indices[i] = i;
+
+
+            size_t simplifiedIndexCount = meshopt_simplify_tracking(
+                simplified_indices.data(), merged_deduplicated_indices.data(), merged_deduplicated_indices.size(),
+                reinterpret_cast<const float*>(&m_vertices.data()[0].position.x), m_vertices.size(), sizeof(S_Vertex),
+                target_index_count, FLT_MAX, meshopt_SimplifyLockBorder, &lod_error, &morph_target_index_indices); // & meshopt_SimplifyErrorAbsolute bitmask option leads to cracks??? why??
+            simplified_indices.resize(simplifiedIndexCount);
+            current_group.bounding_sphere.radius = lod_error;
+
+            
+       
+        }
 
 
         // Custom simplification algorithm that tracks vertex decimation indices
-        if (m_useCustomSimplification)
+        else if (m_useCustomSimplification)
         {
             // copy original index buffer into resulting simplified index buffer
             simplified_indices = merged_deduplicated_indices;
