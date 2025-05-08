@@ -108,6 +108,8 @@ float ExtractMaxScaleFactor(float4x4 m)
 // also returns the tessellation level that would be necessary for the given sphere
 bool groupSimplificationIsPreciseEnough(S_BoundingSphere bounding_sphere, uint lod_level, out uint tessellation_level)
 {
+    return lod_level < constants.DebugFloatSliderValue;
+    
     float cam_dist = max(distance(constants.CameraWorldPos, bounding_sphere.center) - bounding_sphere.radius, 0.000000001);
     float expected_lod = log2(cam_dist / constants.LoD_Scale);
     tessellation_level = uint(min(max(expected_lod * -1 + 1, 0), MAX_TESSELLATION_LEVEL));

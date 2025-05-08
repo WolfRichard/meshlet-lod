@@ -912,6 +912,8 @@ void ViewDependentMeshletLoD::OnRender(RenderEventArgs& e)
     if (m_screen_space_LoD)         constants.BoolConstants |= SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS;
     if (m_tessellation)             constants.BoolConstants |= TRESSELLATION_BIT_POS;
     if (m_triplanarMapping)         constants.BoolConstants |= TRI_PLANAR_TEXTURE_MAPPING_BIT_POS;
+    if (m_allowLighting)            constants.BoolConstants |= NORMAL_LIGHTING_BIT_POS;
+
     
 
     
@@ -1232,6 +1234,7 @@ void ViewDependentMeshletLoD::updateImGui()
         if (ImGui::Checkbox("Wireframe", &m_wireframe)) createPSO();
         ImGui::SameLine();
         if (ImGui::Checkbox("Back Face Culling", &m_backFaceCulling)) createPSO();
+        ImGui::Checkbox("Normal based Lighting", &m_allowLighting);
         
         static int selected = static_cast<int>(m_shadingMode);  // Index of the selected option
         const char* options[] = { "Disable Debug Visals", "Show Meshlets", "Show Meshlet Grouping", "Show LoDs", "Show Tessellation Level", "Visualize Height Map"};

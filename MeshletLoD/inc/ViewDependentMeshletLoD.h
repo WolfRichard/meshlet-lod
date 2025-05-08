@@ -151,6 +151,7 @@ private:
     bool        m_screen_space_LoD      = false;
     bool        m_backFaceCulling       = true;
     bool        m_triplanarMapping      = false;
+    bool        m_allowLighting         = true;
     float       m_triplanarScale        = 1;
     float       m_triplanarBlendGrade   = 5;
     float       m_displacementScale     = 0.0;
@@ -210,5 +211,5 @@ private:
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
 
     Scene m_scene;
-    char  m_model_file_path[1024] = "C:/Users/wolfr/Desktop/dragon.glb";//"C:/Users/wolfr/Downloads/xyzrgb_dragon.ply/xyzrgb_dragon.ply";//"./assets/scenes/TestScene.glb";
+    char  m_model_file_path[1024] = "./assets/scenes/TorusInstances.glb";//"C:/Users/wolfr/Desktop/plane.glb";//"C:/Users/wolfr/Desktop/dragon.glb";//"./assets/scenes/TestScene.glb";
 };

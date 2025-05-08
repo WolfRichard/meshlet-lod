@@ -481,16 +481,16 @@ uint SampleTriangleBufferAsCharArray(uint i, uint mesh_id)
 }
 
 
-// Hash function from H. Schechter & R. Bridson, goo.gl/RXiKaH
-uint Hash(uint s)
+
+
+uint Hash(uint x)
 {
-    s ^= 2747636419u;
-    s *= 2654435769u;
-    s ^= s >> 16;
-    s *= 2654435769u;
-    s ^= s >> 16;
-    s *= 2654435769u;
-    return s;
+    x ^= x >> 16;
+    x *= 0x85ebca6b; // Large prime
+    x ^= x >> 13;
+    x *= 0xc2b2ae35; // Another large prime
+    x ^= x >> 16;
+    return x;
 }
 
 
@@ -498,7 +498,7 @@ uint Hash(uint s)
 // Resulting float value lies between -1 and 1
 float Random(uint seed)
 {
-    return float(Hash(seed)) / 4294967295.0; // 2^32-1
+    return float(Hash(seed * 3)) / 4294967295.0; // 2^32-1
 }
 
 
@@ -680,13 +680,15 @@ void main(in uint I : SV_GroupIndex,
             
             // set vertex color according to debug shading selection
             float brightness = clamp(clamp(dot(normalize(float3(1, 1, 1)), normal.xyz), 0, 1) + clamp(dot(normalize(float3(-2, 1, -1)), normal.xyz), 0, 0.6), 0.05, 1);
+            if (!(constants.BoolConstants & NORMAL_LIGHTING_BIT_POS))
+                brightness = 1;
             if (constants.shadingSelection == DEFAULT_SHADING)
             {
                 verts[v].Color = brightness;
             }
             else if (constants.shadingSelection == MESHLETS_SHADING)
             {
-                verts[v].Color = Rainbow(Random(payload_task.meshlet_id)) * brightness;
+                verts[v].Color = Rainbow(Random(gid + gs_Payload.global_payload_offset)) * brightness;
             }
             else if (constants.shadingSelection == LOD_SHADING)
             {
@@ -772,13 +774,15 @@ void main(in uint I : SV_GroupIndex,
         
         
         float brightness = clamp(clamp(dot(normalize(float3(1, 1, 1)), normal.xyz), 0, 1) + clamp(dot(normalize(float3(-2, 1, -1)), normal.xyz), 0, 0.6), 0.05, 1);
+        if (!(constants.BoolConstants & NORMAL_LIGHTING_BIT_POS))
+            brightness = 1;
         if (constants.shadingSelection == DEFAULT_SHADING)
         {
             verts[v].Color = brightness;
         }
         else if (constants.shadingSelection == MESHLETS_SHADING)
         {
-            verts[v].Color = Rainbow(Random(payload_task.meshlet_id)) * brightness;
+            verts[v].Color = Rainbow(Random(gid + gs_Payload.global_payload_offset)) * brightness;
         }
         else if (constants.shadingSelection == LOD_SHADING)
         {
