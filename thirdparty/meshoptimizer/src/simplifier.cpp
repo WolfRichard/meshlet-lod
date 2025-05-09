@@ -2093,12 +2093,11 @@ size_t meshopt_simplify(unsigned int* destination, const unsigned int* indices, 
 	return meshopt_simplifyEdge(destination, indices, index_count, vertex_positions_data, vertex_count, vertex_positions_stride, NULL, 0, NULL, 0, NULL, target_index_count, target_error, options, out_result_error);
 }
 
-//********************************************************************************
-// BEGIN: CUSTOM CODE FOR MESHLET-LOD!
-//********************************************************************************
-#include "Windows.h"
-#include <string>
-size_t meshopt_simplifyEdgeTracking(unsigned int* destination, const unsigned int* indices, size_t index_count, const float* vertex_positions_data, size_t vertex_count, size_t vertex_positions_stride, const float* vertex_attributes_data, size_t vertex_attributes_stride, const float* attribute_weights, size_t attribute_count, const unsigned char* vertex_lock, size_t target_index_count, float target_error, unsigned int options, float* out_result_error, std::unordered_map<uint32_t, uint32_t>* morph_target_index_indices)
+/********************************************************************************/
+/*				BEGIN : CUSTOM CODE FOR MESHLET - LOD !							*/
+/*		alternative to meshopt_simplyfy() that returns vertex remap				*/
+/********************************************************************************/
+size_t meshopt_simplifyEdgeTracking(unsigned int* destination, const unsigned int* indices, size_t index_count, const float* vertex_positions_data, size_t vertex_count, size_t vertex_positions_stride, size_t target_index_count, float target_error, unsigned int options, float* out_result_error, std::vector<uint32_t>* vertex_remap)
 {
 	using namespace meshopt;
 
@@ -2107,12 +2106,7 @@ size_t meshopt_simplifyEdgeTracking(unsigned int* destination, const unsigned in
 	assert(vertex_positions_stride % sizeof(float) == 0);
 	assert(target_index_count <= index_count);
 	assert(target_error >= 0);
-	assert((options & ~(meshopt_SimplifyLockBorder | meshopt_SimplifySparse | meshopt_SimplifyErrorAbsolute | meshopt_SimplifyPrune | meshopt_SimplifyInternalDebug)) == 0);
-	assert(vertex_attributes_stride >= attribute_count * sizeof(float) && vertex_attributes_stride <= 256);
-	assert(vertex_attributes_stride % sizeof(float) == 0);
-	assert(attribute_count <= kMaxAttributes);
-	for (size_t i = 0; i < attribute_count; ++i)
-		assert(attribute_weights[i] >= 0);
+	assert((options & ~(meshopt_SimplifyLockBorder | meshopt_SimplifySparse | meshopt_SimplifyErrorAbsolute)) == 0);
 
 	meshopt_Allocator allocator;
 
@@ -2141,89 +2135,23 @@ size_t meshopt_simplifyEdgeTracking(unsigned int* destination, const unsigned in
 	unsigned char* vertex_kind = allocator.allocate<unsigned char>(vertex_count);
 	unsigned int* loop = allocator.allocate<unsigned int>(vertex_count);
 	unsigned int* loopback = allocator.allocate<unsigned int>(vertex_count);
-	classifyVertices(vertex_kind, loop, loopback, vertex_count, adjacency, remap, wedge, vertex_lock, sparse_remap, options);
-
-#if TRACE
-	size_t unique_positions = 0;
-	for (size_t i = 0; i < vertex_count; ++i)
-		unique_positions += remap[i] == i;
-
-	printf("position remap: %d vertices => %d positions\n", int(vertex_count), int(unique_positions));
-
-	size_t kinds[Kind_Count] = {};
-	for (size_t i = 0; i < vertex_count; ++i)
-		kinds[vertex_kind[i]] += remap[i] == i;
-
-	printf("kinds: manifold %d, border %d, seam %d, complex %d, locked %d\n",
-	    int(kinds[Kind_Manifold]), int(kinds[Kind_Border]), int(kinds[Kind_Seam]), int(kinds[Kind_Complex]), int(kinds[Kind_Locked]));
-#endif
+	classifyVertices(vertex_kind, loop, loopback, vertex_count, adjacency, remap, wedge, NULL, sparse_remap, options);
 
 	Vector3* vertex_positions = allocator.allocate<Vector3>(vertex_count);
 	float vertex_scale = rescalePositions(vertex_positions, vertex_positions_data, vertex_count, vertex_positions_stride, sparse_remap);
 
-	float* vertex_attributes = NULL;
-
-	if (attribute_count)
-	{
-		unsigned int attribute_remap[kMaxAttributes];
-
-		// remap attributes to only include ones with weight > 0 to minimize memory/compute overhead for quadrics
-		size_t attributes_used = 0;
-		for (size_t i = 0; i < attribute_count; ++i)
-			if (attribute_weights[i] > 0)
-				attribute_remap[attributes_used++] = unsigned(i);
-
-		attribute_count = attributes_used;
-		vertex_attributes = allocator.allocate<float>(vertex_count * attribute_count);
-		rescaleAttributes(vertex_attributes, vertex_attributes_data, vertex_count, vertex_attributes_stride, attribute_weights, attribute_count, attribute_remap, sparse_remap);
-	}
 
 	Quadric* vertex_quadrics = allocator.allocate<Quadric>(vertex_count);
 	memset(vertex_quadrics, 0, vertex_count * sizeof(Quadric));
 
-	Quadric* attribute_quadrics = NULL;
-	QuadricGrad* attribute_gradients = NULL;
-
-	if (attribute_count)
-	{
-		attribute_quadrics = allocator.allocate<Quadric>(vertex_count);
-		memset(attribute_quadrics, 0, vertex_count * sizeof(Quadric));
-
-		attribute_gradients = allocator.allocate<QuadricGrad>(vertex_count * attribute_count);
-		memset(attribute_gradients, 0, vertex_count * attribute_count * sizeof(QuadricGrad));
-	}
 
 	fillFaceQuadrics(vertex_quadrics, result, index_count, vertex_positions, remap);
 	fillEdgeQuadrics(vertex_quadrics, result, index_count, vertex_positions, remap, vertex_kind, loop, loopback);
-
-	if (attribute_count)
-		fillAttributeQuadrics(attribute_quadrics, attribute_gradients, result, index_count, vertex_positions, vertex_attributes, attribute_count);
 
 	unsigned int* components = NULL;
 	float* component_errors = NULL;
 	size_t component_count = 0;
 	float component_nexterror = 0;
-
-	if (options & meshopt_SimplifyPrune)
-	{
-		components = allocator.allocate<unsigned int>(vertex_count);
-		component_count = buildComponents(components, vertex_count, result, index_count, remap);
-
-		component_errors = allocator.allocate<float>(component_count * 4); // overallocate for temporary use inside measureComponents
-		measureComponents(component_errors, component_count, components, vertex_positions, vertex_count);
-
-		component_nexterror = FLT_MAX;
-		for (size_t i = 0; i < component_count; ++i)
-			component_nexterror = component_nexterror > component_errors[i] ? component_errors[i] : component_nexterror;
-
-#if TRACE
-		printf("components: %d (min error %e)\n", int(component_count), sqrtf(component_nexterror));
-#endif
-	}
-
-#if TRACE
-	size_t pass_count = 0;
-#endif
 
 	size_t collapse_capacity = boundEdgeCollapses(adjacency, vertex_count, index_count, vertex_kind);
 
@@ -2252,11 +2180,8 @@ size_t meshopt_simplifyEdgeTracking(unsigned int* destination, const unsigned in
 		if (edge_collapse_count == 0)
 			break;
 
-#if TRACE
-		printf("pass %d:%c", int(pass_count++), TRACE >= 2 ? '\n' : ' ');
-#endif
 
-		rankEdgeCollapses(edge_collapses, edge_collapse_count, vertex_positions, vertex_attributes, vertex_quadrics, attribute_quadrics, attribute_gradients, attribute_count, remap, wedge, vertex_kind, loop, loopback);
+		rankEdgeCollapses(edge_collapses, edge_collapse_count, vertex_positions, NULL, vertex_quadrics, NULL, NULL, NULL, remap, wedge, vertex_kind, loop, loopback);
 
 		sortEdgeCollapses(collapse_order, edge_collapses, edge_collapse_count);
 
@@ -2269,32 +2194,11 @@ size_t meshopt_simplifyEdgeTracking(unsigned int* destination, const unsigned in
 
 		size_t collapses = performEdgeCollapses(collapse_remap, collapse_locked, edge_collapses, edge_collapse_count, collapse_order, remap, wedge, vertex_kind, loop, loopback, vertex_positions, adjacency, triangle_collapse_goal, error_limit, result_error);
 
-
-
-		for (int i = 0; i < vertex_count; i++)
-		{
-			
-			if (i != collapse_remap[i])
-				(*morph_target_index_indices)[i] = collapse_remap[i];
-
-			for (auto& [key, value] : *morph_target_index_indices)
-			{
-				if (value == i)
-					value = collapse_remap[i];
-			}
-		}
-
-
-
-
 		// no edges can be collapsed any more due to hitting the error limit or triangle collapse limit
 		if (collapses == 0)
 			break;
 
-		updateQuadrics(collapse_remap, vertex_count, vertex_quadrics, attribute_quadrics, attribute_gradients, attribute_count, vertex_positions, remap, vertex_error);
-
-		// updateQuadrics will update vertex error if we use attributes, but if we don't then result_error and vertex_error are equivalent
-		vertex_error = attribute_count == 0 ? result_error : vertex_error;
+		updateQuadrics(collapse_remap, vertex_count, vertex_quadrics, NULL, NULL, NULL, vertex_positions, remap, vertex_error);
 
 		remapEdgeLoops(loop, vertex_count, collapse_remap);
 		remapEdgeLoops(loopback, vertex_count, collapse_remap);
@@ -2302,53 +2206,16 @@ size_t meshopt_simplifyEdgeTracking(unsigned int* destination, const unsigned in
 		size_t new_count = remapIndexBuffer(result, result_count, collapse_remap);
 		assert(new_count < result_count);
 
-		result_count = new_count;
 
-		if ((options & meshopt_SimplifyPrune) && result_count > target_index_count && component_nexterror <= vertex_error)
-			result_count = pruneComponents(result, result_count, components, component_errors, component_count, vertex_error, component_nexterror);
-	}
-
-	// we're done with the regular simplification but we're still short of the target; try pruning more aggressively towards error_limit
-	while ((options & meshopt_SimplifyPrune) && result_count > target_index_count && component_nexterror <= error_limit)
-	{
-#if TRACE
-		printf("pass %d: cleanup; ", int(pass_count++));
-#endif
-
-		float component_cutoff = component_nexterror * 1.5f < error_limit ? component_nexterror * 1.5f : error_limit;
-
-		// track maximum error in eligible components as we are increasing resulting error
-		float component_maxerror = 0;
-		for (size_t i = 0; i < component_count; ++i)
-			if (component_errors[i] > component_maxerror && component_errors[i] <= component_cutoff)
-				component_maxerror = component_errors[i];
-
-		size_t new_count = pruneComponents(result, result_count, components, component_errors, component_count, component_cutoff, component_nexterror);
-		if (new_count == result_count)
-			break;
-
-		result_count = new_count;
-		result_error = result_error < component_maxerror ? component_maxerror : result_error;
-		vertex_error = vertex_error < component_maxerror ? component_maxerror : vertex_error;
-	}
-
-#if TRACE
-	printf("result: %d triangles, error: %e; total %d passes\n", int(result_count / 3), sqrtf(result_error), int(pass_count));
-#endif
-
-	// if debug visualization data is requested, fill it instead of index data; for simplicity, this doesn't work with sparsity
-	if ((options & meshopt_SimplifyInternalDebug) && !sparse_remap)
-	{
-		assert(Kind_Count <= 8 && vertex_count < (1 << 28)); // 3 bit kind, 1 bit loop
-
-		for (size_t i = 0; i < result_count; i += 3)
+	
+		for (int i = 0; i < vertex_count; i++)
 		{
-			unsigned int a = result[i + 0], b = result[i + 1], c = result[i + 2];
-
-			result[i + 0] |= (vertex_kind[a] << 28) | (unsigned(loop[a] == b || loopback[b] == a) << 31);
-			result[i + 1] |= (vertex_kind[b] << 28) | (unsigned(loop[b] == c || loopback[c] == b) << 31);
-			result[i + 2] |= (vertex_kind[c] << 28) | (unsigned(loop[c] == a || loopback[a] == c) << 31);
+			(*vertex_remap)[i] = collapse_remap[(*vertex_remap)[i]];
 		}
+			
+		
+
+		result_count = new_count;
 	}
 
 	// convert resulting indices back into the dense space of the larger mesh
@@ -2360,41 +2227,17 @@ size_t meshopt_simplifyEdgeTracking(unsigned int* destination, const unsigned in
 	if (out_result_error)
 		*out_result_error = sqrtf(result_error) * error_scale;
 
-
-
-	
-	
-
-	// use already existing vertex remap and copy its data into the morph target indices
-	for (auto& [key, value] : *morph_target_index_indices)
-	{
-		//(*morph_target_index_indices)[key] = remap[key];
-		//if (key != collapse_remap[key])
-			//OutputDebugString("*\t");
-		//OutputDebugString(("\t[" + std::to_string(key) + "] --> [" + std::to_string(collapse_remap[key]) + "]\n").c_str());
-	}
-	
-	for (unsigned int i = 0; i < vertex_count; i++)
-	{
-		//(*morph_target_index_indices)[i] = remap[i];
-		//OutputDebugString(("[" + std::to_string(i) + "] --> [" + std::to_string(remap[i]) + "]\n").c_str());
-	}
-	
-
-
-
-
 	return result_count;
 }
 
-size_t meshopt_simplify_tracking(unsigned int* destination, const unsigned int* indices, size_t index_count, const float* vertex_positions_data, size_t vertex_count, size_t vertex_positions_stride, size_t target_index_count, float target_error, unsigned int options, float* out_result_error, std::unordered_map<uint32_t, uint32_t>* morph_target_index_indices)
+size_t meshopt_simplify_tracking(unsigned int* destination, const unsigned int* indices, size_t index_count, const float* vertex_positions_data, size_t vertex_count, size_t vertex_positions_stride, size_t target_index_count, float target_error, unsigned int options, float* out_result_error, std::vector<uint32_t>* vertex_remap)
 {
-	return meshopt_simplifyEdgeTracking(destination, indices, index_count, vertex_positions_data, vertex_count, vertex_positions_stride, NULL, 0, NULL, 0, NULL, target_index_count, target_error, options, out_result_error, morph_target_index_indices);
+	return meshopt_simplifyEdgeTracking(destination, indices, index_count, vertex_positions_data, vertex_count, vertex_positions_stride, target_index_count, target_error, options, out_result_error, vertex_remap);
 }
 
-//********************************************************************************
-// END: CUSTOM CODE FOR MESHLET-LOD!
-//********************************************************************************
+/********************************************************************************/
+/*					END : CUSTOM CODE FOR MESHLET - LOD !						*/
+/********************************************************************************/
 
 size_t meshopt_simplifyWithAttributes(unsigned int* destination, const unsigned int* indices, size_t index_count, const float* vertex_positions_data, size_t vertex_count, size_t vertex_positions_stride, const float* vertex_attributes_data, size_t vertex_attributes_stride, const float* attribute_weights, size_t attribute_count, const unsigned char* vertex_lock, size_t target_index_count, float target_error, unsigned int options, float* out_result_error)
 {

@@ -56,10 +56,10 @@ public:
 private:
     // custom simplification needed for geomorphing
     // if disabled it will default to the simplification provided by the mesh optimizer library which is currently faster and results in better simplification quality
-    bool m_useCustomSimplification = true;
+    bool m_useCustomSimplification = false;
 
     // limits the maximum triangle count of meshes before they are preprocessed, so that preprocessing does not exceed reasonable times
-    uint m_maximum_mesh_triangle_count = 1000000; // 1 million primitives taes around 9 min
+    uint m_maximum_mesh_triangle_count = 100000; // 1 million primitives taes around 7 min
 
     // returns an edge represented as a pair of two uints
     // vertex indices will be ordered by value to make later comparing of two edges simpler

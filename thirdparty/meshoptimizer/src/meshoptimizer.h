@@ -416,7 +416,7 @@ MESHOPTIMIZER_API size_t meshopt_simplify(unsigned int* destination, const unsig
  * Custom Alternative to meshopt_simplify()
  * also tracks and returns what vertex is merged into what vertex
  */
-MESHOPTIMIZER_API size_t meshopt_simplify_tracking(unsigned int* destination, const unsigned int* indices, size_t index_count, const float* vertex_positions, size_t vertex_count, size_t vertex_positions_stride, size_t target_index_count, float target_error, unsigned int options, float* result_error, std::unordered_map<uint32_t, uint32_t>* morph_target_index_indices);
+MESHOPTIMIZER_API size_t meshopt_simplify_tracking(unsigned int* destination, const unsigned int* indices, size_t index_count, const float* vertex_positions, size_t vertex_count, size_t vertex_positions_stride, size_t target_index_count, float target_error, unsigned int options, float* result_error, std::vector<uint32_t>* vertex_remap);
 
 
 /**

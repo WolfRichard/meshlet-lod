@@ -626,10 +626,8 @@ void main(in uint I : SV_GroupIndex,
                 {
                     if (current_vertex_lod <= 0)
                     {
-      
                         vertex_index = gs_tessellation_morph_targets[vertex_index];
                         current_vertex_lod++;
-
                         lerp_value--;
                     }
                     else
@@ -657,7 +655,6 @@ void main(in uint I : SV_GroupIndex,
                     vertex = verticesBuffers[scene_object.mesh_id][vertexIndicesBuffers[scene_object.mesh_id][vertex_index]];
                     morph_target_vertex = verticesBuffers[scene_object.mesh_id][vertexIndicesBuffers[scene_object.mesh_id][morphIndicesBuffers[scene_object.mesh_id][vertex_index]]];
                 }
-                
                 
                 vertex = linearVertexInterpolation(vertex, morph_target_vertex, lerp_value);
             }
@@ -688,7 +685,7 @@ void main(in uint I : SV_GroupIndex,
             }
             else if (constants.shadingSelection == MESHLETS_SHADING)
             {
-                verts[v].Color = Rainbow(Random(gid + gs_Payload.global_payload_offset)) * brightness;
+                verts[v].Color = Rainbow(Random(scene_object.mesh_id + payload_task.meshlet_id)) * brightness;
             }
             else if (constants.shadingSelection == LOD_SHADING)
             {
@@ -712,7 +709,6 @@ void main(in uint I : SV_GroupIndex,
             }
         }
         
-        
         for (uint p = I; p < gs_triangle_count; p += GROUP_SIZE)
         {
             tris[p] = gs_triangles[p];
@@ -735,6 +731,7 @@ void main(in uint I : SV_GroupIndex,
         float4 original_world_pos = mul(float4(vertex.position.xyz, 1.0), scene_object.object_matrix);
         
         float expected_LoD = max(getExpectedLoDLevel(original_world_pos), 0);
+        //expected_LoD = max(meshlet.discrete_level_of_detail, constants.DebugFloatSliderValue);
         float lerp_value = expected_LoD - meshlet.discrete_level_of_detail;
         //lerp_value = constants.DebugFloatSliderValue;
         int morphTargetIndex = morphIndicesBuffers[scene_object.mesh_id][meshlet.vertex_offset + v];
@@ -783,7 +780,7 @@ void main(in uint I : SV_GroupIndex,
         }
         else if (constants.shadingSelection == MESHLETS_SHADING)
         {
-            verts[v].Color = Rainbow(Random(gid + gs_Payload.global_payload_offset)) * brightness;
+            verts[v].Color = Rainbow(Random(scene_object.mesh_id + payload_task.meshlet_id)) * brightness;
         }
         else if (constants.shadingSelection == LOD_SHADING)
         {

@@ -191,6 +191,16 @@ void Mesh::generateLeafMeshlets()
         m_current_hierarchy_top_level_meshlets.push_back((int)m_meshlets.size());
         m_meshlets.push_back(newMeshlet);
     }
+
+    m_morph_indices.resize(m_vertex_indices.size(), 0);
+    for (uint m = 0; m < m_current_hierarchy_top_level_meshlets.size(); m++) // go over every simplified meshlet of the current group
+    {
+        S_Meshlet& current_simplified_meshlet = m_meshlets[m_current_hierarchy_top_level_meshlets[m]];
+        for (unsigned char vi = 0; vi < current_simplified_meshlet.vertex_count; vi++)
+        {
+            m_morph_indices[current_simplified_meshlet.vertex_offset + vi] = current_simplified_meshlet.vertex_offset + vi;
+        }
+    }
 }
 
 void Mesh::buildMeshletHierachy() 
@@ -511,32 +521,23 @@ void Mesh::simplifiyTopLevelGroups()
         //current_group.bounding_sphere = computeBoundingSphereRitter(meshlet_bounding_spheres);
 
         // simplify the meshlet group to have enough space to hold 2 meshlets
-        size_t target_index_count = GROUP_SPLIT_COUNT * MAX_MESHLET_VERTEX_COUNT * 3; //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! should be "GROUP_SPLIT_COUNT * MAX_MESHLET_PRIMITIVE_COUNT * 3", but that would blow past the vertex limit and generate to many meshlets
         std::vector<uint> simplified_indices(merged_deduplicated_indices.size());
         float lod_error = 0.0f;
-        if (!m_useCustomSimplification) 
-        {
-            size_t simplifiedIndexCount = meshopt_simplify(
-                simplified_indices.data(), merged_deduplicated_indices.data(), merged_deduplicated_indices.size(),
-                reinterpret_cast<const float*>(&m_vertices.data()[0].position.x), m_vertices.size(), sizeof(S_Vertex),
-                target_index_count, FLT_MAX, meshopt_SimplifyLockBorder, &lod_error); // & meshopt_SimplifyErrorAbsolute bitmask option leads to cracks??? why??
-            simplified_indices.resize(simplifiedIndexCount);
-            //current_group.bounding_sphere.radius = lod_error;
-        }
-
-
-
-
-
-
-
+        
 
 
         // key == original vertex index, value == morph target vertex index
         std::unordered_map<uint, uint> morph_target_index_indices;
-      
 
-        if (true)
+        // stores what vertex was simplified into what other vertex
+        std::vector<uint> vertex_remap(m_vertices.size(), -1);
+        for (int i = 0; i < m_vertices.size(); i++)
+        {
+            vertex_remap[i] = i;
+        }
+        std::vector<int> per_vertex_morph_index_remap(m_vertices.size(), -1);
+
+        if (!m_useCustomSimplification)
         {
             // extract unique vertex indices from index buffer
             std::unordered_set<uint> unique_vertex_indices;
@@ -544,16 +545,17 @@ void Mesh::simplifiyTopLevelGroups()
                 if (unique_vertex_indices.insert(i).second)
                     morph_target_index_indices[i] = i;
 
+            size_t target_index_count = GROUP_SPLIT_COUNT * MAX_MESHLET_VERTEX_COUNT * 3; // TODO: !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! should be "GROUP_SPLIT_COUNT * MAX_MESHLET_PRIMITIVE_COUNT * 3", but that would blow past the vertex limit and generate to many meshlets
 
             size_t simplifiedIndexCount = meshopt_simplify_tracking(
                 simplified_indices.data(), merged_deduplicated_indices.data(), merged_deduplicated_indices.size(),
                 reinterpret_cast<const float*>(&m_vertices.data()[0].position.x), m_vertices.size(), sizeof(S_Vertex),
-                target_index_count, FLT_MAX, meshopt_SimplifyLockBorder, &lod_error, &morph_target_index_indices); // & meshopt_SimplifyErrorAbsolute bitmask option leads to cracks??? why??
+                target_index_count, FLT_MAX, meshopt_SimplifyLockBorder /* | meshopt_SimplifySparse */ | meshopt_SimplifyErrorAbsolute, &lod_error, &vertex_remap);
             simplified_indices.resize(simplifiedIndexCount);
-            current_group.bounding_sphere.radius = lod_error;
+            //current_group.bounding_sphere.radius = lod_error;
 
             
-       
+            
         }
 
 
@@ -837,42 +839,90 @@ void Mesh::simplifiyTopLevelGroups()
         }
 
         // transform morph_target_index_indices  destination (value) entries to reference into the m_vertex_indice buffer instead
-        for (uint m = 0; m < GROUP_SPLIT_COUNT; m++) // go over every simplified meshlet of the current group
+    
+        if (m_useCustomSimplification)
         {
-            S_Meshlet& current_simplified_meshlet = m_meshlets[current_group.simplified_meshlets[m]];
-            for (unsigned char svi = 0; svi < current_simplified_meshlet.vertex_count; svi++)
+            std::vector<uint> to_be_erased_morph_entries;
+            for (auto& [origin_index, morph_target_index] : morph_target_index_indices)
             {
-                uint simplified_vertex_index = m_vertex_indices[current_simplified_meshlet.vertex_offset + svi];
-                
-                for (auto& [origin_index, morph_target_index] : morph_target_index_indices)
+                bool merges_into_simplified_group = false;
+                for (uint m = 0; m < GROUP_SPLIT_COUNT; m++) // go over every simplified meshlet of the current group
                 {
-                    if (morph_target_index == simplified_vertex_index)
+                    S_Meshlet& current_simplified_meshlet = m_meshlets[current_group.simplified_meshlets[m]];
+                    for (unsigned char svi = 0; svi < current_simplified_meshlet.vertex_count; svi++)
                     {
-                        morph_target_index = current_simplified_meshlet.vertex_offset + svi;
+                        uint simplified_vertex_index = m_vertex_indices[current_simplified_meshlet.vertex_offset + svi];
+
+                        if (morph_target_index == simplified_vertex_index)
+                        {
+                            morph_target_index = current_simplified_meshlet.vertex_offset + svi;
+                            merges_into_simplified_group = true;
+                            break;
+                        }
                     }
                 }
-                
+                if (!merges_into_simplified_group)
+                {
+                    to_be_erased_morph_entries.push_back(origin_index);
+                }
+            }
+
+            for (auto i : to_be_erased_morph_entries)
+                morph_target_index_indices.erase(i);
+
+
+            m_morph_indices.resize(m_vertex_indices.size(), 0); // resize in case new meshlets got added in previous hierarchy expansion
+            for (uint m = 0; m < current_group.meshlet_count; m++) // go over every meshlet of the current group
+            {
+                S_Meshlet& current_meshlet = m_meshlets[current_group.meshlets[m]];
+
+                for (uint vi = 0; vi < current_meshlet.vertex_count; vi++)
+                {
+                    uint vertex_index = m_vertex_indices[current_meshlet.vertex_offset + vi];
+
+                    auto morph_target_index = morph_target_index_indices.find(vertex_index);
+                    if (morph_target_index != morph_target_index_indices.end()) {
+                        m_morph_indices[current_meshlet.vertex_offset + vi] = morph_target_index->second;
+                    }
+                    else
+                    {
+                        m_morph_indices[current_meshlet.vertex_offset + vi] = current_meshlet.vertex_offset + vi;
+                        assert(false);
+                    }
+                }
             }
         }
-
-
-        m_morph_indices.resize(m_vertex_indices.size(), 0); // resize in case new meshlets got added in previous hierarchy expansion
-        for (uint m = 0; m < current_group.meshlet_count; m++) // go over every meshlet of the current group
+        else 
         {
-            S_Meshlet& current_meshlet = m_meshlets[current_group.meshlets[m]];
-
-            for (uint vi = 0; vi < current_meshlet.vertex_count; vi++) 
+            for (uint m = 0; m < GROUP_SPLIT_COUNT; m++)
             {
-                uint vertex_index = m_vertex_indices[current_meshlet.vertex_offset + vi];
-                
-                auto morph_target_index = morph_target_index_indices.find(vertex_index);
-                if (morph_target_index != morph_target_index_indices.end()) {
-                    m_morph_indices[current_meshlet.vertex_offset + vi] = morph_target_index->second;
-                }
-                else
+                S_Meshlet& current_simplified_meshlet = m_meshlets[current_group.simplified_meshlets[m]];
+                for (unsigned char svi = 0; svi < current_simplified_meshlet.vertex_count; svi++)
                 {
-                    m_morph_indices[current_meshlet.vertex_offset + vi] = current_meshlet.vertex_offset + vi;
-                    assert(false);
+                    uint simplified_vertex_index = m_vertex_indices[current_simplified_meshlet.vertex_offset + svi];
+
+                    for (uint i = 0; i < m_vertices.size(); i++)
+                    {
+                        if (vertex_remap[i] == simplified_vertex_index)
+                            per_vertex_morph_index_remap[i] = current_simplified_meshlet.vertex_offset + svi;
+                    }
+                }
+            }
+
+
+            m_morph_indices.resize(m_vertex_indices.size(), 0); // resize in case new meshlets got added in previous hierarchy expansion
+            for (uint m = 0; m < current_group.meshlet_count; m++) // go over every meshlet of the current group
+            {
+                S_Meshlet& current_meshlet = m_meshlets[current_group.meshlets[m]];
+
+                for (uint vi = 0; vi < current_meshlet.vertex_count; vi++)
+                {
+                    uint vertex_index = m_vertex_indices[current_meshlet.vertex_offset + vi];
+                    if (per_vertex_morph_index_remap[vertex_index] >= 0)
+                    {
+                        //OutputDebugString(("[" + std::to_string(vertex_index) + "] -> [" + std::to_string(vertex_remap[vertex_index]) + "]\n").c_str());
+                        m_morph_indices[current_meshlet.vertex_offset + vi] = per_vertex_morph_index_remap[vertex_index];
+                    }
                 }
             }
         }
