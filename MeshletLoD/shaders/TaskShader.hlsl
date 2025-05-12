@@ -84,7 +84,7 @@ bool isInFrustum(float3 center, float radius)
     float4 f4Center = float4(center, 1.0);
     for (int i = 0; i < 6; ++i)
     {
-        if (dot(constants.Frustum[i], f4Center) < -radius - 1) // the "-1" is just a bandage-fix
+        if (dot(constants.Frustum[i], f4Center) < -radius - 1) // TODO: the "-1" is just a bandage-fix
             return false;
     }
     return true;

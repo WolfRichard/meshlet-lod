@@ -22,8 +22,8 @@ Mesh::Mesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
     OutputDebugString("Finished Hierarchy Generation\n");
 
     // debug output meshlet hierarchy
-    printTreeFromTop(m_hierarchy_root_group);
-    printAllMeshlets();
+    //printTreeFromTop(m_hierarchy_root_group);
+    //printAllMeshlets();
 }
 
 
@@ -216,7 +216,8 @@ void Mesh::buildMeshletHierachy()
     }
    
     assert(m_current_hierarchy_top_level_groups.size() == 2);
-    OutputDebugString(("\n\n\nNumber of Top Level Meshlets at tree top: " + std::to_string(m_current_hierarchy_top_level_meshlets.size())).c_str());
+    OutputDebugString(("\nNumber of Meshlets: " + std::to_string(m_current_hierarchy_top_level_meshlets.size()) + "\n").c_str());
+    OutputDebugString(("Number of Groups: " + std::to_string(1) + "\n").c_str());
     
     // edge case handeling for root nodes
     finalTopLevelMeshletGrouping();
@@ -233,12 +234,13 @@ void Mesh::buildMeshletHierachy()
 
     // Check if one of a groups simplfied Meshlets is part of another groups base meshlets, if so declare it its parent
     // with the limitation of only one parent and two children per group
-    OutputDebugString(("\n\nNumber of Groups: " + std::to_string(m_meshlet_groups.size()) + "\n\n").c_str());
-    OutputDebugString(("\nRecursion Tree Depth: " + std::to_string(m_hierarchy_per_level_group_count.size()) + "\n\n").c_str());
-    for (uint count : m_hierarchy_per_level_group_count) OutputDebugString((std::to_string(count) + ", ").c_str());
+    OutputDebugString(("\nTotal number of Meshlets: " + std::to_string(m_meshlets.size() - 1) + "\n").c_str());
+    OutputDebugString(("Total number of Groups: " + std::to_string(m_meshlet_groups.size()) + "\n").c_str());
+    OutputDebugString(("Hierarchy Tree Depth: " + std::to_string(m_hierarchy_per_level_group_count.size()) + "\n").c_str());
+    //for (uint count : m_hierarchy_per_level_group_count) OutputDebugString((std::to_string(count) + ", ").c_str());
     //findParentsItterative();
-    OutputDebugString("\n\n");
-    OutputDebugString(("Size vertex_indices vector: " + std::to_string(m_vertex_indices.size()) + " Size morph_indices vector: " + std::to_string(m_morph_indices.size()) + "\n").c_str());
+    //OutputDebugString("\n\n");
+    //OutputDebugString(("Size vertex_indices vector: " + std::to_string(m_vertex_indices.size()) + " Size morph_indices vector: " + std::to_string(m_morph_indices.size()) + "\n").c_str());
 }
 
 
@@ -322,10 +324,8 @@ void Mesh::groupMeshlets()
         groupMeshletCounts[k] = meshletCounter;
     }
 
-    
-    OutputDebugString("\n\n\n");
-
-    OutputDebugString(("Number of Meshlets: " + std::to_string(m_current_hierarchy_top_level_meshlets.size())).c_str());
+    OutputDebugString(("\nNumber of Meshlets: " + std::to_string(m_current_hierarchy_top_level_meshlets.size()) + "\n").c_str());
+    OutputDebugString(("Number of Groups: " + std::to_string(MATIS_numPartitions) + "\n").c_str());
 
     
     int debugCounter = 0;
@@ -343,7 +343,7 @@ void Mesh::groupMeshlets()
         else OutputDebugString("\nMeshlet shares no Edge!!!!!");
 
     }
-    */
+    
 
     OutputDebugString("\nRESULT: ");
     for (auto assignedGroupIndex : MATIS_outputPartitionsArray)
@@ -355,10 +355,11 @@ void Mesh::groupMeshlets()
         for (auto assignedGroupIndex : MATIS_outputPartitionsArray)
             if (k == assignedGroupIndex)
                 debugCounter++;
+        assert(debugCounter <= 5 && debugCounter >= 4);
         OutputDebugString((std::to_string(debugCounter) + ", ").c_str());
     }
     OutputDebugString("\n\n\n");
-    
+    */
 
     // mark newly gnerated meshlet grous as current top level 
     m_current_hierarchy_top_level_groups.clear();
@@ -479,9 +480,10 @@ void Mesh::simplifiyTopLevelGroups()
 {
     m_current_hierarchy_top_level_meshlets.clear(); // clear the top level of meshlets as it will be replaced by their simplified version
 
-    OutputDebugString(("\n\nNumber of Top LEVEL GROUPS: " + std::to_string(m_current_hierarchy_top_level_groups.size())).c_str());
+    //OutputDebugString(("\n\nNumber of Top LEVEL GROUPS: " + std::to_string(m_current_hierarchy_top_level_groups.size())).c_str());
     for (uint g = 0; g < m_current_hierarchy_top_level_groups.size(); g++) 
     {
+        OutputDebugString(("\t -> simplifiying group[" + std::to_string(g) + "]\n").c_str());
         S_MeshletGroup& current_group = m_meshlet_groups[m_current_hierarchy_top_level_groups[g]];
         // combined triangles of all meshlets (in reference to the original vertex buffer)
         std::vector<uint> merged_deduplicated_indices; 
@@ -783,11 +785,12 @@ void Mesh::simplifiyTopLevelGroups()
         uint meshlet_count = (uint)meshopt_buildMeshlets(meshlets.data(), vertex_indices.data(), primitive_indices.data(), simplified_indices.data(), simplified_indices.size(), &m_vertices[0].position.x, m_vertices.size(), sizeof(S_Vertex), MAX_MESHLET_VERTEX_COUNT, MAX_MESHLET_PRIMITIVE_COUNT, cone_weight);
         meshlets.resize(meshlet_count);
 
+        /*
         OutputDebugString(("\n\nNumber of Triangles before Simplification: " + std::to_string(merged_deduplicated_indices.size() / 3) + " Number of Triangles after Simplification: " + std::to_string(simplified_indices.size() / 3)).c_str());
         OutputDebugString(("\nNumber of Meshlets: " + std::to_string(meshlet_count) + " Maximum Number of Meshlets: " + std::to_string(max_meshlets)).c_str());
         for (auto meshlet : meshlets)
             OutputDebugString(("\n\tNumber of Vertices: " + std::to_string(meshlet.vertex_count) + " Number of Triangles: " + std::to_string(meshlet.triangle_count)).c_str());
-
+        */
         assert(meshlet_count == 2); //currently root group only simplifies to a single meshlet???
 
         // add new vertex/primitive-indicesbuffers to the main buffer and offset meshlet meta data accordingly
