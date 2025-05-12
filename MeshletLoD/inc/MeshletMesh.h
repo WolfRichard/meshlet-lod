@@ -14,7 +14,7 @@
 namespace
 {
 
-#include "../shaders/Structures.fxh"
+#include "../shaders/DiscreteStructures.fxh"
 
 } // namespace
 

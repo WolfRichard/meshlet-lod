@@ -1,4 +1,4 @@
-# include "Structures.fxh"
+# include "DiscreteStructures.fxh"
 
 // Input buffers (read-only)
 

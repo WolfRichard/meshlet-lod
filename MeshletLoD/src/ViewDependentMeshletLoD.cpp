@@ -5,7 +5,7 @@
 
 #include "HLSLnames.h"
 
-#include "../shaders/ViewDependentStructures.fxh"
+#include "../shaders/Structures.fxh"
 
 #include <Application.h>
 #include <CommandQueue.h>
@@ -535,9 +535,9 @@ bool ViewDependentMeshletLoD::LoadContent()
     ThrowIfFailed(device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&m_DSVHeap)));
 
     // Load shaders.
-    ThrowIfFailed(D3DReadFileToBlob(L"ViewDependentPixelShader.cso", &m_pixelShaderBlob));
-    ThrowIfFailed(D3DReadFileToBlob(L"ViewDependentMeshShader.cso", &m_meshShaderBlob));
-    ThrowIfFailed(D3DReadFileToBlob(L"ViewDependentTaskShader.cso", &m_taskShaderBlob));
+    ThrowIfFailed(D3DReadFileToBlob(L"PixelShader.cso", &m_pixelShaderBlob));
+    ThrowIfFailed(D3DReadFileToBlob(L"MeshShader.cso", &m_meshShaderBlob));
+    ThrowIfFailed(D3DReadFileToBlob(L"TaskShader.cso", &m_taskShaderBlob));
 
     // Create a root signature.
     D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};

@@ -36,7 +36,7 @@ set( HEADER_FILES
     inc/Mesh.h
     inc/Scene.h
     inc/ViewDependentMeshletLoD.h
-    shaders/ViewDependentStructures.fxh
+    shaders/DiscreteStructures.fxh
 
 )
 
@@ -60,9 +60,9 @@ set( SHADER_FILES
     shaders/MeshShader.hlsl
     shaders/PixelShader.hlsl
     shaders/ObjectCulling_ComputeShader.hlsl
-    shaders/ViewDependentMeshShader.hlsl
-    shaders/ViewDependentTaskShader.hlsl
-    shaders/ViewDependentPixelShader.hlsl
+    shaders/DiscreteMeshShader.hlsl
+    shaders/DiscreteTaskShader.hlsl
+    shaders/DiscretePixelShader.hlsl
 )
 
 source_group( "Resources\\Shaders" FILES ${SHADER_FILES} )
@@ -87,17 +87,17 @@ set_source_files_properties( shaders/ObjectCulling_ComputeShader.hlsl PROPERTIES
     VS_SHADER_MODEL 6.6
 )
 
-set_source_files_properties( shaders/ViewDependentMeshShader.hlsl PROPERTIES 
+set_source_files_properties( shaders/DiscreteMeshShader.hlsl PROPERTIES 
     VS_SHADER_TYPE Mesh
     VS_SHADER_MODEL 6.6
 )
 
-set_source_files_properties( shaders/ViewDependentTaskShader.hlsl PROPERTIES 
+set_source_files_properties( shaders/DiscreteTaskShader.hlsl PROPERTIES 
     VS_SHADER_TYPE Amplification
     VS_SHADER_MODEL 6.6
 )
 
-set_source_files_properties( shaders/ViewDependentPixelShader.hlsl PROPERTIES 
+set_source_files_properties( shaders/DiscretePixelShader.hlsl PROPERTIES 
     VS_SHADER_TYPE Pixel
     VS_SHADER_MODEL 6.6
 )

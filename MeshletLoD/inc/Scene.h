@@ -8,7 +8,7 @@
 
 #include "HLSLnames.h"
 
-#include "../shaders/ViewDependentStructures.fxh"
+#include "../shaders/Structures.fxh"
 
 #include <chrono>
 

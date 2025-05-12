@@ -5,7 +5,7 @@
 
 #include "HLSLnames.h"
 
-#include "../shaders/Structures.fxh"
+#include "../shaders/DiscreteStructures.fxh"
 
 #include <Application.h>
 #include <CommandQueue.h>
@@ -477,13 +477,13 @@ bool MeshletLoD::LoadContent()
 
     // Load the pixel shader.
     
-    ThrowIfFailed(D3DReadFileToBlob(L"PixelShader.cso", &m_pixelShaderBlob));
+    ThrowIfFailed(D3DReadFileToBlob(L"DiscretePixelShader.cso", &m_pixelShaderBlob));
 
     // Load the mesh shader.
-    ThrowIfFailed(D3DReadFileToBlob(L"MeshShader.cso", &m_meshShaderBlob));
+    ThrowIfFailed(D3DReadFileToBlob(L"DiscreteMeshShader.cso", &m_meshShaderBlob));
 
     // Load the task shader.
-    ThrowIfFailed(D3DReadFileToBlob(L"TaskShader.cso", &m_taskShaderBlob));
+    ThrowIfFailed(D3DReadFileToBlob(L"DiscreteTaskShader.cso", &m_taskShaderBlob));
 
     // Load the object culling compute shader.
     ThrowIfFailed(D3DReadFileToBlob(L"ObjectCulling_ComputeShader.cso", &m_objectCullingComputeShaderBlob));

@@ -9,7 +9,7 @@
 
 #include "HLSLnames.h"
 
-#include "../shaders/Structures.fxh"
+#include "../shaders/DiscreteStructures.fxh"
 
 #include <chrono>
 
