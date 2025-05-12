@@ -13,49 +13,43 @@ class MeshletLoD : public Game
 public:
     using super = Game;
 
+    // loads and initializes resources needed for rendering
     MeshletLoD(const std::wstring& name, int width, int height, bool vSync = false);
-    /**
-     *  Load content required for the demo.
-     */
     virtual bool LoadContent() override;
 
-    /**
-     *  Unload demo specific content that was loaded in LoadContent.
-     */
+    // frees resources allocted by the class
     virtual void UnloadContent() override;
+
 protected:
-    /**
-     *  Update the game logic.
-     */
+
+    // updates camera and UI aswell as their related render variables
+    // will run every frame and before the OnRender() function
     virtual void OnUpdate(UpdateEventArgs& e) override;
 
-    /**
-     *  Render stuff.
-     */
+    // updates constants buffer and renders the current frame
     virtual void OnRender(RenderEventArgs& e) override;
 
-    /**
-     * Invoked by the registered window when a key is pressed
-     * while the window has focus.
-     */
+    // handles keyboard input by user
     virtual void OnKeyPressed(KeyEventArgs& e) override;
 
-    /**
-     * Invoked when the mouse wheel is scrolled while the registered window has focus.
-     */
+    // handles mouse wheel input by user
     virtual void OnMouseWheel(MouseWheelEventArgs& e) override;
 
-
+    // handles rescaling of apllication window like updating render targets
     virtual void OnResize(ResizeEventArgs& e) override; 
 
 private:
 
+    // ImGui related functions
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_ImGuiDescriptorHeap;
     void initImGui();
     void updateImGui();
-    void createPSO();
-    void setupConstantsUploadBuffer();
 
+    // application load helper functions
+    void createPSO();
+    
+    void setupConstantsUploadBuffer();
+    
     template <typename T>
     void setupSrvAndBuffer(D3D12_GPU_DESCRIPTOR_HANDLE& srvGpuHandle,
                            D3D12_GPU_DESCRIPTOR_HANDLE& nextAvailableGpuSrvHandle,
@@ -65,7 +59,7 @@ private:
                            std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
                            Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
                            unsigned int descriptorSize, D3D12_RESOURCE_FLAGS bufferFlags);
-
+   
     template <typename T>
     void setupBindlessSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HANDLE& srvGpuHandle,
                                     D3D12_GPU_DESCRIPTOR_HANDLE& nextAvailableGpuSrvHandle,
@@ -75,7 +69,7 @@ private:
                                     std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
                                     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
                                     unsigned int descriptorSize);
-
+    
     void setupBindlessUCharToUIntSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HANDLE& srvGpuHandle,
                                                D3D12_GPU_DESCRIPTOR_HANDLE& nextAvailableGpuSrvHandle,
                                                D3D12_CPU_DESCRIPTOR_HANDLE& nextAvailableCpuSrvHandle,
@@ -85,9 +79,6 @@ private:
                                                Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
                                                unsigned int descriptorSize);
 
-
-    // Helper functions
-    // Transition a resource
     void TransitionResource(Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7> commandList,
         Microsoft::WRL::ComPtr<ID3D12Resource> resource,
         D3D12_RESOURCE_STATES beforeState, D3D12_RESOURCE_STATES afterState);
@@ -135,7 +126,7 @@ private:
     Microsoft::WRL::ComPtr<ID3DBlob> m_taskShaderBlob;
 
 
-    bool m_ContentLoaded;
+    bool        m_ContentLoaded         = false;
 
     float       m_ClearColor[4]         = {0.09f, 0.09f, 0.12f, 1.0f};
     double      m_fps                   = 0;
@@ -205,8 +196,6 @@ private:
     D3D12_GPU_DESCRIPTOR_HANDLE m_WorkQueueCountersClearValuesSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_GlobalMeshPayloadSrvHandle;
     D3D12_GPU_DESCRIPTOR_HANDLE m_HeightMapTextureSrvHandle;
-
-
 
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
 
