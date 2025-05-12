@@ -121,7 +121,7 @@ void Mesh::parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
     meshopt_optimizeVertexCache(m_original_indices.data(), m_original_indices.data(), raw_indices.size(), vertex_count);
 
     // simplify mesh if triangle count is larger than maximum to prevent excessive pre-compute times
-    size_t target_index_count = m_maximum_mesh_triangle_count * 3; 
+    size_t target_index_count = min(m_maximum_mesh_triangle_count * 3, m_original_indices.size());
     std::vector<uint> simplified_indices(m_original_indices);
     float lod_error = 0.0f;  
     size_t simplifiedIndexCount = meshopt_simplify(

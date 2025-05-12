@@ -35,7 +35,7 @@ set( HEADER_FILES
     inc/Animator.h
     inc/Mesh.h
     inc/Scene.h
-    inc/ViewDependentMeshletLoD.h
+    inc/DiscreteMeshletLoD.h
     shaders/DiscreteStructures.fxh
 
 )
@@ -51,7 +51,7 @@ set( SRC_FILES
     src/Animator.cpp
     src/Mesh.cpp
     src/Scene.cpp
-    src/ViewDependentMeshletLoD.cpp
+    src/DiscreteMeshletLoD.cpp
 )
 
 # shaders

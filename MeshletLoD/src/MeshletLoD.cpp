@@ -5,12 +5,19 @@
 
 #include "HLSLnames.h"
 
-#include "../shaders/DiscreteStructures.fxh"
+#include "../shaders/Structures.fxh"
 
 #include <Application.h>
 #include <CommandQueue.h>
 #include <Helpers.h>
 #include <Window.h>
+#if defined(min)
+#undef min
+#endif
+
+#if defined(max)
+#undef max
+#endif
 #include <sstream>
 
 #include <imgui.h>
@@ -23,16 +30,13 @@ using namespace Microsoft::WRL;
 
 #include <d3dcompiler.h>
 
-//#include "DirectXTex.h"
-
 #include <algorithm> 
-#if defined(min)
-#undef min
-#endif
 
-#if defined(max)
-#undef max
-#endif
+#include <DirectXTex.h>
+
+
+
+
 
 using namespace DirectX;
 
@@ -51,7 +55,7 @@ MeshletLoD::MeshletLoD(const std::wstring& name, int width, int height, bool vSy
     , m_FoV(90.0)
     , m_ContentLoaded(false)
 {
-    m_scene.init(m_model_file_path, 0);
+    m_scene.init(m_model_file_path);
 }
 
 void MeshletLoD::UpdateBufferResource(
@@ -96,7 +100,7 @@ void MeshletLoD::UpdateBufferResource(
     }
 }
 
-void MeshletLoD::CreatePSO()
+void MeshletLoD::createPSO()
 {
     Application::Get().Flush();
     m_PipelineState.Reset();
@@ -138,40 +142,18 @@ void MeshletLoD::CreatePSO()
     ThrowIfFailed(device->CreatePipelineState(&pipelineStateStreamDesc, IID_PPV_ARGS(&m_PipelineState)));
 }
 
-void MeshletLoD::CreateCullingPSO()
-{
-    m_ObjectCulling_PipelineState.Reset();
-    auto device = Application::Get().GetDevice();
 
-    struct PipelineStateStream
-    {
-        CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE pRootSignature;
-        CD3DX12_PIPELINE_STATE_STREAM_CS CS;
-    } pipelineStateStream;
-
-    pipelineStateStream.pRootSignature = m_ObjectCulling_RootSignature.Get();
-    pipelineStateStream.CS = CD3DX12_SHADER_BYTECODE(m_objectCullingComputeShaderBlob.Get());
-
-    D3D12_PIPELINE_STATE_STREAM_DESC pipelineStateStreamDesc = {
-        sizeof(PipelineStateStream), &pipelineStateStream
-    };
-    ThrowIfFailed(device->CreatePipelineState(&pipelineStateStreamDesc, IID_PPV_ARGS(&m_ObjectCulling_PipelineState)));
-}
-
-bool MeshletLoD::LoadContent()
+void MeshletLoD::setupConstantsUploadBuffer()
 {
     auto device = Application::Get().GetDevice();
-    auto commandQueue = Application::Get().GetCommandQueue(D3D12_COMMAND_LIST_TYPE_COPY);
-    auto commandList = commandQueue->GetCommandList();
-
 
     // constants buffer
     D3D12_HEAP_PROPERTIES heapProps = {};
     heapProps.Type = D3D12_HEAP_TYPE_UPLOAD;
-   
+
     D3D12_RESOURCE_DESC constBufferDesc = {};
     constBufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-    constBufferDesc.Width = (sizeof(Constants) + 255) & ~255; // allign to 256 bytes
+    constBufferDesc.Width = (sizeof(S_Constants) + 255) & ~255; // allign to 256 bytes
     constBufferDesc.Height = 1;
     constBufferDesc.DepthOrArraySize = 1;
     constBufferDesc.MipLevels = 1;
@@ -180,7 +162,7 @@ bool MeshletLoD::LoadContent()
     constBufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
     constBufferDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
-    // Create the upload buffer
+    // Create an upload buffer for constants
     device->CreateCommittedResource(
         &heapProps,
         D3D12_HEAP_FLAG_NONE,
@@ -189,284 +171,361 @@ bool MeshletLoD::LoadContent()
         nullptr,
         IID_PPV_ARGS(&m_ConstantsBuffer)
     );
-
     // Map the buffer (persistent mapping)
     m_ConstantsBuffer->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedConstantData));
+}
+
+
+template <typename T>
+void MeshletLoD::setupSrvAndBuffer(D3D12_GPU_DESCRIPTOR_HANDLE& srvGpuHandle,
+                                                D3D12_GPU_DESCRIPTOR_HANDLE& nextAvailableGpuSrvHandle, 
+                                                D3D12_CPU_DESCRIPTOR_HANDLE& nextAvailableCpuSrvHandle,
+                                                std::vector<T>& cpuBuffer,
+                                                Microsoft::WRL::ComPtr<ID3D12Resource>& gpuBuffer,
+                                                std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
+                                                Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
+                                                unsigned int descriptorSize, D3D12_RESOURCE_FLAGS bufferFlags)
+{
+    auto device = Application::Get().GetDevice();
+    srvGpuHandle = nextAvailableGpuSrvHandle;
+
+    copyBuffers.push_back(ComPtr<ID3D12Resource>());
+    UpdateBufferResource(commandList, gpuBuffer.GetAddressOf(), copyBuffers.back().GetAddressOf(),
+        (uint)cpuBuffer.size(), sizeof(T), cpuBuffer.data(), bufferFlags);
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Buffer.FirstElement = 0;
+    srvDesc.Buffer.NumElements = (uint)cpuBuffer.size();
+    srvDesc.Buffer.StructureByteStride = sizeof(T);
+    srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+
+    device->CreateShaderResourceView(gpuBuffer.Get(), &srvDesc, nextAvailableCpuSrvHandle);
+    nextAvailableCpuSrvHandle.ptr += descriptorSize;
+    nextAvailableGpuSrvHandle.ptr += descriptorSize;
+}
+
+template <typename T>
+void MeshletLoD::setupBindlessSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HANDLE& srvGpuHandle, 
+                                                         D3D12_GPU_DESCRIPTOR_HANDLE& nextAvailableGpuSrvHandle, 
+                                                         D3D12_CPU_DESCRIPTOR_HANDLE& nextAvailableCpuSrvHandle,
+                                                         std::vector<std::vector<T>>& cpuBuffers, 
+                                                         std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& gpuBuffers,
+                                                         std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
+                                                         Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
+                                                         unsigned int descriptorSize)
+{
+    auto device = Application::Get().GetDevice();
+    srvGpuHandle = nextAvailableGpuSrvHandle;
+    
+    for (uint i = 0; i < cpuBuffers.size(); i++)
+    {
+        std::vector<T>& cpuSingleBuffer = cpuBuffers[i];
+
+        gpuBuffers.push_back(ComPtr<ID3D12Resource>());
+        copyBuffers.push_back(ComPtr<ID3D12Resource>());
+        
+        UpdateBufferResource(commandList, gpuBuffers.back().GetAddressOf(), copyBuffers.back().GetAddressOf(),
+            (uint)cpuSingleBuffer.size(), sizeof(T), cpuSingleBuffer.data());
+
+        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srvDesc.Buffer.FirstElement = 0;
+        srvDesc.Buffer.NumElements = (uint)cpuSingleBuffer.size();
+        srvDesc.Buffer.StructureByteStride = sizeof(T);
+        srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+
+        device->CreateShaderResourceView(gpuBuffers.back().Get(), &srvDesc, nextAvailableCpuSrvHandle);
+        nextAvailableCpuSrvHandle.ptr += descriptorSize;
+        nextAvailableGpuSrvHandle.ptr += descriptorSize;
+    }
+}
+
+// compatible with tight packing of 4 chars into 1 unsigned integers
+void MeshletLoD::setupBindlessUCharToUIntSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HANDLE& srvGpuHandle,
+                                                                    D3D12_GPU_DESCRIPTOR_HANDLE& nextAvailableGpuSrvHandle,
+                                                                    D3D12_CPU_DESCRIPTOR_HANDLE& nextAvailableCpuSrvHandle,
+                                                                    std::vector<std::vector<unsigned char>>& unsignedCharsCpuBuffers,
+                                                                    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& gpuBuffers,
+                                                                    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& copyBuffers,
+                                                                    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>& commandList,
+                                                                    unsigned int descriptorSize)
+{
+    auto device = Application::Get().GetDevice();
+    srvGpuHandle = nextAvailableGpuSrvHandle;
+
+    for (uint i = 0; i < unsignedCharsCpuBuffers.size(); i++)
+    {
+        std::vector<unsigned char>& cpuSingleBuffer = unsignedCharsCpuBuffers[i];
+        // fill with zeros to allign its size to 32bits
+        while (cpuSingleBuffer.size() % 4 != 0)
+            cpuSingleBuffer.push_back(0);
+
+        gpuBuffers.push_back(ComPtr<ID3D12Resource>());
+        copyBuffers.push_back(ComPtr<ID3D12Resource>());
+
+        UpdateBufferResource(commandList, gpuBuffers.back().GetAddressOf(), copyBuffers.back().GetAddressOf(),
+            (uint)cpuSingleBuffer.size() / 4, sizeof(uint), cpuSingleBuffer.data());
+
+        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srvDesc.Buffer.FirstElement = 0;
+        srvDesc.Buffer.NumElements = (uint)cpuSingleBuffer.size() / 4;
+        srvDesc.Buffer.StructureByteStride = sizeof(uint);
+        srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+
+        device->CreateShaderResourceView(gpuBuffers.back().Get(), &srvDesc, nextAvailableCpuSrvHandle);
+        nextAvailableCpuSrvHandle.ptr += descriptorSize;
+        nextAvailableGpuSrvHandle.ptr += descriptorSize;
+    }
+}
+
+
+
+bool MeshletLoD::LoadContent()
+{
+    auto device = Application::Get().GetDevice();
+    auto commandQueue = Application::Get().GetCommandQueue(D3D12_COMMAND_LIST_TYPE_COPY);
+    auto commandList = commandQueue->GetCommandList();
+
+    setupConstantsUploadBuffer();
+
+
+
+    // height map texture sampler
+    D3D12_DESCRIPTOR_HEAP_DESC samplerHeapDesc = {};
+    samplerHeapDesc.NumDescriptors = 1;
+    samplerHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
+    samplerHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+    device->CreateDescriptorHeap(&samplerHeapDesc, IID_PPV_ARGS(&m_Sampler_Heap));
+
+    D3D12_SAMPLER_DESC samplerDesc = {};
+    samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    samplerDesc.MinLOD = 0;
+    samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+    //samplerDesc.MipLODBias = 0.0f;
+    samplerDesc.MaxAnisotropy = 1;
+
+    // Create the sampler
+    device->CreateSampler(&samplerDesc, m_Sampler_Heap->GetCPUDescriptorHandleForHeapStart());
 
 
 
 
-    D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-    heapDesc.NumDescriptors = 5 // 5 single buffers (meshlet_count, scene_objects, visible_objects_counter, animation_meta_data, mesh_lod_structure, 1 each)
-        + m_scene.m_mesh_lod_count * 3 // 3 bindless buffer (1 meshlet, 1 triangles, 1 vertex-indices buffer per mesh LoD)
-        + (uint)m_scene.m_meshes.size() // bindless buffer (1 vertex buffer per mesh)
-        + (uint)m_scene.m_preBakedAnimations.size(); //bindless buffer (1 per animation)
-    heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-    heapDesc.NodeMask = 0;
-    device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_CBV_SRV_UAV_Heap));
+
+    D3D12_DESCRIPTOR_HEAP_DESC gpuHeapDesc = {};
+    gpuHeapDesc.NumDescriptors = 1                           // single scene objects buffer
+                               + 1                           // single work queue buffer
+                               + 1                           // single work queue counter buffer
+                               + 1                           // single work queue counter clear values buffer
+                               + 1                           // global mesh payload buffer
+                               + 1                           // height map texture
+                               + (uint)m_scene.m_mesh_count  // meshlets buffer per unique mesh
+                               + (uint)m_scene.m_mesh_count  // morph indices buffer per unique mesh
+                               + (uint)m_scene.m_mesh_count  // vertex indices buffer per unique mesh
+                               + (uint)m_scene.m_mesh_count  // primitive indices buffer per unique mesh
+                               + (uint)m_scene.m_mesh_count; // vertex buffer per unique mesh
+    gpuHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    gpuHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+    gpuHeapDesc.NodeMask = 0;
+    device->CreateDescriptorHeap(&gpuHeapDesc, IID_PPV_ARGS(&m_CBV_SRV_UAV_Heap));
 
     unsigned int descriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(m_CBV_SRV_UAV_Heap->GetCPUDescriptorHandleForHeapStart());
-    
-    // meshlet vertex indices buffers
-    m_indexSrvHandle = m_CBV_SRV_UAV_Heap->GetGPUDescriptorHandleForHeapStart();
+    D3D12_CPU_DESCRIPTOR_HANDLE nextCpuSrvHandle(m_CBV_SRV_UAV_Heap->GetCPUDescriptorHandleForHeapStart());
+    D3D12_GPU_DESCRIPTOR_HANDLE nextGpuSrvHandle(m_CBV_SRV_UAV_Heap->GetGPUDescriptorHandleForHeapStart());
 
     std::vector<ComPtr<ID3D12Resource>> copyBuffers;
-    for (int i = 0; i < m_scene.m_meshes.size(); i++)
-    {
-        for (int j = 0; j < m_scene.m_meshes[i]->m_meshlet_vertices.size(); j++)
-        {
-            // setup buffer
-            ComPtr<ID3D12Resource> buffer;
-            ComPtr<ID3D12Resource> copyBuffer;
 
-            copyBuffers.push_back(copyBuffer);
-            m_IndexBuffers.push_back(buffer);
 
-            UpdateBufferResource(commandList, m_IndexBuffers.back().GetAddressOf(), copyBuffers.back().GetAddressOf(),
-                (uint)m_scene.m_meshes[i]->m_meshlet_vertices[j].size(), sizeof(uint), m_scene.m_meshes[i]->m_meshlet_vertices[j].data());
+    // height map texture
+    ScratchImage height_map_test_image;
+    
+    
 
-            // setup srv's
-            D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-            srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-            srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-            srvDesc.Buffer.FirstElement = 0;
-            srvDesc.Buffer.NumElements = (uint)m_scene.m_meshes[i]->m_meshlet_vertices[j].size();
-            srvDesc.Buffer.StructureByteStride = sizeof(uint);
-            srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-
-            device->CreateShaderResourceView(m_IndexBuffers.back().Get(), &srvDesc, srvHandle);
-            srvHandle.Offset(1, descriptorSize);
-        }
+    HRESULT hr = LoadFromWICFile(L"./assets/textures/heightmap.png", WIC_FLAGS_NONE, nullptr, height_map_test_image);
+    if (FAILED(hr)) {
+        OutputDebugString("FAILED TO LOAD TEST TEXTURE!\n");
+        assert(false);
     }
 
+    const Image* img = height_map_test_image.GetImage(0, 0, 0);
+
+    
+    D3D12_RESOURCE_DESC textureDesc = {};
+    textureDesc.MipLevels = 0;
+    textureDesc.Format = img->format;
+    textureDesc.Width = (uint)img->width;
+    textureDesc.Height = (uint)img->height;
+    textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+    textureDesc.DepthOrArraySize = 1;
+    textureDesc.SampleDesc.Count = 1;
+    textureDesc.SampleDesc.Quality = 0;
+    textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+
+    copyBuffers.push_back(ComPtr<ID3D12Resource>());
+
+
+    UINT64 bufferSize = 0;
+    UINT numRows = 0;
+    UINT64 rowSizeInBytes = 0;
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint = {};
+    device->GetCopyableFootprints(
+        &textureDesc,
+        0,                  // First subresource
+        1,                  // Num subresources
+        0,                  // Base offset
+        &footprint,
+        &numRows,
+        &rowSizeInBytes,
+        &bufferSize   // <- This is what you want!
+    );
+ 
+
+    
+
+    // Create a committed resource for the GPU resource in a default heap.
+    ThrowIfFailed(device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+        D3D12_HEAP_FLAG_NONE,
+        &textureDesc,
+        D3D12_RESOURCE_STATE_COMMON,
+        nullptr,
+        IID_PPV_ARGS(m_HeightMapTexture.GetAddressOf())));
+
+    // Create an committed resource for the upload.
+    if (img->pixels)
+    {
+        ThrowIfFailed(device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+            D3D12_HEAP_FLAG_NONE,
+            &CD3DX12_RESOURCE_DESC::Buffer(bufferSize),
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(copyBuffers.back().GetAddressOf())));
+
+        D3D12_SUBRESOURCE_DATA subresourceData = {};
+        subresourceData.pData = img->pixels;
+        subresourceData.RowPitch = img->rowPitch;
+        subresourceData.SlicePitch = img->slicePitch;
+
+        UpdateSubresources(commandList.Get(),
+            *m_HeightMapTexture.GetAddressOf(), *copyBuffers.back().GetAddressOf(),
+            0, 0, 1, &subresourceData);
+    }
+    else
+        while (true)
+            OutputDebugString("FAIL\n");
+
+
+
+
+
+
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Format = textureDesc.Format;
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Texture2D.MostDetailedMip = 0;
+    srvDesc.Texture2D.MipLevels = height_map_test_image.GetMetadata().mipLevels;
+
+    device->CreateShaderResourceView(m_HeightMapTexture.Get(), &srvDesc, nextCpuSrvHandle);
+    m_HeightMapTextureSrvHandle = nextGpuSrvHandle;
+
+    nextCpuSrvHandle.ptr += descriptorSize;
+    nextGpuSrvHandle.ptr += descriptorSize;
+
+
+
+    /*
+    * Check if work graphs would run on this system
+    D3D12_FEATURE_DATA_D3D12_OPTIONS21 options21 = {};
+    HRESULT hr2 = device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS21, &options21, sizeof(options21));
+
+    D3D12_FEATURE_DATA_SHADER_MODEL shaderModel = { D3D_SHADER_MODEL_6_8 };
+    HRESULT hr3 = device->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL, &shaderModel, sizeof(shaderModel));
+
+
+    if (SUCCEEDED(hr2)) {
+        OutputDebugString("Workgraphs are supported!\n");
+    }
+    else {
+        OutputDebugString("Workgraphs not supported!\n");
+        assert(false);
+    }
+    */
+
+    
+    
+    // vertex-indices buffers
+    setupBindlessSrvAndBuffers(m_VertexIndicesSrvHandle, 
+                               nextGpuSrvHandle, nextCpuSrvHandle, 
+                               m_scene.m_vertex_indices, m_VertexIndicesBuffers, 
+                               copyBuffers, commandList, descriptorSize);
+    
     // vertex buffers
-    m_vertexSrvHandle = m_indexSrvHandle;
-    m_vertexSrvHandle.ptr += m_scene.m_mesh_lod_count * descriptorSize;
+    setupBindlessSrvAndBuffers(m_VerticesSrvHandle,
+                               nextGpuSrvHandle, nextCpuSrvHandle,
+                               m_scene.m_vertices, m_VertexBuffers,
+                               copyBuffers, commandList, descriptorSize);
 
-    for (int i = 0; i < m_scene.m_meshes.size(); i++)
-    {
-        // setup buffer
-        ComPtr<ID3D12Resource> buffer;
-        ComPtr<ID3D12Resource> copyBuffer;
+    // primitive-indices buffers 
+    setupBindlessUCharToUIntSrvAndBuffers(m_PrimitiveIndicesSrvHandle,
+                                          nextGpuSrvHandle, nextCpuSrvHandle,
+                                          m_scene.m_primitive_indices, m_PrimitiveIndicesBuffers,
+                                          copyBuffers, commandList, descriptorSize);
 
-        copyBuffers.push_back(copyBuffer);
-        m_VertexBuffers.push_back(buffer);
+    // morph-indices buffers
+    setupBindlessSrvAndBuffers(m_MorphIndicesSrvHandle,
+                               nextGpuSrvHandle, nextCpuSrvHandle,
+                               m_scene.m_morph_indices, m_MorphIndicesBuffers,
+                               copyBuffers, commandList, descriptorSize);
 
-        UpdateBufferResource(commandList, m_VertexBuffers.back().GetAddressOf(), copyBuffers.back().GetAddressOf(),
-            (uint)m_scene.m_meshes[i]->m_vertices.size(), sizeof(CustomVertex), m_scene.m_meshes[i]->m_vertices.data());
-
-        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        srvDesc.Buffer.FirstElement = 0;
-        srvDesc.Buffer.NumElements = (uint)m_scene.m_meshes[i]->m_vertices.size();
-        srvDesc.Buffer.StructureByteStride = sizeof(CustomVertex);
-        srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-
-        device->CreateShaderResourceView(m_VertexBuffers.back().Get(), &srvDesc, srvHandle);
-        srvHandle.Offset(1, descriptorSize);
-    }
-
-    // triangle buffers
-    m_triangleSrvHandle = m_vertexSrvHandle;
-    m_triangleSrvHandle.ptr += m_scene.m_meshes.size() * descriptorSize;
+    // meshlets buffers
+    setupBindlessSrvAndBuffers(m_MeshletsSrvHandle,
+                               nextGpuSrvHandle, nextCpuSrvHandle,
+                               m_scene.m_meshlets, m_MeshletBuffers,
+                               copyBuffers, commandList, descriptorSize);    
 
 
-    for (int i = 0; i < m_scene.m_meshes.size(); i++)
-    {
-        for (int j = 0; j < m_scene.m_meshes[i]->m_meshlet_triangles.size(); j++)
-        {
-            // fill array with zeros to allign its size to 32bits
-            while (((uint)m_scene.m_meshes[i]->m_meshlet_triangles[j].size()) % 4 != 0)
-                m_scene.m_meshes[i]->m_meshlet_triangles[j].push_back(0);
+    // scene objects buffer
+    setupSrvAndBuffer(m_ObjectsSrvHandle,
+                      nextGpuSrvHandle, nextCpuSrvHandle,
+                      m_scene.m_scene_objects, m_ObjectsBuffer,
+                      copyBuffers, commandList, descriptorSize, D3D12_RESOURCE_FLAG_NONE);
 
+    // work queue buffer
+    std::vector<S_WorkQueueEntry> temporaryCpuWorkQueueBufferData(WORK_QUEUE_SIZE, { 0, 0 });
+    setupSrvAndBuffer(m_WorkQueueSrvHandle,
+                      nextGpuSrvHandle, nextCpuSrvHandle,
+                      temporaryCpuWorkQueueBufferData, m_WorkQueueBuffer,
+                      copyBuffers, commandList, descriptorSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 
-            // setup buffer
-            ComPtr<ID3D12Resource> buffer;
-            ComPtr<ID3D12Resource> copyBuffer;
+    // work queue counters buffer and clear values
+    std::vector<S_WorkQueueCounters> temporaryCpuWorkQueueCountersData(1, { 0, 0, 0 });
+    setupSrvAndBuffer(m_WorkQueueCountersSrvHandle,
+                      nextGpuSrvHandle, nextCpuSrvHandle,
+                      temporaryCpuWorkQueueCountersData, m_WorkQueueCountersBuffer,
+                      copyBuffers, commandList, descriptorSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+    setupSrvAndBuffer(m_WorkQueueCountersClearValuesSrvHandle,
+                      nextGpuSrvHandle, nextCpuSrvHandle,
+                      temporaryCpuWorkQueueCountersData, m_WorkQueueCountersClearValuesBuffer,
+                      copyBuffers, commandList, descriptorSize, D3D12_RESOURCE_FLAG_NONE);
 
-            copyBuffers.push_back(copyBuffer);
-            m_TriangleBuffers.push_back(buffer);
-
-            UpdateBufferResource(commandList, m_TriangleBuffers.back().GetAddressOf(), copyBuffers.back().GetAddressOf(),
-                (uint)m_scene.m_meshes[i]->m_meshlet_triangles[j].size() / 4, sizeof(uint), m_scene.m_meshes[i]->m_meshlet_triangles[j].data());
-
-            D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-            srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-            srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-            srvDesc.Buffer.FirstElement = 0;
-            srvDesc.Buffer.NumElements = (uint)m_scene.m_meshes[i]->m_meshlet_triangles[j].size() / 4; // store 4 chars per 32bit block
-            srvDesc.Buffer.StructureByteStride = sizeof(uint);
-            srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-
-            device->CreateShaderResourceView(m_TriangleBuffers.back().Get(), &srvDesc, srvHandle);
-            srvHandle.Offset(1, descriptorSize);
-        }
-    }
-
-    // draw task buffers
-    m_drawTasksSrvHandle = m_triangleSrvHandle;
-    m_drawTasksSrvHandle.ptr += m_scene.m_mesh_lod_count * descriptorSize;
-
-    for (int i = 0; i < m_scene.m_meshes.size(); i++)
-    {
-        for (int j = 0; j < m_scene.m_meshes[i]->m_draw_tasks.size(); j++)
-        {
-            // setup buffer
-            ComPtr<ID3D12Resource> buffer;
-            ComPtr<ID3D12Resource> copyBuffer;
-
-            copyBuffers.push_back(copyBuffer);
-            m_DrawTasksBuffers.push_back(buffer);
-
-            UpdateBufferResource(commandList, m_DrawTasksBuffers.back().GetAddressOf(), copyBuffers.back().GetAddressOf(),
-                (uint)m_scene.m_meshes[i]->m_draw_tasks[j].size(), sizeof(DrawTask), m_scene.m_meshes[i]->m_draw_tasks[j].data());
-
-            D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-            srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-            srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-            srvDesc.Buffer.FirstElement = 0;
-            srvDesc.Buffer.NumElements = (uint)m_scene.m_meshes[i]->m_draw_tasks[j].size();
-            srvDesc.Buffer.StructureByteStride = sizeof(DrawTask);
-            srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-
-            device->CreateShaderResourceView(m_DrawTasksBuffers.back().Get(), &srvDesc, srvHandle);
-            srvHandle.Offset(1, descriptorSize);
-        }
-    }
-
-    // objects buffer
-    m_objectsSrvHandle = m_drawTasksSrvHandle;
-    m_objectsSrvHandle.ptr += m_scene.m_mesh_lod_count * descriptorSize;
-
-    ComPtr<ID3D12Resource> objectsCopyBuffer;
-    UpdateBufferResource(commandList, m_ObjectsBuffer.GetAddressOf(), objectsCopyBuffer.GetAddressOf(),
-        (uint)m_scene.m_scene_objects.size(), sizeof(SceneObject), m_scene.m_scene_objects.data());
-
-    D3D12_SHADER_RESOURCE_VIEW_DESC objectsSrvDesc = {};
-    objectsSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-    objectsSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    objectsSrvDesc.Buffer.FirstElement = 0;
-    objectsSrvDesc.Buffer.NumElements = (uint)m_scene.m_scene_objects.size();
-    objectsSrvDesc.Buffer.StructureByteStride = sizeof(SceneObject);
-    objectsSrvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-
-    device->CreateShaderResourceView(m_ObjectsBuffer.Get(), &objectsSrvDesc, srvHandle);
-    objectBufferSRVHandle = srvHandle;
-    srvHandle.Offset(1, descriptorSize);
-
-    // meshlet counts buffer
-    m_meshletCountsSrvHandle = m_objectsSrvHandle;
-    m_meshletCountsSrvHandle.ptr += descriptorSize;
-
-    ComPtr<ID3D12Resource> meshletCountsCopyBuffer;
-    UpdateBufferResource(commandList, m_MeshletCountsBuffer.GetAddressOf(), meshletCountsCopyBuffer.GetAddressOf(),
-        (uint)m_scene.m_meshlet_counts.size(), sizeof(uint), m_scene.m_meshlet_counts.data());
-
-    D3D12_SHADER_RESOURCE_VIEW_DESC meshletCountsSrvDesc = {};
-    meshletCountsSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-    meshletCountsSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    meshletCountsSrvDesc.Buffer.FirstElement = 0;
-    meshletCountsSrvDesc.Buffer.NumElements = (uint)m_scene.m_meshlet_counts.size();
-    meshletCountsSrvDesc.Buffer.StructureByteStride = sizeof(uint);
-    meshletCountsSrvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-
-    device->CreateShaderResourceView(m_MeshletCountsBuffer.Get(), &meshletCountsSrvDesc, srvHandle);
-    srvHandle.Offset(1, descriptorSize);
-
-    // visible object count buffer
-    m_visibleObjectCountSrvHandle = m_meshletCountsSrvHandle;
-    m_visibleObjectCountSrvHandle.ptr += descriptorSize;
-    uint initialObjectCount = (uint)m_scene.m_scene_objects.size();
-
-    ComPtr<ID3D12Resource> visibleObjectCountCopyBuffer;
-    UpdateBufferResource(commandList, m_objectCountBuffer.GetAddressOf(), visibleObjectCountCopyBuffer.GetAddressOf(),
-        1, sizeof(uint), &initialObjectCount);
-
-    D3D12_SHADER_RESOURCE_VIEW_DESC visibleObjectCountSrvDesc = {};
-    visibleObjectCountSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-    visibleObjectCountSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    visibleObjectCountSrvDesc.Buffer.FirstElement = 0;
-    visibleObjectCountSrvDesc.Buffer.NumElements = 1;
-    visibleObjectCountSrvDesc.Buffer.StructureByteStride = sizeof(uint);
-    visibleObjectCountSrvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-
-    device->CreateShaderResourceView(m_MeshletCountsBuffer.Get(), &visibleObjectCountSrvDesc, srvHandle);
-    srvHandle.Offset(1, descriptorSize);
-
-
-    // bone transformation matrices buffers
-    m_boneMatricesSrvHandle = m_visibleObjectCountSrvHandle;
-    m_boneMatricesSrvHandle.ptr += descriptorSize;
-
-    for (int i = 0; i < m_scene.m_preBakedAnimations.size(); i++)
-    {
-        // setup buffer
-        ComPtr<ID3D12Resource> buffer;
-        ComPtr<ID3D12Resource> copyBuffer;
-
-        copyBuffers.push_back(copyBuffer);
-        m_BoneMatricesBuffers.push_back(buffer);
-
-        UpdateBufferResource(commandList, m_BoneMatricesBuffers.back().GetAddressOf(), copyBuffers.back().GetAddressOf(),
-            (uint)m_scene.m_preBakedAnimations[i]->matrices.size(), sizeof(float4x4), m_scene.m_preBakedAnimations[i]->matrices.data());
-
-        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        srvDesc.Buffer.FirstElement = 0;
-        srvDesc.Buffer.NumElements = (uint)m_scene.m_preBakedAnimations[i]->matrices.size();
-        srvDesc.Buffer.StructureByteStride = sizeof(float4x4);
-        srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-
-        device->CreateShaderResourceView(m_BoneMatricesBuffers.back().Get(), &srvDesc, srvHandle);
-        srvHandle.Offset(1, descriptorSize);
-    }
-
-    // animations meta data buffer
-    m_animationMetaDataSrvHandle = m_boneMatricesSrvHandle;
-    m_animationMetaDataSrvHandle.ptr += m_scene.m_preBakedAnimations.size() * descriptorSize;
-
-    assert((uint)m_scene.m_animationMetaData.size() == (uint)m_scene.m_preBakedAnimations.size());
-
-    ComPtr<ID3D12Resource> animationMetaDataCopyBuffer;
-    if ((uint)m_scene.m_animationMetaData.size())
-        UpdateBufferResource(commandList, m_AnimationMetaDataBuffer.GetAddressOf(), animationMetaDataCopyBuffer.GetAddressOf(),
-            (uint)m_scene.m_animationMetaData.size(), sizeof(AnimationMetaData), m_scene.m_animationMetaData.data());
-
-    D3D12_SHADER_RESOURCE_VIEW_DESC animationMetaDataSrvDesc = {};
-    animationMetaDataSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-    animationMetaDataSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    animationMetaDataSrvDesc.Buffer.FirstElement = 0;
-    animationMetaDataSrvDesc.Buffer.NumElements = (uint)m_scene.m_animationMetaData.size();
-    animationMetaDataSrvDesc.Buffer.StructureByteStride = sizeof(AnimationMetaData);
-    animationMetaDataSrvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-
-    device->CreateShaderResourceView(m_AnimationMetaDataBuffer.Get(), &animationMetaDataSrvDesc, srvHandle);
-    srvHandle.Offset(1, descriptorSize);
-
-    // mesh lod strcuture buffer
-    m_meshLoDStructureSrvHandle = m_animationMetaDataSrvHandle;
-    m_meshLoDStructureSrvHandle.ptr += descriptorSize;
-
-    ComPtr<ID3D12Resource> meshLoDStructureCopyBuffer;
+    // work queue counters buffer and clear values
+    std::vector<S_PayloadEntry> temporaryMeshPaloadData(MAX_DISPATCH_MESH_GROUP_COUNT, { 0, 0, 0, 0 });
+    setupSrvAndBuffer(m_GlobalMeshPayloadSrvHandle,
+        nextGpuSrvHandle, nextCpuSrvHandle,
+        temporaryMeshPaloadData, m_GlobalMeshPayloadBuffer,
+        copyBuffers, commandList, descriptorSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+    
    
-    UpdateBufferResource(commandList, m_MeshLoDStructureBuffer.GetAddressOf(), meshLoDStructureCopyBuffer.GetAddressOf(),
-        (uint)m_scene.m_meshLoDBufferStructure.size(), sizeof(MeshLoDStructure), m_scene.m_meshLoDBufferStructure.data());
-
-    D3D12_SHADER_RESOURCE_VIEW_DESC meshLoDStructureSrvDesc = {};
-    meshLoDStructureSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-    meshLoDStructureSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    meshLoDStructureSrvDesc.Buffer.FirstElement = 0;
-    meshLoDStructureSrvDesc.Buffer.NumElements = (uint)m_scene.m_meshLoDBufferStructure.size();
-    meshLoDStructureSrvDesc.Buffer.StructureByteStride = sizeof(MeshLoDStructure);
-    meshLoDStructureSrvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-
-    device->CreateShaderResourceView(m_AnimationMetaDataBuffer.Get(), &meshLoDStructureSrvDesc, srvHandle);
-    srvHandle.Offset(1, descriptorSize);
-
 
     // Create the descriptor heap for the depth-stencil view.
     D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
@@ -475,19 +534,10 @@ bool MeshletLoD::LoadContent()
     dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
     ThrowIfFailed(device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&m_DSVHeap)));
 
-    // Load the pixel shader.
-    
-    ThrowIfFailed(D3DReadFileToBlob(L"DiscretePixelShader.cso", &m_pixelShaderBlob));
-
-    // Load the mesh shader.
-    ThrowIfFailed(D3DReadFileToBlob(L"DiscreteMeshShader.cso", &m_meshShaderBlob));
-
-    // Load the task shader.
-    ThrowIfFailed(D3DReadFileToBlob(L"DiscreteTaskShader.cso", &m_taskShaderBlob));
-
-    // Load the object culling compute shader.
-    ThrowIfFailed(D3DReadFileToBlob(L"ObjectCulling_ComputeShader.cso", &m_objectCullingComputeShaderBlob));
-
+    // Load shaders.
+    ThrowIfFailed(D3DReadFileToBlob(L"PixelShader.cso", &m_pixelShaderBlob));
+    ThrowIfFailed(D3DReadFileToBlob(L"MeshShader.cso", &m_meshShaderBlob));
+    ThrowIfFailed(D3DReadFileToBlob(L"TaskShader.cso", &m_taskShaderBlob));
 
     // Create a root signature.
     D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
@@ -504,53 +554,57 @@ bool MeshletLoD::LoadContent()
 
     CD3DX12_ROOT_PARAMETER1 rootParameters[12];
     // constants
-    //rootParameters[0].InitAsConstants(sizeof(Constants) / 4, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
-    rootParameters[0].InitAsConstantBufferView(0);
+    rootParameters[0].InitAsConstantBufferView(0, 0);
 
     // vertices
-    CD3DX12_DESCRIPTOR_RANGE1 srvVertexRange;
-    srvVertexRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_meshes.size(), 0, 1);
-    rootParameters[2].InitAsDescriptorTable(1, &srvVertexRange, D3D12_SHADER_VISIBILITY_MESH);
+    CD3DX12_DESCRIPTOR_RANGE1 srvVerticesRange;
+    srvVerticesRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_mesh_count, 0, 2);
+    rootParameters[1].InitAsDescriptorTable(1, &srvVerticesRange, D3D12_SHADER_VISIBILITY_MESH);
 
-    // indices
-    CD3DX12_DESCRIPTOR_RANGE1 srvIndexRange;
-    srvIndexRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_meshes.size(), 0, 2);
-    rootParameters[1].InitAsDescriptorTable(1, &srvIndexRange, D3D12_SHADER_VISIBILITY_MESH);
+    // vertex-indices
+    CD3DX12_DESCRIPTOR_RANGE1 srvVertexIndicesRange;
+    srvVertexIndicesRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_mesh_count, 0, 3);
+    rootParameters[2].InitAsDescriptorTable(1, &srvVertexIndicesRange, D3D12_SHADER_VISIBILITY_MESH);
 
-    // triangles
-    CD3DX12_DESCRIPTOR_RANGE1 srvTrianglesRange;
-    srvTrianglesRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_meshes.size(), 0, 3);
-    rootParameters[4].InitAsDescriptorTable(1, &srvTrianglesRange, D3D12_SHADER_VISIBILITY_MESH);
+    // primitive-indices
+    CD3DX12_DESCRIPTOR_RANGE1 srvPrimitiveIndicesRange;
+    srvPrimitiveIndicesRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_mesh_count, 0, 4);
+    rootParameters[3].InitAsDescriptorTable(1, &srvPrimitiveIndicesRange, D3D12_SHADER_VISIBILITY_MESH);
 
-    // draw tasks
-    CD3DX12_DESCRIPTOR_RANGE1 srvDrawTasksRange;
-    srvDrawTasksRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_meshes.size(), 0, 4);
-    rootParameters[5].InitAsDescriptorTable(1, &srvDrawTasksRange, D3D12_SHADER_VISIBILITY_AMPLIFICATION);
+    // meshlets
+    CD3DX12_DESCRIPTOR_RANGE1 srvMeshletsRange;
+    srvMeshletsRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_mesh_count, 0, 1);
+    rootParameters[4].InitAsDescriptorTable(1, &srvMeshletsRange, D3D12_SHADER_VISIBILITY_ALL);
 
-    // objects
+    // morph indices
+    CD3DX12_DESCRIPTOR_RANGE1 srvMorphIndicesRange;
+    srvMorphIndicesRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_mesh_count, 0, 5);
+    rootParameters[5].InitAsDescriptorTable(1, &srvMorphIndicesRange, D3D12_SHADER_VISIBILITY_MESH);
+
+    // scene objects
     rootParameters[6].InitAsShaderResourceView(0, 0);
 
-    // meshlet counts
-    rootParameters[7].InitAsShaderResourceView(1, 0);
+    // work queue objects
+    rootParameters[7].InitAsUnorderedAccessView(0, 0);
+
+    // work queue counters objects
+    rootParameters[8].InitAsUnorderedAccessView(1, 0);
+
+    // global mesh payload
+    rootParameters[9].InitAsUnorderedAccessView(2, 0);
+     
+    // height map texture
+    CD3DX12_DESCRIPTOR_RANGE1 textureRange;
+    textureRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0);
+
+    rootParameters[10].InitAsDescriptorTable(1, &textureRange, D3D12_SHADER_VISIBILITY_ALL);
+
+    // height map texture sampler
+    CD3DX12_DESCRIPTOR_RANGE1 samplerRange;
+    samplerRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0, 0);
+    rootParameters[11].InitAsDescriptorTable(1, &samplerRange, D3D12_SHADER_VISIBILITY_ALL);
+
     
-    // indirect draw id
-    rootParameters[3].InitAsConstants(1, 1, 0, D3D12_SHADER_VISIBILITY_ALL);
-
-    // skeletal animation bone matrices
-    CD3DX12_DESCRIPTOR_RANGE1 srvBoneMatricesRange;
-    srvBoneMatricesRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint)m_scene.m_meshes.size(), 0, 5);
-    rootParameters[8].InitAsDescriptorTable(1, &srvBoneMatricesRange, D3D12_SHADER_VISIBILITY_MESH);
-
-    // animation meta data
-    rootParameters[9].InitAsShaderResourceView(2, 0);
-
-    // object wide LoD
-    rootParameters[10].InitAsConstants(1, 2, 0, D3D12_SHADER_VISIBILITY_ALL);
-
-    // mesh lod structure
-    rootParameters[11].InitAsShaderResourceView(3, 0);
-    
-
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDescription;
     rootSignatureDescription.Init_1_1(_countof(rootParameters), rootParameters, 0, nullptr, rootSignatureFlags);
 
@@ -564,92 +618,10 @@ bool MeshletLoD::LoadContent()
     ThrowIfFailed(device->CreateRootSignature(0, rootSignatureBlob->GetBufferPointer(),
         rootSignatureBlob->GetBufferSize(), IID_PPV_ARGS(&m_RootSignature)));
 
-
-
-
-    // setup object culling root signature
-    CD3DX12_ROOT_PARAMETER1 objectCullingRootParameters[7];
-
-    // constants
-    //objectCullingRootParameters[0].InitAsConstants(sizeof(Constants) / 4, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
-    objectCullingRootParameters[0].InitAsConstantBufferView(0);
-    objectCullingRootParameters[5].InitAsConstants(sizeof(uint) / 4, 1, 0, D3D12_SHADER_VISIBILITY_ALL);
-
-    // objects
-    objectCullingRootParameters[1].InitAsShaderResourceView(0, 0);
-
-    // meshlet counts
-    objectCullingRootParameters[2].InitAsShaderResourceView(1, 0);
-
-    // visible object count buffer
-    objectCullingRootParameters[3].InitAsUnorderedAccessView(0, 0);
-
-    // inirect arguments buffer
-    objectCullingRootParameters[4].InitAsUnorderedAccessView(1, 0);
-
-    // meshlet counts
-    objectCullingRootParameters[6].InitAsShaderResourceView(2, 0);
-
-    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC objectCullingRootSignatureDescription;
-    objectCullingRootSignatureDescription.Init_1_1(_countof(objectCullingRootParameters), objectCullingRootParameters, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
-
-    // Serialize the root signature.
-    ComPtr<ID3DBlob> objectCullingRootSignatureBlob;
-    ComPtr<ID3DBlob> objectCullingErrorBlob;
-    ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&objectCullingRootSignatureDescription,
-        featureData.HighestVersion, &objectCullingRootSignatureBlob, &objectCullingErrorBlob));
-
-    // Create the root signature.
-    ThrowIfFailed(device->CreateRootSignature(0, objectCullingRootSignatureBlob->GetBufferPointer(),
-        objectCullingRootSignatureBlob->GetBufferSize(), IID_PPV_ARGS(&m_ObjectCulling_RootSignature)));
-
-
-
-
-    // setup indirect draw attributes buffer
-    ComPtr<ID3D12Resource> copy_indirectAtgumentBuffer;
-
-    UpdateBufferResource(commandList,
-        &m_indirectArgumentBuffer, &copy_indirectAtgumentBuffer,
-        (uint)m_scene.m_indirect_attributes.size(), sizeof(CommandStructure), m_scene.m_indirect_attributes.data());
-
-
-    // transition to indirect argument state
-    auto commandQueue2 = Application::Get().GetCommandQueue(D3D12_COMMAND_LIST_TYPE_DIRECT);
-    auto commandList2 = commandQueue2->GetCommandList();
-    commandList2->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_indirectArgumentBuffer.Get(),
-        D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT));
-
-
-    // setup command signature
-    D3D12_COMMAND_SIGNATURE_DESC commandSignatureDesc = {};
-    D3D12_INDIRECT_ARGUMENT_DESC argumentDescs[3] = {};
-
-    argumentDescs[0].Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT;
-    argumentDescs[0].Constant.RootParameterIndex = 3;
-    argumentDescs[0].Constant.DestOffsetIn32BitValues = 0;
-    argumentDescs[0].Constant.Num32BitValuesToSet = 1;
-
-    argumentDescs[1].Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT;
-    argumentDescs[1].Constant.RootParameterIndex = 10;
-    argumentDescs[1].Constant.DestOffsetIn32BitValues = 0;
-    argumentDescs[1].Constant.Num32BitValuesToSet = 1;
-
-    argumentDescs[2].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH_MESH;
-
-    commandSignatureDesc.pArgumentDescs = argumentDescs;
-    commandSignatureDesc.NumArgumentDescs = _countof(argumentDescs);
-    commandSignatureDesc.ByteStride = sizeof(CommandStructure);
-    device->CreateCommandSignature(&commandSignatureDesc, m_RootSignature.Get(), IID_PPV_ARGS(&m_commandSignature));
-
-    CreatePSO();
-    CreateCullingPSO();
+    createPSO();
 
     auto fenceValue = commandQueue->ExecuteCommandList(commandList);
     commandQueue->WaitForFenceValue(fenceValue);
-
-    fenceValue = commandQueue2->ExecuteCommandList(commandList2);
-    commandQueue2->WaitForFenceValue(fenceValue);
 
     m_ContentLoaded = true;
 
@@ -721,24 +693,19 @@ void MeshletLoD::UnloadContent()
     m_RootSignature.Reset();
     m_PipelineState.Reset();
 
-    m_ObjectCulling_RootSignature.Reset();
-    m_ObjectCulling_PipelineState.Reset();
-
     // clear & reset model buffers
     m_CBV_SRV_UAV_Heap.Reset();
 
-    m_IndexBuffers.clear();
+    m_MeshletBuffers.clear();
+    m_VertexIndicesBuffers.clear();
+    m_PrimitiveIndicesBuffers.clear();
     m_VertexBuffers.clear();
-    m_TriangleBuffers.clear();
-    m_DrawTasksBuffers.clear();
+    m_MorphIndicesBuffers.clear();
     m_ObjectsBuffer.Reset();
-    m_MeshletCountsBuffer.Reset();
-    m_objectCountBuffer.Reset();
-    m_indirectArgumentBuffer.Reset();
-    m_BoneMatricesBuffers.clear();
-    m_AnimationMetaDataBuffer.Reset();
-    m_MeshLoDStructureBuffer.Reset();
     m_ConstantsBuffer.Reset();
+    m_WorkQueueBuffer.Reset();
+    m_WorkQueueCountersBuffer.Reset();
+    m_GlobalMeshPayloadBuffer.Reset();
 
     m_commandSignature.Reset();
 }
@@ -773,46 +740,43 @@ void MeshletLoD::OnUpdate(UpdateEventArgs& e)
         frameCount = 0;
         totalTime = 0.0;
     }
-
-
-    // Update the view matrix.
-    const XMVECTOR eyePosition = XMVectorSet(0, 0, 0, 1);
-    const XMVECTOR focusPoint = XMVectorSet(1, 0, 0, 1);
-    const XMVECTOR upDirection = XMVectorSet(0, 1, 0, 0);
-    m_ViewMatrix = XMMatrixLookAtLH(eyePosition, focusPoint, upDirection);
     
     // Camera Controll
     if (m_freeCamera)
     {
-        float4x4 RotationMatrix = XMMatrixTranspose(XMMatrixRotationY(m_CameraYaw + m_autoRotationOffset) * XMMatrixRotationX(m_CameraRoll));
+        // Compute relative directions from yaw and pitch
+        XMVECTOR forward = XMVectorSet(cosf(m_CameraRoll) * sinf(m_CameraYaw - m_autoRotationOffset), sinf(m_CameraRoll), cosf(m_CameraRoll) * cosf(m_CameraYaw - m_autoRotationOffset), 0.0f);
+        XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);  
+        XMVECTOR right = XMVector3Normalize(XMVector3Cross(up, forward));
+        up = XMVector3Normalize(XMVector3Cross(forward, right));
 
         if (ImGui::IsKeyDown(ImGuiKey_W)) {
-            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) + (XMVector4Transform(XMVectorSet(0.0f, 0.0f, -1.0f, 0.0f), RotationMatrix) * m_cameraSpeed * static_cast<float>(e.ElapsedTime));
+            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) + forward * m_cameraSpeed * static_cast<float>(e.ElapsedTime);
             XMStoreFloat3(&m_cameraPos, newCamPos);
         }
         if (ImGui::IsKeyDown(ImGuiKey_A)) {
-            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) + (XMVector4Transform(XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f), RotationMatrix) * m_cameraSpeed * static_cast<float>(e.ElapsedTime));
+            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) - right * m_cameraSpeed * static_cast<float>(e.ElapsedTime);
             XMStoreFloat3(&m_cameraPos, newCamPos);
         }
         if (ImGui::IsKeyDown(ImGuiKey_S)) {
-            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) + (XMVector4Transform(XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f), RotationMatrix) * m_cameraSpeed * static_cast<float>(e.ElapsedTime));
+            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) - forward * m_cameraSpeed * static_cast<float>(e.ElapsedTime);
             XMStoreFloat3(&m_cameraPos, newCamPos);
         }
         if (ImGui::IsKeyDown(ImGuiKey_D)) {
-            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) + (XMVector4Transform(XMVectorSet(-1.0f, 0.0f, 0.0f, 0.0f), RotationMatrix) * m_cameraSpeed * static_cast<float>(e.ElapsedTime));
+            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) + right * m_cameraSpeed * static_cast<float>(e.ElapsedTime);
             XMStoreFloat3(&m_cameraPos, newCamPos);
         }
         if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl)) {
-            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) + (XMVector4Transform(XMVectorSet(0.0f, 1.0f, 0.0f, 1.0f), RotationMatrix) * m_cameraSpeed * static_cast<float>(e.ElapsedTime));
+            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) - up * m_cameraSpeed * static_cast<float>(e.ElapsedTime);
             XMStoreFloat3(&m_cameraPos, newCamPos);
         }
         if (ImGui::IsKeyDown(ImGuiKey_LeftShift)) {
-            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) + (XMVector4Transform(XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f), RotationMatrix) * m_cameraSpeed * static_cast<float>(e.ElapsedTime));
+            XMVECTOR newCamPos = XMLoadFloat3(&m_cameraPos) + up * m_cameraSpeed * static_cast<float>(e.ElapsedTime);
             XMStoreFloat3(&m_cameraPos, newCamPos);
         }
     }
-    m_CameraYaw -= ImGui::GetMouseDragDelta().x * m_CameraSensibility;
-    m_CameraRoll = std::clamp(m_CameraRoll - ImGui::GetMouseDragDelta().y * m_CameraSensibility, (float)-PI / 2.0f, (float)PI / 2.0f);
+    m_CameraYaw += ImGui::GetMouseDragDelta().x * m_CameraSensibility;
+    m_CameraRoll = std::clamp(m_CameraRoll - ImGui::GetMouseDragDelta().y * m_CameraSensibility, (float)-PI / 2.001f, (float)PI / 2.001f);
     ImGui::ResetMouseDragDelta();
 
 
@@ -829,46 +793,32 @@ void MeshletLoD::OnUpdate(UpdateEventArgs& e)
         }
 
         // Compute view matrix
-        float4x4 RotationMatrix = XMMatrixRotationY(m_CameraYaw + m_autoRotationOffset) * XMMatrixRotationX(m_CameraRoll);
-        float4x4 TranslationMatrix = XMMatrixTranslation(0.f, 0.0f, m_autoCameraDistance);
-        m_ViewMatrix = RotationMatrix * TranslationMatrix;
-        XMStoreFloat3(&m_cameraPos, XMVector4Transform(XMVectorSet(0.f, 0.0f, m_autoCameraDistance, 1.0f), XMMatrixTranspose(RotationMatrix)));
+        XMVECTOR forward = XMVectorSet(cosf(m_CameraRoll) * sinf(m_CameraYaw - m_autoRotationOffset), sinf(m_CameraRoll), cosf(m_CameraRoll) * cosf(m_CameraYaw - m_autoRotationOffset), 0.0f);
+        XMStoreFloat3(&m_cameraPos, -forward * m_autoCameraDistance);
+        m_ViewMatrix = XMMatrixLookAtLH(XMLoadFloat3(&m_cameraPos), XMVectorSet(0, 0, 0, 0), XMVectorSet(0, 1, 0, 0));
     }
     else
     {
-        // Compute view matrix
-        float4x4 RotationMatrix = XMMatrixRotationY(m_CameraYaw + m_autoRotationOffset) * XMMatrixRotationX(m_CameraRoll);
-        float4x4 TranslationMatrix = XMMatrixTranslation(m_cameraPos.x, m_cameraPos.y, m_cameraPos.z);
-        m_ViewMatrix = TranslationMatrix * RotationMatrix;
+        // Compute forward direction from yaw and pitch
+        XMVECTOR forward = XMVectorSet(cosf(m_CameraRoll) * sinf(m_CameraYaw - m_autoRotationOffset), sinf(m_CameraRoll), cosf(m_CameraRoll) * cosf(m_CameraYaw - m_autoRotationOffset), 0.0f);
+        // Normalize the forward vector
+        forward = XMVector3Normalize(forward);
+        // Load camera position into XMVECTOR
+        XMVECTOR eye = XMLoadFloat3(&m_cameraPos);
+        // Compute focus point (camera position + forward * distance)
+        XMVECTOR focus = XMVectorAdd(eye, forward);
+        m_ViewMatrix = XMMatrixLookAtLH(XMLoadFloat3(&m_cameraPos), focus, XMVectorSet(0, 1, 0, 0));
     }
 
 
 
     // Update the projection matrix.
     float aspectRatio = GetClientWidth() / static_cast<float>(GetClientHeight());
-    m_ProjectionMatrix = XMMatrixPerspectiveFovLH(XMConvertToRadians(m_FoV), aspectRatio, 0.1f, 100000.0f);
+    m_ProjectionMatrix = XMMatrixPerspectiveFovLH(XMConvertToRadians(m_FoV), aspectRatio, 0.001f, 100000.0f);
 
     updateImGui();
-
-
-    
 }
 
-void MeshletLoD::UpdateObjectsBuffer()
-{
-    Application::Get().Flush();
-    auto device = Application::Get().GetDevice();
-    auto commandQueue = Application::Get().GetCommandQueue(D3D12_COMMAND_LIST_TYPE_COPY);
-    auto commandList = commandQueue->GetCommandList(); 
-    ComPtr<ID3D12Resource> copyBuffer;
-
-    UpdateBufferResource(commandList,
-        &m_ObjectsBuffer, &copyBuffer,
-        (uint)m_scene.m_scene_objects.size(), sizeof(SceneObject), m_scene.m_scene_objects.data());
-
-    auto fenceValue = commandQueue->ExecuteCommandList(commandList);
-    commandQueue->WaitForFenceValue(fenceValue);
-}
 
 // Transition a resource
 void MeshletLoD::TransitionResource(Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7> commandList,
@@ -910,9 +860,17 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
 
     // Update the MVP matrix
     XMMATRIX mvpMatrix = XMMatrixTranspose(m_ViewMatrix * m_ProjectionMatrix);
-    Constants constants;
+    S_Constants constants;
+
 
     constants.ViewProjMat = mvpMatrix;
+
+
+    constants.ProjMat = XMMatrixTranspose(m_ProjectionMatrix);
+    constants.ScreenWidth = GetClientWidth();
+    constants.ScreenHeight = GetClientHeight();
+
+
     constants.ViewMat = XMMatrixTranspose(m_ViewMatrix);
     // frustom planes from view-proj-matrix
     // http://gamedevs.org/uploads/fast-extraction-viewing-frustum-planes-from-world-view-projection-matrix.pdf)
@@ -925,39 +883,41 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
     constants.Frustum[4] = float4(m._13, m._23, m._33, m._43);                                 // near
     constants.Frustum[5] = float4(m._14 - m._13, m._24 - m._23, m._34 - m._33, m._44 - m._43); // far
 
-    constants.CameraWorldPos = m_cameraPos;
-    constants.CoTanHalfFoV = m_LoDScale / std::tan(m_FoV / 2.0f);
+
+    float scale_x = sqrtf(m._11 * m._11 + m._21 * m._21 + m._31 * m._31);
+    float scale_y = sqrtf(m._12 * m._12 + m._22 * m._22 + m._32 * m._32);
+    float scale_z = sqrtf(m._13 * m._13 + m._23 * m._23 + m._33 * m._33);
+    constants.MaxScaleFactor_ViewProjMat = std::max(scale_x, std::max(scale_y, scale_z));
+
+    // do not update camera position constant when camera is locked for debug purposes
+    if (m_lockCameraShaderConstant)
+        constants.CameraWorldPos = m_lockedCameraPos;
+    else
+        constants.CameraWorldPos = m_cameraPos;
+    
+    constants.CoTanHalfFoV = 1 / std::tan(m_FoV / 2.0f);
+    constants.LoD_Scale = m_LoDScale;
     constants.CurrTime = (float)m_totalRunTime;
+    constants.shadingSelection = m_shadingMode;
     constants.BoolConstants = 0;
-    if (m_frustumCulling) constants.BoolConstants |= FRUSTUM_CULLING_BIT_POS;
-    if (m_coneCulling) constants.BoolConstants |= CONE_CULLING_BIT_POS;
-    if (m_objectLoD) constants.BoolConstants |= ENABLE_OBJECT_LOD;
-    if (m_meshletLoD) constants.BoolConstants |= ENABLE_MESHLET_LOD;
-    switch (m_debugMode)
-    {
-    case ShowMeshlets:
-        constants.BoolConstants |= ENABLE_DEBUG_VISUALS_BIT_POS;
-        constants.BoolConstants |= DEBUG_MESHLETS;
-        break;
-    case ShowBones:
-        constants.BoolConstants |= ENABLE_DEBUG_VISUALS_BIT_POS;
-        constants.BoolConstants |= DEBUG_BONES;
-        break;
-    
-    case ShowLoD:
-        constants.BoolConstants |= ENABLE_DEBUG_VISUALS_BIT_POS;
-        constants.BoolConstants |= DEBUG_LOD;
-        break;
-    default:
-        break;
-    }
+    constants.SceneObjectCount = (uint)m_scene.m_scene_objects.size();
+    constants.DebugFloatSliderValue = m_debugFloatSlider;
+    constants.TriPlanarMappingScale = m_triplanarScale;
+    constants.TriPlanarBlendGrade = m_triplanarBlendGrade;
+    constants.HeightMapDisplacementScale = m_displacementScale;
+
+    //bool constants
+    if (m_frustumCulling)           constants.BoolConstants |= FRUSTUM_CULLING_BIT_POS;
+    if (m_geo_morphing)             constants.BoolConstants |= GEO_MORPHING_BIT_POS;
+    if (m_screen_space_LoD)         constants.BoolConstants |= SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS;
+    if (m_tessellation)             constants.BoolConstants |= TRESSELLATION_BIT_POS;
+    if (m_triplanarMapping)         constants.BoolConstants |= TRI_PLANAR_TEXTURE_MAPPING_BIT_POS;
+    if (m_allowLighting)            constants.BoolConstants |= NORMAL_LIGHTING_BIT_POS;
+
     
 
-
-
-    memcpy(m_mappedConstantData, &constants, sizeof(Constants));
-
-
+    
+    memcpy(m_mappedConstantData, &constants, sizeof(S_Constants));
 
     // Clear the render targets.
     {
@@ -968,40 +928,6 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
         ClearDepth(commandList, dsv);
     }
 
-
-
-
-    // object culling compute pass
-    commandList->SetPipelineState(m_ObjectCulling_PipelineState.Get());
-    commandList->SetComputeRootSignature(m_ObjectCulling_RootSignature.Get());
-
-    //commandList->SetComputeRoot32BitConstants(0, sizeof(Constants) / 4, &constants, 0);
-    commandList->SetComputeRootConstantBufferView(0, m_ConstantsBuffer->GetGPUVirtualAddress());
-    uint maxObjectCount = (uint)m_scene.m_scene_objects.size();
-    commandList->SetComputeRoot32BitConstants(5, sizeof(uint) / 4, &maxObjectCount, 0);
-
-    ID3D12DescriptorHeap* heaps[] = { m_CBV_SRV_UAV_Heap.Get() };
-    commandList->SetDescriptorHeaps(_countof(heaps), heaps);
-
-    // set objects buffer
-    commandList->SetComputeRootShaderResourceView(1, m_ObjectsBuffer.Get()->GetGPUVirtualAddress());
-    // set meshlet counts buffer
-    commandList->SetComputeRootShaderResourceView(2, m_MeshletCountsBuffer.Get()->GetGPUVirtualAddress());
-    // set visible object count buffer
-    commandList->SetComputeRootUnorderedAccessView(3, m_objectCountBuffer.Get()->GetGPUVirtualAddress());
-    // set indirect arguments buffer
-    commandList->SetComputeRootUnorderedAccessView(4, m_indirectArgumentBuffer.Get()->GetGPUVirtualAddress());
-    // set mesh lod structure buffer
-    commandList->SetComputeRootShaderResourceView(6, m_MeshLoDStructureBuffer.Get()->GetGPUVirtualAddress());
-
-    
-
-    uint32_t groupCountX = (maxObjectCount + GROUP_SIZE - 1) / GROUP_SIZE;
-    if (m_objectCulling)
-        commandList->Dispatch(groupCountX, 1, 1);
-
-
-
     // main render pass
     commandList->SetPipelineState(m_PipelineState.Get());
     commandList->SetGraphicsRootSignature(m_RootSignature.Get());
@@ -1011,54 +937,44 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
 
     commandList->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
 
-    //commandList->SetGraphicsRoot32BitConstants(0, sizeof(Constants) / 4, &constants, 0);
-    commandList->SetGraphicsRootConstantBufferView(0, m_ConstantsBuffer->GetGPUVirtualAddress());
-
-    //commandList->DrawIndexedInstanced(_countof(g_Indicies), 1, 0, 0, 0);
-
-    /*
-    ID3D12DescriptorHeap* heaps[] = { m_CBV_SRV_UAV_Heap.Get()};
+    ID3D12DescriptorHeap* heaps[] = { m_CBV_SRV_UAV_Heap.Get(), m_Sampler_Heap.Get()};
     commandList->SetDescriptorHeaps(_countof(heaps), heaps);
-    */
 
-    // set bindless index buffers
-    commandList->SetGraphicsRootDescriptorTable(1, m_indexSrvHandle);
+    //set constants
+    commandList->SetGraphicsRootConstantBufferView(0, m_ConstantsBuffer->GetGPUVirtualAddress());
     // set bindless vertex buffers
-    commandList->SetGraphicsRootDescriptorTable(2, m_vertexSrvHandle);
-    // set bindless triangles buffers
-    commandList->SetGraphicsRootDescriptorTable(4, m_triangleSrvHandle);
-    // set bindless draw tasks buffers
-    commandList->SetGraphicsRootDescriptorTable(5, m_drawTasksSrvHandle);
-    // set objects buffer
+    commandList->SetGraphicsRootDescriptorTable(1, m_VerticesSrvHandle);
+    // set bindless vertex-indices buffers
+    commandList->SetGraphicsRootDescriptorTable(2, m_VertexIndicesSrvHandle);
+    // set bindless primitive-indices buffers
+    commandList->SetGraphicsRootDescriptorTable(3, m_PrimitiveIndicesSrvHandle);
+    // set bindless meshlet buffers
+    commandList->SetGraphicsRootDescriptorTable(4, m_MeshletsSrvHandle);
+    // set bindless morph indices buffers
+    commandList->SetGraphicsRootDescriptorTable(5, m_MorphIndicesSrvHandle);
+    // set scene objects buffer
     commandList->SetGraphicsRootShaderResourceView(6, m_ObjectsBuffer.Get()->GetGPUVirtualAddress());
-    // set meshlet counts buffer
-    commandList->SetGraphicsRootShaderResourceView(7, m_MeshletCountsBuffer.Get()->GetGPUVirtualAddress());
-    // set bone matrices buffers
-    if ((uint)m_scene.m_animationMetaData.size())
-        commandList->SetGraphicsRootDescriptorTable(8, m_boneMatricesSrvHandle);
-    // set animation meta data buffer
-    if ((uint)m_scene.m_animationMetaData.size())
-        commandList->SetGraphicsRootShaderResourceView(9, m_AnimationMetaDataBuffer.Get()->GetGPUVirtualAddress());
-    // set mesh lod structure buffer
-    commandList->SetGraphicsRootShaderResourceView(11, m_MeshLoDStructureBuffer.Get()->GetGPUVirtualAddress());
-    
-    
+    // set work queue buffer
+    commandList->SetGraphicsRootUnorderedAccessView(7, m_WorkQueueBuffer.Get()->GetGPUVirtualAddress());
+    // clear with zeros and set work queue counters buffer
+    commandList->CopyResource(m_WorkQueueCountersBuffer.Get(), m_WorkQueueCountersClearValuesBuffer.Get());
+    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_WorkQueueCountersBuffer.Get()));
+    commandList->SetGraphicsRootUnorderedAccessView(8, m_WorkQueueCountersBuffer.Get()->GetGPUVirtualAddress());
+    // set global mesh payload buffer
+    commandList->SetGraphicsRootUnorderedAccessView(9, m_GlobalMeshPayloadBuffer.Get()->GetGPUVirtualAddress());
+    // set height map texture
+    commandList->SetGraphicsRootDescriptorTable(10,m_HeightMapTextureSrvHandle);
+    //commandList->SetGraphicsRootShaderResourceView(10, m_HeightMapTexture.Get()->GetGPUVirtualAddress());
+    // set hight map texture sampler
+    commandList->SetGraphicsRootDescriptorTable(11, m_Sampler_Heap->GetGPUDescriptorHandleForHeapStart());
 
-    //commandList->DispatchMesh(1, 1, 1);
-
-    commandList->ExecuteIndirect(
-        m_commandSignature.Get(),
-        (uint)m_scene.m_scene_objects.size(),
-        m_indirectArgumentBuffer.Get(),
-        0,
-        m_objectCountBuffer.Get(),
-        0
-    );
     
+    
+    assert((PERSISTENT_THREAD_COUNT % GROUP_SIZE) == 0);
+    commandList->DispatchMesh(PERSISTENT_THREAD_COUNT / GROUP_SIZE, 1, 1);
 
 
     // Render Dear ImGui graphics
-
     commandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
     commandList->SetDescriptorHeaps(1, m_ImGuiDescriptorHeap.GetAddressOf());
     ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList.Get());
@@ -1104,7 +1020,7 @@ void MeshletLoD::OnMouseWheel(MouseWheelEventArgs& e)
     m_autoCameraDistance = std::clamp(m_autoCameraDistance - e.WheelDelta * m_CameraScrollScale, 1.0f, 200.0f);
 }
 
-void MeshletLoD::initImGui() 
+void MeshletLoD::initImGui()
 {
     static bool alreadyInitialized = false;
     if (alreadyInitialized) return;
@@ -1240,18 +1156,37 @@ void MeshletLoD::updateImGui()
 
 
     ImGui::SetNextWindowSize(ImVec2(375, 0));
-    ImGui::SetNextWindowPos(ImVec2(275, 12), ImGuiCond_Always);
+    ImGui::SetNextWindowPos(ImVec2((float)(GetClientWidth() - 375 - 12), 12.0f), ImGuiCond_Always);
     ImGui::Begin("Settings");                           
    
 
     if (!ImGui::CollapsingHeader("Render Settings"))
     {
         ImGui::Checkbox("Meshlet based Frustum Culling", &m_frustumCulling);
-        ImGui::Checkbox("Meshlet based Cone Culling", &m_coneCulling);
-        ImGui::Checkbox("Object Culling", &m_objectCulling);
-        ImGui::Checkbox("Object LoD", &m_objectLoD);
-        ImGui::Checkbox("Meshlet LoD", &m_meshletLoD);
-        ImGui::SliderFloat("LoD Scale", &m_LoDScale, 0.01f, 10.0f);
+        ImGui::Checkbox("Screen Space Error based LoD selection", &m_screen_space_LoD);
+        ImGui::Checkbox("Geo-Morphing", &m_geo_morphing);
+        ImGui::Checkbox("Tessellation", &m_tessellation);
+        if (m_screen_space_LoD)
+            ImGui::InputFloat("Max error in pxl", &m_LoDScale, 0.01f, 1.0f, "%.2f");
+        else 
+            ImGui::InputFloat("LoD_0 Distance", &m_LoDScale, 0.01f, 1.0f, "%.2f");
+        ImGui::SliderFloat("Debug Float", &m_debugFloatSlider, 0.0f, 5.0f, "%.2f");
+
+    
+        ImGui::SliderFloat("Displacement Scale", &m_displacementScale, 0.0f, 0.1f);
+      
+
+        ImGui::Checkbox("Triplanar Mapping instead of UV-coordiantes", &m_triplanarMapping);
+        if (m_triplanarMapping)
+        {
+            ImGui::SliderFloat("Triplanar Texture Scale", &m_triplanarScale, 0.1f, 10.0f);
+            ImGui::SliderFloat("Triplanar Blend Grade", &m_triplanarBlendGrade, 0.1f, 10.0f);
+        }
+
+        if (ImGui::Checkbox("Lock Camera Position Shader Constant", &m_lockCameraShaderConstant))
+        {
+            m_lockedCameraPos = m_cameraPos;
+        }
         ImGui::ColorEdit4("Clear Color", m_ClearColor);
         if (ImGui::Button("Toggle Fullscreen"))
         {
@@ -1288,7 +1223,7 @@ void MeshletLoD::updateImGui()
         {
             Application::Get().Flush();
             UnloadContent();
-            m_scene.init(m_model_file_path, 0);
+            m_scene.init(m_model_file_path);
             LoadContent();
         }
     }
@@ -1296,121 +1231,24 @@ void MeshletLoD::updateImGui()
 
     if (!ImGui::CollapsingHeader("Debug Settings"))
     {
-        if (ImGui::Checkbox("Wireframe", &m_wireframe)) CreatePSO();
+        if (ImGui::Checkbox("Wireframe", &m_wireframe)) createPSO();
         ImGui::SameLine();
-        if (ImGui::Checkbox("Back Face Culling", &m_backFaceCulling)) CreatePSO();
+        if (ImGui::Checkbox("Back Face Culling", &m_backFaceCulling)) createPSO();
+        ImGui::Checkbox("Normal based Lighting", &m_allowLighting);
         
-        
-        static int selected = 0;  // Index of the selected option
-        const char* options[] = { "Disable Debug Visals", "Show Meshlets", "Show Bones", "Show LoD Selection"};
+        static int selected = static_cast<int>(m_shadingMode);  // Index of the selected option
+        const char* options[] = { "Disable Debug Visals", "Show Meshlets", "Show Meshlet Grouping", "Show LoDs", "Show Tessellation Level", "Visualize Height Map"};
         for (int i = 0; i < IM_ARRAYSIZE(options); i++) {
             if (ImGui::RadioButton(options[i], selected == i)) {
                 selected = i;  // Update selection when clicked
-                m_debugMode = static_cast<DebugVisualsSelection>(i);
+                m_shadingMode = static_cast<ShadingMode>(i);
             }
         }
         
         if (ImGui::Button("Force Lag"))
             Sleep(1000);
-        
-        
     }
     ImGui::Spacing();
-
-    ImGui::End();
-
-
-    // Animation Window
-    ImGui::SetNextWindowSize(ImVec2(275, 0));
-    ImGui::SetNextWindowPos(ImVec2((float)(GetClientWidth() - 275 - 12), 12.0f), ImGuiCond_Always);
-    ImGui::Begin("Animation");
-
-    if (!ImGui::CollapsingHeader("General Animation Settings"))
-    {
-        if (ImGui::Button("Remove All Animations"))
-        {
-            m_scene.clearAnimations();
-            UpdateObjectsBuffer();
-        }
-        if (ImGui::Button("Reset All"))
-        {
-            m_scene.resetAnimations();
-            UpdateObjectsBuffer();
-        }
-        if (ImGui::Button("Randomize Offsets"))
-        {
-            m_scene.randomizeAnimationOffsets();
-            UpdateObjectsBuffer();
-        }
-        if (ImGui::Button("Randomize Animations"))
-        {
-            m_scene.randomizeAnimations();
-            UpdateObjectsBuffer();
-        }
-    }
-
-    ImGui::Dummy(ImVec2(0.0f, 7.0f));
-
-    if (!ImGui::CollapsingHeader("Individual Object Animation"))
-    {
-        static int currentObjectSelection = 0; // Currently selected object index
-        ImGui::Text("Current Object Selection:");
-        ImGui::SetNextItemWidth(260);
-        ImGui::Combo("", &currentObjectSelection, m_scene.m_sceneObjectNamesCharP.data(), (int)m_scene.m_sceneObjectNamesCharP.size());
-
-        int currentAnimationSelection = m_scene.m_scene_objects[currentObjectSelection].animation_id;
-        for (uint a = 0; a < m_scene.m_meshes[m_scene.m_scene_objects[currentObjectSelection].mesh_id]->m_animations.size(); a++)
-        {
-            if (m_scene.m_scene_objects[currentObjectSelection].animation_id == m_scene.m_meshes[m_scene.m_scene_objects[currentObjectSelection].mesh_id]->m_animations[a].totalAnimationIndex)
-                currentAnimationSelection = a;
-        }
-        
-        currentAnimationSelection++;
-
-        ImGui::Text("Set Animation:");
-        ImGui::SetNextItemWidth(260);
-        ImGui::Combo("##xx", &currentAnimationSelection,
-            m_scene.m_meshes[m_scene.m_scene_objects[currentObjectSelection].mesh_id]->m_animationNamesCharP.data(),
-            (int)m_scene.m_meshes[m_scene.m_scene_objects[currentObjectSelection].mesh_id]->m_animationNamesCharP.size());
-
-        if (currentAnimationSelection == 0)
-            m_scene.m_scene_objects[currentObjectSelection].animation_id = -1;
-        else
-            m_scene.m_scene_objects[currentObjectSelection].animation_id = m_scene.m_meshes[m_scene.m_scene_objects[currentObjectSelection].mesh_id]->m_animations[currentAnimationSelection - 1].totalAnimationIndex;
-
-        if (ImGui::Button("Disable Animation"))
-        {
-            m_scene.m_scene_objects[currentObjectSelection].animation_id = -1;
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Gen. Instances"))
-        {
-            Application::Get().Flush();
-            //m_scene.init(m_model_file_path, 0);
-            UnloadContent();
-            m_scene.genInstances(currentObjectSelection, 5, 15);
-            LoadContent();
-            //UpdateObjectsBuffer();
-        }
-
-        ImGui::Text("Animation Time Offset:");
-        ImGui::SetNextItemWidth(160);
-        ImGui::InputFloat("(ctrl) - 0.01s", &m_scene.m_scene_objects[currentObjectSelection].animation_time_offset, 1.0f, 0.01f, "%.2f");
-
-        ImGui::Text("Animation Speed:");
-        ImGui::SetNextItemWidth(160);
-        ImGui::InputFloat("(ctrl) - 1%", &m_scene.m_scene_objects[currentObjectSelection].animation_speed, 1.0f, 0.01f, "%.2f");
-    }
-    
-    
-    ImGui::Dummy(ImVec2(0.0f, 7.0f));
-    ImGui::Separator();
-    ImGui::Dummy(ImVec2(0.0f, 3.0f));
-    ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - ImGui::CalcTextSize("Apply Changes").x - ImGui::GetStyle().FramePadding.x * 2);
-    if (ImGui::Button("Apply Changes")) 
-    {
-        UpdateObjectsBuffer();
-    }
 
     ImGui::End();
 
@@ -1432,20 +1270,12 @@ void MeshletLoD::updateImGui()
     if (!ImGui::CollapsingHeader("Scene Stats"))
     {
         ImGui::Text("scene  objects count: %d", (unsigned int)m_scene.m_scene_objects.size());
-        ImGui::Text("unique  meshes count: %d", (unsigned int)m_scene.m_meshes.size());
-        ImGui::Text("total  meshlet count: %d", (unsigned int)m_scene.m_draw_task_count);
-        ImGui::Text("total   vertex count: %d", (unsigned int)m_scene.m_vertex_count);
-        ImGui::Text("total triangle count: %d", (unsigned int)m_scene.m_triangles_count);
-
-        if (!ImGui::CollapsingHeader("Scene Processing Times"))
-        {
-            ImGui::Text("model load time:         %.4f sec", m_scene.m_modelLoadTime.count());
-            ImGui::Text("LoD generation time:     %.4f sec", m_scene.m_totalLoDGenTime.count());
-            ImGui::Text("meshlet generation time: %.4f sec", m_scene.m_totalMeshletGenTime.count());
-            ImGui::Separator();
-            ImGui::Text("total load time:         %.4f sec", m_scene.m_totalTime.count());
-        }
-
+        ImGui::Text("unique  meshes count: %d", (unsigned int)m_scene.m_mesh_count);
+        ImGui::Text("total  meshlet count: %d", (unsigned int)m_scene.m_total_meshlet_count);
+        ImGui::Text("total   vertex count: %d", (unsigned int)m_scene.m_total_vertex_count);
+        ImGui::Text("total triangle count: %d", (unsigned int)m_scene.m_totoal_triangle_count);
+        ImGui::Separator();
+        ImGui::Text("pre-processing  time: %.4f sec", m_scene.m_preProcessingTime);
     }
 
     ImGui::End();
@@ -1453,7 +1283,7 @@ void MeshletLoD::updateImGui()
 
     // Help Window
     ImGui::SetNextWindowSize(ImVec2(275, 0));
-    ImGui::SetNextWindowPos(ImVec2((float)(GetClientWidth() - 275 - 275 - 12 - 3), 12.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowPos(ImVec2((float)(GetClientWidth() - 275 - 375 - 12 - 7), 12.0f), ImGuiCond_Always);
     ImGui::Begin("Help");
 
     if (!ImGui::CollapsingHeader("Controls"))
