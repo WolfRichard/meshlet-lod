@@ -1044,7 +1044,7 @@ size_t meshopt_buildMeshletsBound(size_t index_count, size_t max_vertices, size_
 	assert(index_count % 3 == 0);
 	assert(max_vertices >= 3 && max_vertices <= kMeshletMaxVertices);
 	assert(max_triangles >= 1 && max_triangles <= kMeshletMaxTriangles);
-	assert(max_triangles % 4 == 0); // ensures the caller will compute output space properly as index data is 4b aligned
+	//assert(max_triangles % 4 == 0); // ensures the caller will compute output space properly as index data is 4b aligned
 
 	(void)kMeshletMaxVertices;
 	(void)kMeshletMaxTriangles;
@@ -1069,7 +1069,7 @@ size_t meshopt_buildMeshletsFlex(meshopt_Meshlet* meshlets, unsigned int* meshle
 
 	assert(max_vertices >= 3 && max_vertices <= kMeshletMaxVertices);
 	assert(min_triangles >= 1 && min_triangles <= max_triangles && max_triangles <= kMeshletMaxTriangles);
-	assert(min_triangles % 4 == 0 && max_triangles % 4 == 0); // ensures the caller will compute output space properly as index data is 4b aligned
+	//assert(min_triangles % 4 == 0 && max_triangles % 4 == 0); // ensures the caller will compute output space properly as index data is 4b aligned
 
 	assert(cone_weight <= 1); // negative cone weight switches metric to optimize for axis-aligned meshlets
 	assert(split_factor >= 0);

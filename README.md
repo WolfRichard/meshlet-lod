@@ -23,8 +23,6 @@ vcpkg install directxtex[dx12]
 cmake . -B build -A x64
 ```
 
-Due to Linker issues related to the used DirectXTex library, the project currently only compiles in release mode!
-
 ## Show Case
 ### Visualization of the Geo-Morph Solution
 Geo-Morphing allows for a free adjustment of the quality scale of the LOD-System by removing the limitations on triangle/screen-space-error size related to the display resolution. This allows Virtual Geometry to be a more viable LOD-Method for less capable hardware even on higher resolution displays, while staying free of any visual pop-in artefacts.

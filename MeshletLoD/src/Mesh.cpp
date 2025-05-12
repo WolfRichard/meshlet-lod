@@ -121,15 +121,18 @@ void Mesh::parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
     meshopt_optimizeVertexCache(m_original_indices.data(), m_original_indices.data(), raw_indices.size(), vertex_count);
 
     // simplify mesh if triangle count is larger than maximum to prevent excessive pre-compute times
-    size_t target_index_count = min(m_maximum_mesh_triangle_count * 3, m_original_indices.size());
-    std::vector<uint> simplified_indices(m_original_indices);
-    float lod_error = 0.0f;  
-    size_t simplifiedIndexCount = meshopt_simplify(
-        simplified_indices.data(), m_original_indices.data(), m_original_indices.size(),
-        reinterpret_cast<const float*>(&m_vertices.data()[0].position.x), m_vertices.size(), sizeof(S_Vertex),
-        target_index_count, FLT_MAX, meshopt_SimplifyLockBorder, &lod_error); // & meshopt_SimplifyErrorAbsolute bitmask option leads to cracks??? why??
-    simplified_indices.resize(simplifiedIndexCount);
-    m_original_indices = simplified_indices;
+    if (m_maximum_mesh_triangle_count)
+    {
+        size_t target_index_count = min(m_maximum_mesh_triangle_count * 3, m_original_indices.size());
+        std::vector<uint> simplified_indices(m_original_indices);
+        float lod_error = 0.0f;
+        size_t simplifiedIndexCount = meshopt_simplify(
+            simplified_indices.data(), m_original_indices.data(), m_original_indices.size(),
+            reinterpret_cast<const float*>(&m_vertices.data()[0].position.x), m_vertices.size(), sizeof(S_Vertex),
+            target_index_count, FLT_MAX, meshopt_SimplifyLockBorder, &lod_error); // & meshopt_SimplifyErrorAbsolute bitmask option leads to cracks??? why??
+        simplified_indices.resize(simplifiedIndexCount);
+        m_original_indices = simplified_indices;
+    }
 }
 
 void Mesh::generateLeafMeshlets()
