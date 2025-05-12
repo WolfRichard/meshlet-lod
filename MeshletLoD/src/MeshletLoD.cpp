@@ -29,12 +29,8 @@
 using namespace Microsoft::WRL;
 
 #include <d3dcompiler.h>
-
 #include <algorithm> 
-
 #include <DirectXTex.h>
-
-
 
 
 
@@ -293,8 +289,6 @@ bool MeshletLoD::LoadContent()
 
     setupConstantsUploadBuffer();
 
-
-
     // height map texture sampler
     D3D12_DESCRIPTOR_HEAP_DESC samplerHeapDesc = {};
     samplerHeapDesc.NumDescriptors = 1;
@@ -309,16 +303,12 @@ bool MeshletLoD::LoadContent()
     samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
     samplerDesc.MinLOD = 0;
     samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
-    //samplerDesc.MipLODBias = 0.0f;
     samplerDesc.MaxAnisotropy = 1;
 
     // Create the sampler
     device->CreateSampler(&samplerDesc, m_Sampler_Heap->GetCPUDescriptorHandleForHeapStart());
 
-
-
-
-
+    // setup cbv/srv/uav descriptor heap
     D3D12_DESCRIPTOR_HEAP_DESC gpuHeapDesc = {};
     gpuHeapDesc.NumDescriptors = 1                           // single scene objects buffer
                                + 1                           // single work queue buffer
@@ -343,20 +333,15 @@ bool MeshletLoD::LoadContent()
     std::vector<ComPtr<ID3D12Resource>> copyBuffers;
 
 
-    // height map texture
+    // load height map texture
     ScratchImage height_map_test_image;
-    
-    
-
     HRESULT hr = LoadFromWICFile(L"./assets/textures/heightmap.png", WIC_FLAGS_NONE, nullptr, height_map_test_image);
     if (FAILED(hr)) {
         OutputDebugString("FAILED TO LOAD TEST TEXTURE!\n");
         assert(false);
     }
-
     const Image* img = height_map_test_image.GetImage(0, 0, 0);
 
-    
     D3D12_RESOURCE_DESC textureDesc = {};
     textureDesc.MipLevels = 0;
     textureDesc.Format = img->format;
@@ -370,25 +355,14 @@ bool MeshletLoD::LoadContent()
 
     copyBuffers.push_back(ComPtr<ID3D12Resource>());
 
-
     UINT64 bufferSize = 0;
     UINT numRows = 0;
     UINT64 rowSizeInBytes = 0;
     D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint = {};
-    device->GetCopyableFootprints(
-        &textureDesc,
-        0,                  // First subresource
-        1,                  // Num subresources
-        0,                  // Base offset
-        &footprint,
-        &numRows,
-        &rowSizeInBytes,
-        &bufferSize   // <- This is what you want!
+    device->GetCopyableFootprints(&textureDesc, 0, 1, 0, &footprint,
+        &numRows, &rowSizeInBytes, &bufferSize
     );
  
-
-    
-
     // Create a committed resource for the GPU resource in a default heap.
     ThrowIfFailed(device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
@@ -419,14 +393,7 @@ bool MeshletLoD::LoadContent()
             0, 0, 1, &subresourceData);
     }
     else
-        while (true)
-            OutputDebugString("FAIL\n");
-
-
-
-
-
-
+        assert(false); // currently no backup texture if height-map loading fails
 
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -440,28 +407,6 @@ bool MeshletLoD::LoadContent()
 
     nextCpuSrvHandle.ptr += descriptorSize;
     nextGpuSrvHandle.ptr += descriptorSize;
-
-
-
-    /*
-    * Check if work graphs would run on this system
-    D3D12_FEATURE_DATA_D3D12_OPTIONS21 options21 = {};
-    HRESULT hr2 = device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS21, &options21, sizeof(options21));
-
-    D3D12_FEATURE_DATA_SHADER_MODEL shaderModel = { D3D_SHADER_MODEL_6_8 };
-    HRESULT hr3 = device->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL, &shaderModel, sizeof(shaderModel));
-
-
-    if (SUCCEEDED(hr2)) {
-        OutputDebugString("Workgraphs are supported!\n");
-    }
-    else {
-        OutputDebugString("Workgraphs not supported!\n");
-        assert(false);
-    }
-    */
-
-    
     
     // vertex-indices buffers
     setupBindlessSrvAndBuffers(m_VertexIndicesSrvHandle, 
@@ -524,8 +469,6 @@ bool MeshletLoD::LoadContent()
         nextGpuSrvHandle, nextCpuSrvHandle,
         temporaryMeshPaloadData, m_GlobalMeshPayloadBuffer,
         copyBuffers, commandList, descriptorSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-    
-   
 
     // Create the descriptor heap for the depth-stencil view.
     D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
@@ -551,8 +494,8 @@ bool MeshletLoD::LoadContent()
     D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
         D3D12_ROOT_SIGNATURE_FLAG_NONE;
 
-
     CD3DX12_ROOT_PARAMETER1 rootParameters[12];
+
     // constants
     rootParameters[0].InitAsConstantBufferView(0, 0);
 
@@ -604,7 +547,6 @@ bool MeshletLoD::LoadContent()
     samplerRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0, 0);
     rootParameters[11].InitAsDescriptorTable(1, &samplerRange, D3D12_SHADER_VISIBILITY_ALL);
 
-    
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDescription;
     rootSignatureDescription.Init_1_1(_countof(rootParameters), rootParameters, 0, nullptr, rootSignatureFlags);
 
@@ -712,12 +654,10 @@ void MeshletLoD::UnloadContent()
 
 void MeshletLoD::OnUpdate(UpdateEventArgs& e)
 {
+    // update frame time and fps
     static uint64_t frameCount = 0;
     static double totalTime = 0.0;
-
-   
     m_frameTime = e.ElapsedTime;
-
     super::OnUpdate(e);
 
     totalTime += e.ElapsedTime;
@@ -727,15 +667,9 @@ void MeshletLoD::OnUpdate(UpdateEventArgs& e)
     if (totalTime > 1.0)
     {
         m_fps = frameCount / totalTime;
-        //OutputDebugString(MatrixToString(m_scene.animator.m_FinalBoneMatrices[1]).c_str());
-        
-
         char buffer[512];
         sprintf_s(buffer, "FPS: %f\n", m_fps);
         OutputDebugStringA(buffer);
-        //OutputDebugStringA(MatrixToString(m_scene.animator.m_CurrentAnimation->m_RootNode.children[1].children[0].transformation).c_str());
-        //OutputDebugStringA(MatrixToString(m_scene.animator.m_CurrentAnimation->FindBone(m_scene.animator.m_CurrentAnimation->m_RootNode.children[1].children[0].name)->m_LocalTransform).c_str());
-        //OutputDebugStringA(MatrixToString(DirectX::XMMatrixTranslation(0, 1, 0) * DirectX::XMMatrixTranslation(0, 1, 0)).c_str());
 
         frameCount = 0;
         totalTime = 0.0;
@@ -810,8 +744,6 @@ void MeshletLoD::OnUpdate(UpdateEventArgs& e)
         m_ViewMatrix = XMMatrixLookAtLH(XMLoadFloat3(&m_cameraPos), focus, XMVectorSet(0, 1, 0, 0));
     }
 
-
-
     // Update the projection matrix.
     float aspectRatio = GetClientWidth() / static_cast<float>(GetClientHeight());
     m_ProjectionMatrix = XMMatrixPerspectiveFovLH(XMConvertToRadians(m_FoV), aspectRatio, 0.001f, 100000.0f);
@@ -832,7 +764,6 @@ void MeshletLoD::TransitionResource(Microsoft::WRL::ComPtr<ID3D12GraphicsCommand
     commandList->ResourceBarrier(1, &barrier);
 }
 
-// Clear a render target.
 void MeshletLoD::ClearRTV(Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7> commandList,
     D3D12_CPU_DESCRIPTOR_HANDLE rtv, FLOAT* clearColor)
 {
@@ -857,19 +788,14 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
     auto rtv = m_pWindow->GetCurrentRenderTargetView();
     auto dsv = m_DSVHeap->GetCPUDescriptorHandleForHeapStart();
 
-
     // Update the MVP matrix
     XMMATRIX mvpMatrix = XMMatrixTranspose(m_ViewMatrix * m_ProjectionMatrix);
     S_Constants constants;
 
-
     constants.ViewProjMat = mvpMatrix;
-
-
     constants.ProjMat = XMMatrixTranspose(m_ProjectionMatrix);
     constants.ScreenWidth = GetClientWidth();
     constants.ScreenHeight = GetClientHeight();
-
 
     constants.ViewMat = XMMatrixTranspose(m_ViewMatrix);
     // frustom planes from view-proj-matrix
@@ -882,7 +808,6 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
     constants.Frustum[3] = float4(m._14 + m._12, m._24 + m._22, m._34 + m._32, m._44 + m._42); // bot
     constants.Frustum[4] = float4(m._13, m._23, m._33, m._43);                                 // near
     constants.Frustum[5] = float4(m._14 - m._13, m._24 - m._23, m._34 - m._33, m._44 - m._43); // far
-
 
     float scale_x = sqrtf(m._11 * m._11 + m._21 * m._21 + m._31 * m._31);
     float scale_y = sqrtf(m._12 * m._12 + m._22 * m._22 + m._32 * m._32);
@@ -914,9 +839,7 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
     if (m_triplanarMapping)         constants.BoolConstants |= TRI_PLANAR_TEXTURE_MAPPING_BIT_POS;
     if (m_allowLighting)            constants.BoolConstants |= NORMAL_LIGHTING_BIT_POS;
 
-    
-
-    
+    // push new constants data from cpu to gpu
     memcpy(m_mappedConstantData, &constants, sizeof(S_Constants));
 
     // Clear the render targets.
@@ -969,7 +892,7 @@ void MeshletLoD::OnRender(RenderEventArgs& e)
     commandList->SetGraphicsRootDescriptorTable(11, m_Sampler_Heap->GetGPUDescriptorHandleForHeapStart());
 
     
-    
+    // dispatch a fixed amount of persistent threads to process and render the scene
     assert((PERSISTENT_THREAD_COUNT % GROUP_SIZE) == 0);
     commandList->DispatchMesh(PERSISTENT_THREAD_COUNT / GROUP_SIZE, 1, 1);
 
@@ -1070,21 +993,13 @@ void MeshletLoD::initImGui()
         }
     };
 
-
-
-
-
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
 
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
-    //ImGui::StyleColorsLight();
-
-
-    
 
     D3D12_DESCRIPTOR_HEAP_DESC descHeap = {};
     descHeap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
@@ -1096,7 +1011,6 @@ void MeshletLoD::initImGui()
         &descHeap, IID_PPV_ARGS(&m_ImGuiDescriptorHeap)
     ));
 
-    
     // Setup Platform/Renderer backends
     ImGui_ImplWin32_Init(m_pWindow->GetWindowHandle());
 
@@ -1104,7 +1018,6 @@ void MeshletLoD::initImGui()
     static ExampleDescriptorHeapAllocator g_pd3dSrvDescHeapAlloc;
     g_pd3dSrvDescHeapAlloc.Create(Application::Get().GetDevice().Get(), m_ImGuiDescriptorHeap.Get());
     
-
     ImGui_ImplDX12_InitInfo init_info = {};
     init_info.Device = Application::Get().GetDevice().Get();
     init_info.CommandQueue = commandQueue->GetD3D12CommandQueue().Get();
@@ -1118,24 +1031,21 @@ void MeshletLoD::initImGui()
     init_info.SrvDescriptorFreeFn = [](ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE cpu_handle, D3D12_GPU_DESCRIPTOR_HANDLE gpu_handle) { return g_pd3dSrvDescHeapAlloc.Free(cpu_handle, gpu_handle); };
     ImGui_ImplDX12_Init(&init_info);
 
-
     alreadyInitialized = true;
 }
 
 
 void MeshletLoD::updateImGui()
 {
-    
+    // update VRAM usage
     DXGI_QUERY_VIDEO_MEMORY_INFO videoMemoryInfo;
     Application::Get().m_dxgiAdapter->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &videoMemoryInfo);
 
-
+    // update RAM usage
     PROCESS_MEMORY_COUNTERS_EX memoryInfo;
     memoryInfo.cb = sizeof(memoryInfo);
 
-    //MEMORYSTATUSEX memoryInfo;
-    //memoryInfo.dwLength = sizeof(MEMORYSTATUSEX);
-
+    // keep track of recent frame time
     const unsigned int fpsHistorySize = 250;
     static float fpsHistory[fpsHistorySize] = { 0 };
     static float fpsHistoryOffset = 0.0f;
@@ -1146,20 +1056,15 @@ void MeshletLoD::updateImGui()
     fpsHistoryOffset += clamp(fpsHistorySpeed * (float)m_frameTime, 0.0f, 1.0f);
     if (fpsHistoryOffset >= fpsHistorySize) fpsHistoryOffset = 0.0f;
 
-
-
     // Start the Dear ImGui frame
-    
     ImGui_ImplWin32_NewFrame();
     ImGui_ImplDX12_NewFrame();
     ImGui::NewFrame();
 
-
+    // render and debug settings window
     ImGui::SetNextWindowSize(ImVec2(375, 0));
     ImGui::SetNextWindowPos(ImVec2((float)(GetClientWidth() - 375 - 12), 12.0f), ImGuiCond_Always);
     ImGui::Begin("Settings");                           
-   
-
     if (!ImGui::CollapsingHeader("Render Settings"))
     {
         ImGui::Checkbox("Meshlet based Frustum Culling", &m_frustumCulling);
@@ -1171,18 +1076,13 @@ void MeshletLoD::updateImGui()
         else 
             ImGui::InputFloat("LoD_0 Distance", &m_LoDScale, 0.01f, 1.0f, "%.2f");
         ImGui::SliderFloat("Debug Float", &m_debugFloatSlider, 0.0f, 5.0f, "%.2f");
-
-    
         ImGui::SliderFloat("Displacement Scale", &m_displacementScale, 0.0f, 0.1f);
-      
-
         ImGui::Checkbox("Triplanar Mapping instead of UV-coordiantes", &m_triplanarMapping);
         if (m_triplanarMapping)
         {
             ImGui::SliderFloat("Triplanar Texture Scale", &m_triplanarScale, 0.1f, 10.0f);
             ImGui::SliderFloat("Triplanar Blend Grade", &m_triplanarBlendGrade, 0.1f, 10.0f);
         }
-
         if (ImGui::Checkbox("Lock Camera Position Shader Constant", &m_lockCameraShaderConstant))
         {
             m_lockedCameraPos = m_cameraPos;
@@ -1198,7 +1098,6 @@ void MeshletLoD::updateImGui()
         }
     }
     ImGui::Spacing();
-
     if (!ImGui::CollapsingHeader("Camera Settings"))
     {
         ImGui::Checkbox("Free Camera", &m_freeCamera);
@@ -1214,7 +1113,6 @@ void MeshletLoD::updateImGui()
         ImGui::SliderFloat("FoV", &m_FoV, 45.0f, 120.0f);
     }
     ImGui::Spacing();
-
     if (!ImGui::CollapsingHeader("Model Settings"))
     {
         ImGui::InputText("", m_model_file_path, sizeof(m_model_file_path));
@@ -1228,7 +1126,6 @@ void MeshletLoD::updateImGui()
         }
     }
     ImGui::Spacing();
-
     if (!ImGui::CollapsingHeader("Debug Settings"))
     {
         if (ImGui::Checkbox("Wireframe", &m_wireframe)) createPSO();
@@ -1249,14 +1146,12 @@ void MeshletLoD::updateImGui()
             Sleep(1000);
     }
     ImGui::Spacing();
-
     ImGui::End();
 
-    // Performance Statistics
+    // Performance Statistics window
     ImGui::SetNextWindowSize(ImVec2(260, 0));
     ImGui::SetNextWindowPos(ImVec2(12.0f, 12.0f), ImGuiCond_Always);
     ImGui::Begin("Performance Statistics");
-
     if (!ImGui::CollapsingHeader("Run-Time Perfromance Statistics"))
     {
         ImGui::Text("%.1f FPS", m_fps);
@@ -1277,11 +1172,9 @@ void MeshletLoD::updateImGui()
         ImGui::Separator();
         ImGui::Text("pre-processing  time: %.4f sec", m_scene.m_preProcessingTime);
     }
-
     ImGui::End();
 
-
-    // Help Window
+    // Help and Controls Window
     ImGui::SetNextWindowSize(ImVec2(275, 0));
     ImGui::SetNextWindowPos(ImVec2((float)(GetClientWidth() - 275 - 375 - 12 - 7), 12.0f), ImGuiCond_Always);
     ImGui::Begin("Help");

@@ -659,7 +659,6 @@ void main(in uint I : SV_GroupIndex,
                 vertex = linearVertexInterpolation(vertex, morph_target_vertex, lerp_value);
             }
             
-            
             // transform vertices from object to world to clip space
             // optional vertex displacement according to heightmap
             // populate outpiut buffers
@@ -685,7 +684,7 @@ void main(in uint I : SV_GroupIndex,
             }
             else if (constants.shadingSelection == MESHLETS_SHADING)
             {
-                verts[v].Color = Rainbow(Random(scene_object.mesh_id + payload_task.meshlet_id)) * brightness;
+                verts[v].Color = Rainbow(Random((scene_object.mesh_id + 1) + payload_task.meshlet_id + gid)) * brightness;
             }
             else if (constants.shadingSelection == LOD_SHADING)
             {
@@ -770,7 +769,7 @@ void main(in uint I : SV_GroupIndex,
         verts[v].UV = vertex.uv.xy;
         verts[v].WNormal = normal.xyz;
         
-        
+        // set vertex color according to selected debug shading
         float brightness = clamp(clamp(dot(normalize(float3(1, 1, 1)), normal.xyz), 0, 1) + clamp(dot(normalize(float3(-2, 1, -1)), normal.xyz), 0, 0.6), 0.05, 1);
         if (!(constants.BoolConstants & NORMAL_LIGHTING_BIT_POS))
             brightness = 1;
@@ -780,7 +779,7 @@ void main(in uint I : SV_GroupIndex,
         }
         else if (constants.shadingSelection == MESHLETS_SHADING)
         {
-            verts[v].Color = Rainbow(Random(scene_object.mesh_id + payload_task.meshlet_id)) * brightness;
+            verts[v].Color = Rainbow(Random((scene_object.mesh_id + 1) * 1013 + payload_task.meshlet_id)) * brightness;
         }
         else if (constants.shadingSelection == LOD_SHADING)
         {
@@ -816,44 +815,4 @@ void main(in uint I : SV_GroupIndex,
                         SampleTriangleBufferAsCharArray(meshlet.triangle_offset + p * 3 + 1, scene_object.mesh_id),
                         SampleTriangleBufferAsCharArray(meshlet.triangle_offset + p * 3 + 2, scene_object.mesh_id));
     }
-    
-  
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    /*
-    SetMeshOutputCounts(3, 1);
-    verts[0].Pos = float4(-1, -1, 0, 0);
-    verts[0].Color = float4(1, 0, 0, 1);
-    verts[1].Pos = float4(1, -1, 0, 0);
-    verts[1].Color = float4(1, 0, 0, 1);
-    verts[2].Pos = float4(-1, 1, 0, 0);
-    verts[2].Color = float4(1, 0, 0, 1);
-    tris[0] = uint3(0, 2, 1);
-    */
-    
-    /*
-    SetMeshOutputCounts(3, 1);
-    
-    verts[0].Pos = mul(float4(-1, -1, 0, 1), constants.ViewProjMat);
-    verts[1].Pos = mul(float4(1, -1, 0, 1), constants.ViewProjMat);
-    verts[2].Pos = mul(float4(-1, 1, 0, 1), constants.ViewProjMat);
-    
-    verts[0].Color = float4(1, 0, 0, 1);
-    verts[1].Color = float4(1, 0, 0, 1);
-    verts[2].Color = float4(1, 0, 0, 1);
-    
-    tris[0] = uint3(0, 2, 1);
-    */
 }

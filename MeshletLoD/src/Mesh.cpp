@@ -20,10 +20,6 @@ Mesh::Mesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
     OutputDebugString("Generated Leaf Meshlets\n");
     buildMeshletHierachy();
     OutputDebugString("Finished Hierarchy Generation\n");
-
-    // debug output meshlet hierarchy
-    //printTreeFromTop(m_hierarchy_root_group);
-    //printAllMeshlets();
 }
 
 
@@ -195,8 +191,9 @@ void Mesh::generateLeafMeshlets()
         m_meshlets.push_back(newMeshlet);
     }
 
+    // initialize morph indices to point at themselfes (no morphing) when first creating base meshlets
     m_morph_indices.resize(m_vertex_indices.size(), 0);
-    for (uint m = 0; m < m_current_hierarchy_top_level_meshlets.size(); m++) // go over every simplified meshlet of the current group
+    for (uint m = 0; m < m_current_hierarchy_top_level_meshlets.size(); m++)
     {
         S_Meshlet& current_simplified_meshlet = m_meshlets[m_current_hierarchy_top_level_meshlets[m]];
         for (unsigned char vi = 0; vi < current_simplified_meshlet.vertex_count; vi++)
@@ -231,22 +228,18 @@ void Mesh::buildMeshletHierachy()
     m_current_hierarchy_top_level_groups.clear();
     m_current_hierarchy_top_level_meshlets.clear();
 
-
-    // Check if one of a groups simplfied Meshlets is part of another groups base meshlets, if so declare it its parent
-    // with the limitation of only one parent and two children per group
+    // print debug info
     OutputDebugString(("\nTotal number of Meshlets: " + std::to_string(m_meshlets.size() - 1) + "\n").c_str());
     OutputDebugString(("Total number of Groups: " + std::to_string(m_meshlet_groups.size()) + "\n").c_str());
     OutputDebugString(("Hierarchy Tree Depth: " + std::to_string(m_hierarchy_per_level_group_count.size()) + "\n").c_str());
-    //for (uint count : m_hierarchy_per_level_group_count) OutputDebugString((std::to_string(count) + ", ").c_str());
-    //findParentsItterative();
-    //OutputDebugString("\n\n");
-    //OutputDebugString(("Size vertex_indices vector: " + std::to_string(m_vertex_indices.size()) + " Size morph_indices vector: " + std::to_string(m_morph_indices.size()) + "\n").c_str());
 }
 
 
 
 void Mesh::groupMeshlets()
 {
+    OutputDebugString(("\nNumber of Meshlets: " + std::to_string(m_current_hierarchy_top_level_meshlets.size()) + "\n").c_str());
+
     // build METIS graph representation of meshlet connectivity to each other
     idx_t MATIS_numNodes = (int)m_current_hierarchy_top_level_meshlets.size();
     std::vector<idx_t> MATIS_vertexWeights(MATIS_numNodes, 100);
@@ -324,42 +317,7 @@ void Mesh::groupMeshlets()
         groupMeshletCounts[k] = meshletCounter;
     }
 
-    OutputDebugString(("\nNumber of Meshlets: " + std::to_string(m_current_hierarchy_top_level_meshlets.size()) + "\n").c_str());
     OutputDebugString(("Number of Groups: " + std::to_string(MATIS_numPartitions) + "\n").c_str());
-
-    
-    int debugCounter = 0;
-    /*
-    for (auto& meshletSharedEdgesList : connectivity_matrix)
-    {
-        OutputDebugString(("\nMeshlet_" + std::to_string(debugCounter++) + ": ").c_str());
-        uint neighboringMeshletCount = 0;
-        for (auto matrix_entry : meshletSharedEdgesList)
-        {
-            OutputDebugString((std::to_string(matrix_entry) + ",").c_str());
-            if (matrix_entry) neighboringMeshletCount++;
-        }
-        if (neighboringMeshletCount) OutputDebugString(("\nMeshlet has " + std::to_string(neighboringMeshletCount) + " Neighbors").c_str());
-        else OutputDebugString("\nMeshlet shares no Edge!!!!!");
-
-    }
-    
-
-    OutputDebugString("\nRESULT: ");
-    for (auto assignedGroupIndex : MATIS_outputPartitionsArray)
-        OutputDebugString((std::to_string(assignedGroupIndex) + ", ").c_str());
-    OutputDebugString("\nNumber of Meshlets in each group: ");
-    for (int k = 0; k < MATIS_numPartitions; k++) 
-    {
-        debugCounter = 0;
-        for (auto assignedGroupIndex : MATIS_outputPartitionsArray)
-            if (k == assignedGroupIndex)
-                debugCounter++;
-        assert(debugCounter <= 5 && debugCounter >= 4);
-        OutputDebugString((std::to_string(debugCounter) + ", ").c_str());
-    }
-    OutputDebugString("\n\n\n");
-    */
 
     // mark newly gnerated meshlet grous as current top level 
     m_current_hierarchy_top_level_groups.clear();
@@ -387,6 +345,7 @@ void Mesh::groupMeshlets()
 
 std::pair<uint, uint> Mesh::sortEdgeIndices(uint v0, uint v1) 
 {
+    // always push lesser index to be first
     return (v0 < v1) ? std::make_pair(v0, v1) : std::make_pair(v1, v0);
 }
 
@@ -395,6 +354,7 @@ std::unordered_set<std::pair<uint, uint>, PairHash> Mesh::extractEdges(S_Meshlet
 {
     std::unordered_set<std::pair<uint, uint>, PairHash> edge_set;
 
+    // extract all 3 edges for every triangle and return the reult as an unordered_set for faster lookup
     for (uint i = 0; i < meshlet.triangle_count; i++) 
     {
         uint vertex_index_0 = m_vertex_indices[meshlet.vertex_offset + m_primitive_indices[meshlet.triangle_offset + i * 3 + 0]];
@@ -415,21 +375,21 @@ std::unordered_set<std::pair<uint, uint>, PairHash> Mesh::extractBoundaryEdgeSet
     std::unordered_set<std::pair<uint, uint>, PairHash> edge_set;
     std::unordered_map<std::pair<uint, uint>, int, PairHash> edgeCount;
 
+    // count the occurance of every edge
     for (uint i = 0; i < meshlet.triangle_count; i++)
     {
         uint vertex_index_0 = m_vertex_indices[meshlet.vertex_offset + m_primitive_indices[meshlet.triangle_offset + i * 3 + 0]];
         uint vertex_index_1 = m_vertex_indices[meshlet.vertex_offset + m_primitive_indices[meshlet.triangle_offset + i * 3 + 1]];
         uint vertex_index_2 = m_vertex_indices[meshlet.vertex_offset + m_primitive_indices[meshlet.triangle_offset + i * 3 + 2]];
 
-        // Step 1: Count occurrences of each edge
         edgeCount[sortEdgeIndices(vertex_index_0, vertex_index_1)]++;
         edgeCount[sortEdgeIndices(vertex_index_1, vertex_index_2)]++;
         edgeCount[sortEdgeIndices(vertex_index_2, vertex_index_0)]++;
     }
 
-    // Step 2: Collect edges that appear only once (boundary edges)
+    // boundary edges = edges that only occur once
     for (const auto& [edge, count] : edgeCount) {
-        if (count == 1) {  // Boundary edges appear only once
+        if (count == 1) {
             edge_set.insert(edge);
         }
     }
@@ -440,6 +400,7 @@ std::unordered_set<std::pair<uint, uint>, PairHash> Mesh::extractBoundaryEdgeSet
 
 uint Mesh::count_shared_edges(const std::unordered_set<std::pair<uint, uint>, PairHash>& edgesA, const std::unordered_set<std::pair<uint, uint>, PairHash>& edgesB) 
 {
+    // go over every edge of set A and try to find it in set B
     int shared_count = 0;
     for (const auto& edge : edgesA) 
     {
@@ -456,7 +417,7 @@ std::vector<std::pair<uint, uint>> Mesh::extractBoundaryEdges(std::vector<uint>&
 {
     std::unordered_map<std::pair<uint, uint>, int, PairHash> edgeCount;
 
-    // Step 1: Count occurrences of each edge
+    // count occurrences of each edge
     for (uint tri = 0; tri < (uint)indices.size() / 3; tri++)
     {
         edgeCount[sortEdgeIndices(indices[tri * 3 + 0], indices[tri * 3 + 1])]++;
@@ -464,10 +425,10 @@ std::vector<std::pair<uint, uint>> Mesh::extractBoundaryEdges(std::vector<uint>&
         edgeCount[sortEdgeIndices(indices[tri * 3 + 2], indices[tri * 3 + 0])]++;
     }
 
-    // Step 2: Collect edges that appear only once (boundary edges)
+    // boundary edges = edges that only occur once
     std::vector<std::pair<uint, uint>> boundaryEdges;
     for (const auto& [edge, count] : edgeCount) {
-        if (count == 1) {  // Boundary edges appear only once
+        if (count == 1) { 
             boundaryEdges.push_back(edge);
         }
     }
@@ -478,13 +439,16 @@ std::vector<std::pair<uint, uint>> Mesh::extractBoundaryEdges(std::vector<uint>&
 
 void Mesh::simplifiyTopLevelGroups()
 {
-    m_current_hierarchy_top_level_meshlets.clear(); // clear the top level of meshlets as it will be replaced by their simplified version
+    // clear the top level of meshlets as it will be later replaced by their simplified version
+    m_current_hierarchy_top_level_meshlets.clear(); 
 
-    //OutputDebugString(("\n\nNumber of Top LEVEL GROUPS: " + std::to_string(m_current_hierarchy_top_level_groups.size())).c_str());
+    // process each group individually
     for (uint g = 0; g < m_current_hierarchy_top_level_groups.size(); g++) 
     {
         OutputDebugString(("\t -> simplifiying group[" + std::to_string(g) + "]\n").c_str());
+        
         S_MeshletGroup& current_group = m_meshlet_groups[m_current_hierarchy_top_level_groups[g]];
+
         // combined triangles of all meshlets (in reference to the original vertex buffer)
         std::vector<uint> merged_deduplicated_indices; 
         std::vector<S_BoundingSphere> meshlet_bounding_spheres;
@@ -504,12 +468,13 @@ void Mesh::simplifiyTopLevelGroups()
                 merged_deduplicated_indices.push_back(m_vertex_indices[current_meshlet.vertex_offset + m_primitive_indices[current_meshlet.triangle_offset + i]]);
             }
         }
+
         // average out the bounding sphere centers of chid meshlets to get approximateion for group center
-        
         current_group.bounding_sphere.center.x /= current_group.meshlet_count;
         current_group.bounding_sphere.center.y /= current_group.meshlet_count;
         current_group.bounding_sphere.center.z /= current_group.meshlet_count;
 
+        // compute conservative bounding sphere radius by looking for furthest outgoing inner meshlet bounding sphere
         current_group.bounding_sphere.radius = 0;
         for (uint m = 0; m < current_group.meshlet_count; m++)
         {
@@ -522,17 +487,13 @@ void Mesh::simplifiyTopLevelGroups()
             current_group.bounding_sphere.radius = current_group.bounding_sphere.radius < dist ? dist : current_group.bounding_sphere.radius;
         }
          
-        computeGroupBoundingSphere(current_group);
-        //current_group.bounding_sphere = computeBoundingSphereRitter(meshlet_bounding_spheres);
+        // optional alternative more accurate boundingsphere calculation (vertex based instead of based on child bounds)
+        //computeGroupBoundingSphere(current_group)
+
 
         // simplify the meshlet group to have enough space to hold 2 meshlets
         std::vector<uint> simplified_indices(merged_deduplicated_indices.size());
-        float lod_error = 0.0f;
-        
-
-
-        // key == original vertex index, value == morph target vertex index
-        std::unordered_map<uint, uint> morph_target_index_indices;
+        float lod_error = 0.0f;       
 
         // stores what vertex was simplified into what other vertex
         std::vector<uint> vertex_remap(m_vertices.size(), -1);
@@ -542,222 +503,13 @@ void Mesh::simplifiyTopLevelGroups()
         }
         std::vector<int> per_vertex_morph_index_remap(m_vertices.size(), -1);
 
-        if (!m_useCustomSimplification)
-        {
-            // extract unique vertex indices from index buffer
-            std::unordered_set<uint> unique_vertex_indices;
-            for (uint i : merged_deduplicated_indices)
-                if (unique_vertex_indices.insert(i).second)
-                    morph_target_index_indices[i] = i;
-
-            size_t target_index_count = GROUP_SPLIT_COUNT * MAX_MESHLET_VERTEX_COUNT * 3; // TODO: !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! should be "GROUP_SPLIT_COUNT * MAX_MESHLET_PRIMITIVE_COUNT * 3", but that would blow past the vertex limit and generate to many meshlets
-
-            size_t simplifiedIndexCount = meshopt_simplify_tracking(
-                simplified_indices.data(), merged_deduplicated_indices.data(), merged_deduplicated_indices.size(),
-                reinterpret_cast<const float*>(&m_vertices.data()[0].position.x), m_vertices.size(), sizeof(S_Vertex),
-                target_index_count, FLT_MAX, meshopt_SimplifyLockBorder /* | meshopt_SimplifySparse */ | meshopt_SimplifyErrorAbsolute, &lod_error, &vertex_remap);
-            simplified_indices.resize(simplifiedIndexCount);
-            //current_group.bounding_sphere.radius = lod_error;
-
-            
-            
-        }
-
-
-        // Custom simplification algorithm that tracks vertex decimation indices
-        else if (m_useCustomSimplification)
-        {
-            // copy original index buffer into resulting simplified index buffer
-            simplified_indices = merged_deduplicated_indices;
-          
-
-            // extract unique vertex indices from index buffer
-            std::unordered_set<uint> unique_vertex_indices;
-            for (uint i : simplified_indices)
-                unique_vertex_indices.insert(i);
-            
-            // filter out boundary vertices before simplification
-            auto boundary_edges = extractBoundaryEdges(simplified_indices);
-            std::unordered_set<uint> unique_inner_vertices;
-            for (uint vertex_index : unique_vertex_indices)
-            {
-                morph_target_index_indices[vertex_index] = vertex_index;
-                bool is_inner = true;
-                for (auto edge : boundary_edges)
-                {
-                    if ((edge.first == vertex_index) || (edge.second == vertex_index))
-                    {
-                        is_inner = false;
-                        break;
-                    }
-                }
-                if (is_inner)
-                    unique_inner_vertices.insert(vertex_index);
-            }
-
-
-
-            // pool of vertices that can be selected from while choosing next vertex to remove from the geometry
-            std::vector<uint> valid_simplification_vertex_indices_pool(unique_inner_vertices.begin(), unique_inner_vertices.end());
-                    
-            // simplify until specified simplicity is reached
-            uint current_triangle_count = (uint)simplified_indices.size() / 3;
-            uint current_vertex_count = (uint)unique_vertex_indices.size();
-            OutputDebugString(("\nInitial primitives Count: " + std::to_string(current_triangle_count) + "\n").c_str());
-            OutputDebugString(("Initial vertex Count: " + std::to_string(current_vertex_count) + "\n").c_str());
-            while (current_triangle_count > MAX_MESHLET_PRIMITIVE_COUNT * 2 || current_vertex_count > MAX_MESHLET_VERTEX_COUNT * 1.5f)
-            {
-                // collect every neighbor for every valid simplification vertex
-                //assert(valid_simplification_vertex_indices_pool.size() > 0);
-                if (valid_simplification_vertex_indices_pool.size() <= 0)
-                {
-                    OutputDebugString("Early Simplification Termination, run out of inner vertices!");
-                    break; // TODO: CHECK IF THIS CAUSES ISSUES like to many split meshlets
-                }
-                std::vector<std::unordered_set<uint>> per_vertex_neighbor_indices(valid_simplification_vertex_indices_pool.size());
-                for (uint vertex_index_index = 0; vertex_index_index < valid_simplification_vertex_indices_pool.size(); vertex_index_index++)
-                {
-                    uint vertex_index = valid_simplification_vertex_indices_pool[vertex_index_index];
-                    for (uint triangle_index = 0; triangle_index < simplified_indices.size() / 3; triangle_index++)
-                    {
-                        if (simplified_indices[triangle_index * 3 + 0] == vertex_index)
-                        {
-                            per_vertex_neighbor_indices[vertex_index_index].insert(simplified_indices[triangle_index * 3 + 1]);
-                            per_vertex_neighbor_indices[vertex_index_index].insert(simplified_indices[triangle_index * 3 + 2]);
-                        }
-                        else if (simplified_indices[triangle_index * 3 + 1] == vertex_index)
-                        {
-                            per_vertex_neighbor_indices[vertex_index_index].insert(simplified_indices[triangle_index * 3 + 0]);
-                            per_vertex_neighbor_indices[vertex_index_index].insert(simplified_indices[triangle_index * 3 + 2]);
-                        }
-                        else if (simplified_indices[triangle_index * 3 + 2] == vertex_index)
-                        {
-                            per_vertex_neighbor_indices[vertex_index_index].insert(simplified_indices[triangle_index * 3 + 0]);
-                            per_vertex_neighbor_indices[vertex_index_index].insert(simplified_indices[triangle_index * 3 + 1]);
-                        }
-                    }
-                }
-
-                // check if by standing vertices lost their connecticity by getting all their triangles degenerated by having their neighbor vertices simplfiicated
-                // if so, remove them aswell from the simplification pool
-                for (uint i = 0; i < per_vertex_neighbor_indices.size(); i++)
-                {
-                    auto& neighbor_indices_set = per_vertex_neighbor_indices[i];
-                    if (neighbor_indices_set.size() < 2)
-                    {
-                        swap_remove(valid_simplification_vertex_indices_pool, i);
-                        swap_remove(per_vertex_neighbor_indices, i);
-                        current_vertex_count--;
-                    }
-                }
-
-                /*
-                uint lowest_neighbor_count = UINT32_MAX;
-                std::vector<uint> vertex_index_indices_with_lowest_neighbor_count;
-                for (uint vertex_index_index = 0; vertex_index_index < valid_simplification_vertex_indices_pool.size(); vertex_index_index++)
-                {
-                    if (per_vertex_neighbor_indices[vertex_index_index].size() == lowest_neighbor_count)
-                    {
-                        vertex_index_indices_with_lowest_neighbor_count.push_back(vertex_index_index);
-                    }
-                    else if (per_vertex_neighbor_indices[vertex_index_index].size() < lowest_neighbor_count)
-                    {
-                        lowest_neighbor_count = (uint)per_vertex_neighbor_indices[vertex_index_index].size();
-                        vertex_index_indices_with_lowest_neighbor_count.clear();
-                        vertex_index_indices_with_lowest_neighbor_count.push_back(vertex_index_index);
-                    }
-                }
-                assert(vertex_index_indices_with_lowest_neighbor_count.size() > 0);
-
-                // randomly select a vertex from the pool of still available inner vertices that have the lowest connectivity count
-                uint removing_vertex_index_pool_index = vertex_index_indices_with_lowest_neighbor_count[randomInt(0, (uint)vertex_index_indices_with_lowest_neighbor_count.size() - 1)];
-                */
-
-
-                uint removing_vertex_index_pool_index = randomInt(0, (uint)valid_simplification_vertex_indices_pool.size() - 1);
-
-                uint removing_vertex_index = valid_simplification_vertex_indices_pool[removing_vertex_index_pool_index];
-                S_Vertex& removing_vertex = m_vertices[removing_vertex_index];
-
-
-                // find closest neighbor vertex that should be selected as the morph target
-                float min_dist2 = FLT_MAX;
-                int closest_neighbor_vertex_index = -1;
-                for (uint neighbor_vertex_index : per_vertex_neighbor_indices[removing_vertex_index_pool_index])
-                {
-                    S_Vertex neighbor_vertex = m_vertices[neighbor_vertex_index];
-
-                    float dx = removing_vertex.position.x - neighbor_vertex.position.x;
-                    float dy = removing_vertex.position.y - neighbor_vertex.position.y;
-                    float dz = removing_vertex.position.z - neighbor_vertex.position.z;
-                    float dist2 = dx * dx + dy * dy + dz * dz;
-
-                    if (dist2 < min_dist2)
-                    {
-                        closest_neighbor_vertex_index = neighbor_vertex_index;
-                        min_dist2 = dist2;
-                    }
-                }
-                assert(closest_neighbor_vertex_index >= 0);
-                uint target_vertex_index = closest_neighbor_vertex_index;
-                float local_space_dist = sqrtf(min_dist2);
-                // update lod_error to be the biggest vertex move distance in local space
-                lod_error = local_space_dist > lod_error ? local_space_dist : lod_error; 
-
-                
-
-                // replace every occurance of the currently decimated vertex by the morph target and remove all degenerate triangles
-                for (int triangle_index = ((uint)simplified_indices.size() / 3) - 1; triangle_index >= 0; triangle_index--)
-                {
-                    bool triangle_was_changed = false;
-                    for (uint i = 0; i < 3; i++)
-                    {
-                        uint& index = simplified_indices[triangle_index * 3 + i];
-                        if (index == removing_vertex_index)
-                        {
-                            index = target_vertex_index;
-                            triangle_was_changed = true;
-                            break;
-                        }
-                    }
-                    if (triangle_was_changed)
-                    {
-                        if (simplified_indices[triangle_index * 3 + 0] == simplified_indices[triangle_index * 3 + 1]
-                            || simplified_indices[triangle_index * 3 + 1] == simplified_indices[triangle_index * 3 + 2]
-                            || simplified_indices[triangle_index * 3 + 2] == simplified_indices[triangle_index * 3 + 0])
-                        {
-                            swap_remove(simplified_indices, triangle_index * 3 + 2);
-                            swap_remove(simplified_indices, triangle_index * 3 + 1);
-                            swap_remove(simplified_indices, triangle_index * 3 + 0);
-
-                            current_triangle_count--;
-                        }
-                    }
-                }
-                
-                // track all vertex merging
-                for (auto& [key, value] : morph_target_index_indices)
-                {
-                    if (value == removing_vertex_index)
-                    {
-                        value = target_vertex_index;
-                    }
-                }
-                
-                current_vertex_count--;
-                swap_remove(valid_simplification_vertex_indices_pool, removing_vertex_index_pool_index);
-
-            } // END OF MAIN SIMPLIFICATION LOOP
-
-
-            OutputDebugString(("Primitives Count after Simplification: " + std::to_string(current_triangle_count) + "\n").c_str());
-            OutputDebugString(("Vertex Count after Simplification: " + std::to_string(current_vertex_count) + "\n").c_str());
-        }
-
-
-
-
-
+        // simplify group geometry but keep edge vertices locked
+        size_t target_index_count = GROUP_SPLIT_COUNT * MAX_MESHLET_VERTEX_COUNT * 3; // TODO: should be "GROUP_SPLIT_COUNT * MAX_MESHLET_PRIMITIVE_COUNT * 3", but that would blow past the vertex limit and generate to many meshlets
+        size_t simplifiedIndexCount = meshopt_simplify_tracking(
+            simplified_indices.data(), merged_deduplicated_indices.data(), merged_deduplicated_indices.size(),
+            reinterpret_cast<const float*>(&m_vertices.data()[0].position.x), m_vertices.size(), sizeof(S_Vertex),
+            target_index_count, FLT_MAX, meshopt_SimplifyLockBorder /* | meshopt_SimplifySparse */ | meshopt_SimplifyErrorAbsolute, &lod_error, &vertex_remap);
+        simplified_indices.resize(simplifiedIndexCount);
         
         // set base error line for simplified meshlets aas highest error from base meshlets
         float collective_base_meshlet_error = 0;
@@ -767,6 +519,7 @@ void Mesh::simplifiyTopLevelGroups()
             collective_base_meshlet_error = max(current_meshlet.base_error, collective_base_meshlet_error);
         }
         collective_base_meshlet_error += lod_error;
+
         // set simplified error for base meshlets
         for (uint m = 0; m < current_group.meshlet_count; m++)
         {
@@ -775,31 +528,24 @@ void Mesh::simplifiyTopLevelGroups()
             current_meshlet.simplified_group_bounds = current_group.bounding_sphere;
         }
 
-        // generate new meshlets on simplified geometry
+        // generate new meshlets from simplified geometry
         const float cone_weight = 0.0f;
         size_t      max_meshlets = meshopt_buildMeshletsBound(simplified_indices.size(), MAX_MESHLET_VERTEX_COUNT, MAX_MESHLET_PRIMITIVE_COUNT);
         std::vector<meshopt_Meshlet> meshlets(max_meshlets);
         std::vector<uint> vertex_indices(max_meshlets * MAX_MESHLET_VERTEX_COUNT);
         std::vector<unsigned char> primitive_indices(max_meshlets * MAX_MESHLET_PRIMITIVE_COUNT * 3);
-
         uint meshlet_count = (uint)meshopt_buildMeshlets(meshlets.data(), vertex_indices.data(), primitive_indices.data(), simplified_indices.data(), simplified_indices.size(), &m_vertices[0].position.x, m_vertices.size(), sizeof(S_Vertex), MAX_MESHLET_VERTEX_COUNT, MAX_MESHLET_PRIMITIVE_COUNT, cone_weight);
         meshlets.resize(meshlet_count);
-
-        /*
-        OutputDebugString(("\n\nNumber of Triangles before Simplification: " + std::to_string(merged_deduplicated_indices.size() / 3) + " Number of Triangles after Simplification: " + std::to_string(simplified_indices.size() / 3)).c_str());
-        OutputDebugString(("\nNumber of Meshlets: " + std::to_string(meshlet_count) + " Maximum Number of Meshlets: " + std::to_string(max_meshlets)).c_str());
-        for (auto meshlet : meshlets)
-            OutputDebugString(("\n\tNumber of Vertices: " + std::to_string(meshlet.vertex_count) + " Number of Triangles: " + std::to_string(meshlet.triangle_count)).c_str());
-        */
-        assert(meshlet_count == 2); //currently root group only simplifies to a single meshlet???
+        assert(meshlet_count == 2);
 
         // add new vertex/primitive-indicesbuffers to the main buffer and offset meshlet meta data accordingly
         uint previous_primitive_indices_size = (uint)m_primitive_indices.size();
-        uint previous_vertex_indices_size = (uint)m_vertex_indices.size();
+        uint previous_vertex_indices_size    = (uint)m_vertex_indices.size();
 
         m_vertex_indices.insert(m_vertex_indices.end(), vertex_indices.begin(), vertex_indices.end());
         m_primitive_indices.insert(m_primitive_indices.end(), primitive_indices.begin(), primitive_indices.end());
 
+        // parse each newly generated meshlet into own data format
         for (uint i = 0; i < meshlet_count; i++)
         {
             S_Meshlet newMeshlet;
@@ -826,13 +572,12 @@ void Mesh::simplifiyTopLevelGroups()
             newMeshlet.bounding_sphere.radius = bounds.radius;
             newMeshlet.group_id = 0;
 
-            newMeshlet.bounding_sphere = current_group.bounding_sphere; // !!!!!!!!!!!!!!!!!? TODO: ??
+            // bounding sphere has to be unique for all meshlets of a group, so that all meshlets perform the same tree cut decision
+            newMeshlet.bounding_sphere = current_group.bounding_sphere; 
 
+            // store parsed meshlet in the buffer and push its id into the top level vector
             m_current_hierarchy_top_level_meshlets.push_back((uint)m_meshlets.size());
-
             current_group.simplified_meshlets[i] = (uint)m_meshlets.size();
-
-
             m_meshlets.push_back(newMeshlet);
         }
 
@@ -845,94 +590,35 @@ void Mesh::simplifiyTopLevelGroups()
         }
 
         // transform morph_target_index_indices  destination (value) entries to reference into the m_vertex_indice buffer instead
-    
-        if (m_useCustomSimplification)
+        for (uint m = 0; m < GROUP_SPLIT_COUNT; m++)
         {
-            std::vector<uint> to_be_erased_morph_entries;
-            for (auto& [origin_index, morph_target_index] : morph_target_index_indices)
+            S_Meshlet& current_simplified_meshlet = m_meshlets[current_group.simplified_meshlets[m]];
+            for (unsigned char svi = 0; svi < current_simplified_meshlet.vertex_count; svi++)
             {
-                bool merges_into_simplified_group = false;
-                for (uint m = 0; m < GROUP_SPLIT_COUNT; m++) // go over every simplified meshlet of the current group
+                uint simplified_vertex_index = m_vertex_indices[current_simplified_meshlet.vertex_offset + svi];
+
+                for (uint i = 0; i < m_vertices.size(); i++)
                 {
-                    S_Meshlet& current_simplified_meshlet = m_meshlets[current_group.simplified_meshlets[m]];
-                    for (unsigned char svi = 0; svi < current_simplified_meshlet.vertex_count; svi++)
-                    {
-                        uint simplified_vertex_index = m_vertex_indices[current_simplified_meshlet.vertex_offset + svi];
-
-                        if (morph_target_index == simplified_vertex_index)
-                        {
-                            morph_target_index = current_simplified_meshlet.vertex_offset + svi;
-                            merges_into_simplified_group = true;
-                            break;
-                        }
-                    }
-                }
-                if (!merges_into_simplified_group)
-                {
-                    to_be_erased_morph_entries.push_back(origin_index);
-                }
-            }
-
-            for (auto i : to_be_erased_morph_entries)
-                morph_target_index_indices.erase(i);
-
-
-            m_morph_indices.resize(m_vertex_indices.size(), 0); // resize in case new meshlets got added in previous hierarchy expansion
-            for (uint m = 0; m < current_group.meshlet_count; m++) // go over every meshlet of the current group
-            {
-                S_Meshlet& current_meshlet = m_meshlets[current_group.meshlets[m]];
-
-                for (uint vi = 0; vi < current_meshlet.vertex_count; vi++)
-                {
-                    uint vertex_index = m_vertex_indices[current_meshlet.vertex_offset + vi];
-
-                    auto morph_target_index = morph_target_index_indices.find(vertex_index);
-                    if (morph_target_index != morph_target_index_indices.end()) {
-                        m_morph_indices[current_meshlet.vertex_offset + vi] = morph_target_index->second;
-                    }
-                    else
-                    {
-                        m_morph_indices[current_meshlet.vertex_offset + vi] = current_meshlet.vertex_offset + vi;
-                        assert(false);
-                    }
+                    if (vertex_remap[i] == simplified_vertex_index)
+                        per_vertex_morph_index_remap[i] = current_simplified_meshlet.vertex_offset + svi;
                 }
             }
         }
-        else 
+        m_morph_indices.resize(m_vertex_indices.size(), 0); // resize in case new meshlets got added in previous hierarchy expansion
+        for (uint m = 0; m < current_group.meshlet_count; m++) // go over every meshlet of the current group
         {
-            for (uint m = 0; m < GROUP_SPLIT_COUNT; m++)
+            S_Meshlet& current_meshlet = m_meshlets[current_group.meshlets[m]];
+
+            for (uint vi = 0; vi < current_meshlet.vertex_count; vi++)
             {
-                S_Meshlet& current_simplified_meshlet = m_meshlets[current_group.simplified_meshlets[m]];
-                for (unsigned char svi = 0; svi < current_simplified_meshlet.vertex_count; svi++)
+                uint vertex_index = m_vertex_indices[current_meshlet.vertex_offset + vi];
+                if (per_vertex_morph_index_remap[vertex_index] >= 0)
                 {
-                    uint simplified_vertex_index = m_vertex_indices[current_simplified_meshlet.vertex_offset + svi];
-
-                    for (uint i = 0; i < m_vertices.size(); i++)
-                    {
-                        if (vertex_remap[i] == simplified_vertex_index)
-                            per_vertex_morph_index_remap[i] = current_simplified_meshlet.vertex_offset + svi;
-                    }
-                }
-            }
-
-
-            m_morph_indices.resize(m_vertex_indices.size(), 0); // resize in case new meshlets got added in previous hierarchy expansion
-            for (uint m = 0; m < current_group.meshlet_count; m++) // go over every meshlet of the current group
-            {
-                S_Meshlet& current_meshlet = m_meshlets[current_group.meshlets[m]];
-
-                for (uint vi = 0; vi < current_meshlet.vertex_count; vi++)
-                {
-                    uint vertex_index = m_vertex_indices[current_meshlet.vertex_offset + vi];
-                    if (per_vertex_morph_index_remap[vertex_index] >= 0)
-                    {
-                        //OutputDebugString(("[" + std::to_string(vertex_index) + "] -> [" + std::to_string(vertex_remap[vertex_index]) + "]\n").c_str());
-                        m_morph_indices[current_meshlet.vertex_offset + vi] = per_vertex_morph_index_remap[vertex_index];
-                    }
+                    m_morph_indices[current_meshlet.vertex_offset + vi] = per_vertex_morph_index_remap[vertex_index];
                 }
             }
         }
-
+        
         for (uint m = 0; m < GROUP_SPLIT_COUNT; m++) // go over every simplified meshlet of the current group
         {
             S_Meshlet& current_simplified_meshlet = m_meshlets[current_group.simplified_meshlets[m]];
@@ -946,13 +632,13 @@ void Mesh::simplifiyTopLevelGroups()
 
 void Mesh::finalTopLevelMeshletGrouping()
 {
+    // handle edge case of hierarhy root note group
     m_current_hierarchy_top_level_groups.clear();
     m_hierarchy_root_group = (uint)m_meshlet_groups.size();
     m_current_hierarchy_top_level_groups.push_back((uint)m_meshlet_groups.size());
     m_meshlet_groups.push_back(getDefaultMeshletGroup());
     S_MeshletGroup& current_group = m_meshlet_groups.back();
     current_group.hierarchy_tree_depth = (uint)m_hierarchy_per_level_group_count.size();
-
 
     // set group child meshlets
     current_group.meshlet_count = 0;
@@ -964,58 +650,9 @@ void Mesh::finalTopLevelMeshletGrouping()
     m_hierarchy_per_level_group_count.push_back((uint)m_current_hierarchy_top_level_groups.size());
 }
 
-
-void Mesh::findParentsItterative()
-{
-    uint accumulated_offset = 0;
-    for (uint tree_level = 0; tree_level < m_hierarchy_per_level_group_count.size(); tree_level++)
-    {
-        OutputDebugString(("Current Tree Level - " + std::to_string(tree_level) + "\n").c_str());
-
-        for (uint i = 0; i < m_hierarchy_per_level_group_count[tree_level]; i++)
-        {
-            uint current_group_index = accumulated_offset + i;
-            S_MeshletGroup& current_group = m_meshlet_groups[current_group_index];
-            
-            uint possible_parent_with_least_children = -1;
-            // search every group to find where the base meshlets contain one of the simplified meshlets of the current group and make it its your parent
-            for (uint comparing_group_index = 0; comparing_group_index < m_meshlet_groups.size(); comparing_group_index++)
-            {
-                S_MeshletGroup& comparing_group = m_meshlet_groups[comparing_group_index];
-                
-                for (uint comparing_base_meshlet_index = 0; comparing_base_meshlet_index < comparing_group.meshlet_count; comparing_base_meshlet_index++)
-                {
-                    uint comparing_base_meshlet = comparing_group.meshlets[comparing_base_meshlet_index];
-                    for (uint current_simplified_meshlet : current_group.simplified_meshlets)
-                    {
-                        if (comparing_base_meshlet == current_simplified_meshlet)
-                        {
-                            if (possible_parent_with_least_children == -1) possible_parent_with_least_children = comparing_group_index;
-                            else if (comparing_group.childCount < m_meshlet_groups[possible_parent_with_least_children].childCount) possible_parent_with_least_children = comparing_group_index;
-                            
-                            //comparing_group.bounding_sphere.radius += current_group.bounding_sphere.radius; // add child error ontop of all parents error to ensure that parents error always stays highter than that of child
-                            break; // prevents chlid error to be added multiple times to same parrent if multiple meshlets match with parent
-                        }
-                    }
-                }
-            }
-
-            if (possible_parent_with_least_children != -1)
-            {
-                current_group.parent = possible_parent_with_least_children;
-                S_MeshletGroup& parent_group = m_meshlet_groups[possible_parent_with_least_children];
-                parent_group.children[parent_group.childCount++] = current_group_index;
-                
-            }
-
-            OutputDebugString(("Group[" + std::to_string(current_group_index) + "] --> Parent[" + std::to_string(current_group.parent) + "]\n").c_str());
-        }
-        accumulated_offset += m_hierarchy_per_level_group_count[tree_level];
-    }
-}
-
 S_MeshletGroup Mesh::getDefaultMeshletGroup()
 {
+    // initialize every struct variable with either 0 or a conservative value that would result in an empty group
     S_MeshletGroup ret;
     ret.bounding_sphere.center = float3(0, 0, 0);
     ret.bounding_sphere.radius = 0;
@@ -1040,6 +677,7 @@ S_MeshletGroup Mesh::getDefaultMeshletGroup()
 
 void Mesh::printTreeFromTop(uint current_group_index) 
 {
+    // recursive tree traversal for debug printing group hierarchy 
     S_MeshletGroup& current_group = m_meshlet_groups[current_group_index];
     OutputDebugString(("\nGroup[" + std::to_string(current_group_index) + "] --> Children: ").c_str());
     for (uint i = 0; i < current_group.childCount; i++)
@@ -1050,6 +688,7 @@ void Mesh::printTreeFromTop(uint current_group_index)
 
 void Mesh::printAllMeshlets()
 {
+    // itterate over every meshlet and debug print its stats
     for (uint m = 0; m < m_meshlets.size(); m++)
     {
         S_Meshlet& current_meshlet = m_meshlets[m];
@@ -1066,7 +705,7 @@ S_BoundingSphere Mesh::computeGroupBoundingSphere(S_MeshletGroup& meshlet_group)
     result.radius = 0;
     if (!(meshlet_group.childCount)) return result;
 
-    // estimate center
+    // estimate center by averaging out vertex positions
     uint counter = 0;
     for (uint m = 0; m < meshlet_group.meshlet_count; m++)
     {
