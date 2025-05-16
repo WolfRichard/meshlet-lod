@@ -28,7 +28,7 @@ void Scene::init(std::string file_path)
     std::string backup_path = filename_without_ext + ".lod_bak";
 
     // check if backup file for precomuted scene can be found, if so load scene directly from backup and skip preprocessing
-    if (true)//!loadSceneFromBackUp(backup_path))
+    if (!loadSceneFromBackUp(backup_path))
     {
         // preprocess and store data inside a backup file for future reuse
         loadScene(file_path);

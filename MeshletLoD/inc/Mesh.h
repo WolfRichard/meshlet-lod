@@ -59,7 +59,7 @@ private:
     bool m_useCustomSimplification = false;
 
     // limits the maximum triangle count of meshes before they are preprocessed, so that preprocessing does not exceed reasonable times
-    uint m_maximum_mesh_triangle_count = 100000; // 1 million primitives takes around 7 min with custom simplification
+    uint m_maximum_mesh_triangle_count = 500000; // 7.2 million primitives takes around 275 min to pre-compute data for
 
     // returns an edge represented as a pair of two uints
     // vertex indices will be ordered by value to make later comparing of two edges simpler

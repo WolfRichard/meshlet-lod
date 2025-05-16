@@ -689,9 +689,9 @@ void main(in uint I : SV_GroupIndex,
             else if (constants.shadingSelection == LOD_SHADING)
             {
                 if ((constants.BoolConstants & GEO_MORPHING_BIT_POS) && !(constants.BoolConstants & SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS))
-                    verts[v].Color = Rainbow(frac((DEBUG_COLOR_SPREAD + max(expected_lod, -MAX_TESSELLATION_LEVEL) / DEBUG_COLOR_SPREAD))) * brightness;
+                    verts[v].Color = Rainbow(fmod((DEBUG_COLOR_SPREAD + max(expected_lod, -MAX_TESSELLATION_LEVEL) / DEBUG_COLOR_SPREAD), 1.0)) * brightness;
                 else
-                    verts[v].Color = Rainbow(frac((DEBUG_COLOR_SPREAD - payload_task.tessellation_grade) / DEBUG_COLOR_SPREAD)) * brightness;
+                    verts[v].Color = Rainbow(fmod((DEBUG_COLOR_SPREAD - payload_task.tessellation_grade) / DEBUG_COLOR_SPREAD, 1.0)) * brightness;
             }
             else if (constants.shadingSelection == MESHLET_GROUP_SHADING)
             {
@@ -784,9 +784,9 @@ void main(in uint I : SV_GroupIndex,
         else if (constants.shadingSelection == LOD_SHADING)
         {
             if ((constants.BoolConstants & GEO_MORPHING_BIT_POS) && !(constants.BoolConstants & SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS))
-                verts[v].Color = Rainbow(expected_LoD / 6.0) * brightness;
+                verts[v].Color = Rainbow(fmod(expected_LoD / 6.0, 1.0)) * brightness;
             else
-                verts[v].Color = Rainbow(meshlet.discrete_level_of_detail / 6.0) * brightness;
+                verts[v].Color = Rainbow(fmod(meshlet.discrete_level_of_detail / 6.0, 1.0)) * brightness;
             
         }
         else if (constants.shadingSelection == MESHLET_GROUP_SHADING)
