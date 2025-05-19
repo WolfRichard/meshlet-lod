@@ -1104,6 +1104,14 @@ void MeshletLoD::updateImGui()
         if (m_freeCamera)
         {
             ImGui::SliderFloat("Camera Speed", &m_cameraSpeed, 0.1f, 100.0f);
+            if (ImGui::Button("Reset Rotation"))
+            {
+                m_cameraPos = float3(-7.5, 0, 0);
+                m_CameraRoll = 0.00;
+                m_CameraYaw = PI / 2.0;
+                m_autoRotationOffset = 0.0;
+                //OutputDebugStringA(("X: " + std::to_string(m_cameraPos.x) + " Y: " + std::to_string(m_cameraPos.y) + " Z: " + std::to_string(m_cameraPos.z)+ " Roll: " + std::to_string(m_CameraRoll) + " Yaw: " + std::to_string(m_CameraYaw) + "\n").c_str());
+            }
         }
         else
         {

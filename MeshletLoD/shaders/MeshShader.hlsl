@@ -684,7 +684,7 @@ void main(in uint I : SV_GroupIndex,
             }
             else if (constants.shadingSelection == MESHLETS_SHADING)
             {
-                verts[v].Color = Rainbow(Random((scene_object.mesh_id + 1) + payload_task.meshlet_id + gid)) * brightness;
+                verts[v].Color = Rainbow(Random(payload_task.meshlet_id + gid)) * brightness;
             }
             else if (constants.shadingSelection == LOD_SHADING)
             {
@@ -779,7 +779,7 @@ void main(in uint I : SV_GroupIndex,
         }
         else if (constants.shadingSelection == MESHLETS_SHADING)
         {
-            verts[v].Color = Rainbow(Random((scene_object.mesh_id + 1) * 1013 + payload_task.meshlet_id)) * brightness;
+            verts[v].Color = Rainbow(Random(payload_task.meshlet_id + 79)) * brightness;
         }
         else if (constants.shadingSelection == LOD_SHADING)
         {
