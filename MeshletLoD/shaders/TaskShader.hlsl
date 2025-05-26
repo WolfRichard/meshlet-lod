@@ -230,9 +230,7 @@ void main(in uint I : SV_GroupIndex,
     
    // Reset the group shared counter variables from the first thread in the group
     if (I == 0)
-    {
         gs_MeshletCount = 0;
-    }
     GroupMemoryBarrierWithGroupSync();
  
     // object culling and extracting of root nodes into work queue
@@ -260,10 +258,10 @@ void main(in uint I : SV_GroupIndex,
         got_work = consumeTask(current_task);
         if (got_work)
         {
-            processTask(current_task);
+            processTask(current_task);            
         }
     }
-    while (WaveActiveAnyTrue(got_work));
+    while (WaveActiveAnyTrue(got_work)); // keep all threads of a wave alive
       
     //after work queue is empty dispatch all collected meshlets
     GroupMemoryBarrierWithGroupSync();

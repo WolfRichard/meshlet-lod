@@ -581,8 +581,7 @@ void main(in uint I : SV_GroupIndex,
             uint vertex_index_a = meshlet.vertex_offset + SampleTriangleBufferAsCharArray(meshlet.triangle_offset + p * 3 + 0, scene_object.mesh_id);
             uint vertex_index_b = meshlet.vertex_offset + SampleTriangleBufferAsCharArray(meshlet.triangle_offset + p * 3 + 1, scene_object.mesh_id);
             uint vertex_index_c = meshlet.vertex_offset + SampleTriangleBufferAsCharArray(meshlet.triangle_offset + p * 3 + 2, scene_object.mesh_id);
-            
-        
+           
             if (payload_task.tessellation_grade == 3)
                 lvl3Tessellation(uint3(vertex_index_a, vertex_index_b, vertex_index_c), scene_object.mesh_id);
             else if (payload_task.tessellation_grade == 2)
@@ -599,9 +598,8 @@ void main(in uint I : SV_GroupIndex,
             gs_triangle_count = meshlet.triangle_count;
             gs_vertex_count = meshlet.vertex_count;
         }
+        GroupMemoryBarrierWithGroupSync();
     }
-    GroupMemoryBarrierWithGroupSync();
-    
     
     SetMeshOutputCounts(gs_vertex_count, gs_triangle_count);
     
@@ -729,7 +727,7 @@ void main(in uint I : SV_GroupIndex,
         
         float4 original_world_pos = mul(float4(vertex.position.xyz, 1.0), scene_object.object_matrix);
         
-        float expected_LoD = max(getExpectedLoDLevel(original_world_pos), 0);
+        float expected_LoD = max(getExpectedLoDLevel(original_world_pos), meshlet.discrete_level_of_detail);
         //expected_LoD = max(meshlet.discrete_level_of_detail, constants.DebugFloatSliderValue);
         float lerp_value = expected_LoD - meshlet.discrete_level_of_detail;
         //lerp_value = constants.DebugFloatSliderValue;
@@ -784,7 +782,7 @@ void main(in uint I : SV_GroupIndex,
         else if (constants.shadingSelection == LOD_SHADING)
         {
             if ((constants.BoolConstants & GEO_MORPHING_BIT_POS) && !(constants.BoolConstants & SCREEN_SPACE_ERROR_BASED_LOD_BIT_POS))
-                verts[v].Color = Rainbow(fmod(expected_LoD / 6.0, 1.0)) * brightness;
+                verts[v].Color = Rainbow(fmod((DEBUG_COLOR_SPREAD + max(expected_LoD, -MAX_TESSELLATION_LEVEL) / DEBUG_COLOR_SPREAD), 1.0)) * brightness;
             else
                 verts[v].Color = Rainbow(fmod(meshlet.discrete_level_of_detail / 6.0, 1.0)) * brightness;
             

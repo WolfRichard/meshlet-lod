@@ -200,10 +200,10 @@ private:
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
 
     Scene m_scene;
-    char  m_model_file_path[1024] = "./assets/scenes/plane.glb";
+    char  m_model_file_path[1024] = "./assets/scenes/TorusInstances.glb";
 };
 
-//"./assets/scenes/TorusInstances.glb";
+//"./assets/scenes/plane.glb";
 //"C:/Users/wolfr/Desktop/Master Arbeit/Blender/exports/DragonInstances.glb";
 //"C:/Users/wolfr/Desktop/dragon.glb";
 //"./assets/scenes/TestScene.glb";
