@@ -2,10 +2,9 @@
 
 #define GROUP_SIZE 32 // has to stay at 32 to match wave size, also not allowed to be multiple of 32 as tis would break the task shader wave intrinsics logic
 
-#define PERSISTENT_THREAD_COUNT 4096    // has to be multiple of GROUP_SIZE
+#define PERSISTENT_THREAD_COUNT 81920    // has to be multiple of GROUP_SIZE
 
-#define WORK_QUEUE_SIZE 4194304         // (2^22) Workqueue is implemented as ring-buffer, 
-                                        //queue size allows correct indexing and should be able to contain the maximum of simultanious queue tasks
+#define WORK_QUEUE_SIZE 4194304         // (2^22) Workqueue is implemented as ring-buffer, queue size allows correct indexing and should be able to contain the maximum of simultanious queue tasks
 
 #define MAX_DISPATCH_MESH_GROUP_COUNT 4194304 // 2^22 https://microsoft.github.io/DirectX-Specs/d3d/MeshShader.html#dispatchmesh-api
 

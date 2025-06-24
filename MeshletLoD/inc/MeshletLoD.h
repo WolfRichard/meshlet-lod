@@ -203,6 +203,7 @@ private:
     char  m_model_file_path[1024] = "./assets/scenes/TorusInstances.glb";
 };
 
+//"C:/Users/wolfr/Desktop/subdividedCube.glb";
 //"./assets/scenes/plane.glb";
 //"C:/Users/wolfr/Desktop/Master Arbeit/Blender/exports/DragonInstances.glb";
 //"C:/Users/wolfr/Desktop/dragon.glb";

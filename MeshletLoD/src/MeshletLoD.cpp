@@ -1075,7 +1075,7 @@ void MeshletLoD::updateImGui()
             ImGui::InputFloat("Max error in pxl", &m_LoDScale, 0.01f, 1.0f, "%.2f");
         else 
             ImGui::InputFloat("LoD_0 Distance", &m_LoDScale, 0.01f, 1.0f, "%.2f");
-        ImGui::SliderFloat("Debug Float", &m_debugFloatSlider, 0.0f, 5.0f, "%.2f");
+        ImGui::SliderFloat("Debug Float", &m_debugFloatSlider, 0.0f, 10.0f, "%.2f");
         ImGui::SliderFloat("Displacement Scale", &m_displacementScale, 0.0f, 0.1f);
         ImGui::Checkbox("Triplanar Mapping instead of UV-coordiantes", &m_triplanarMapping);
         if (m_triplanarMapping)
@@ -1106,7 +1106,7 @@ void MeshletLoD::updateImGui()
             ImGui::SliderFloat("Camera Speed", &m_cameraSpeed, 0.1f, 100.0f);
             if (ImGui::Button("Reset Rotation"))
             {
-                m_cameraPos = float3(-7.5, 0, 0);
+                m_cameraPos = float3(-1.5, 0, 0);
                 m_CameraRoll = 0.00;
                 m_CameraYaw = PI / 2.0;
                 m_autoRotationOffset = 0.0;

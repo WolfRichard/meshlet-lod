@@ -25,7 +25,7 @@ void appendTask(S_WorkQueueEntry new_task)
 {
     uint task_index = 0;
     InterlockedAdd(workQueueCounters[0].work_queue_tail, 1, task_index);    // Atomically increment endCounter
-    workQueue[task_index % WORK_QUEUE_SIZE] = new_task;                     // loop index because of ring buffer structure
+    workQueue[task_index & (WORK_QUEUE_SIZE - 1)] = new_task; // loop index because of ring buffer structure
 }
 
 
