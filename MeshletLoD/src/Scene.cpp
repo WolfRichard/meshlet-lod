@@ -37,7 +37,7 @@ void Scene::init(std::string file_path)
 
     
     auto benchmark_time_end = std::chrono::high_resolution_clock::now();
-    m_preProcessingTime = benchmark_time_end - benchmark_time_start;
+    m_totalPreProcessingTime = benchmark_time_end - benchmark_time_start;
 }
 
 
@@ -87,9 +87,11 @@ void Scene::processSceneNode(aiNode* node, const aiScene* scene, float4x4 parent
 
 void Scene::loadScene(std::string file_path)
 {
+    auto scene_import_time_start = std::chrono::high_resolution_clock::now();
+
     // try to load the model via assimp
     Assimp::Importer importer;
-    const aiScene* scene = importer.ReadFile(file_path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_ForceGenNormals | aiProcess_GenSmoothNormals | aiProcess_MakeLeftHanded | aiProcess_FlipWindingOrder | aiProcess_RemoveRedundantMaterials | aiProcess_OptimizeMeshes | aiProcess_OptimizeGraph | aiProcess_JoinIdenticalVertices);
+    const aiScene* scene = importer.ReadFile(file_path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_ForceGenNormals | aiProcess_GenSmoothNormals | aiProcess_MakeLeftHanded | aiProcess_FlipWindingOrder | aiProcess_RemoveRedundantMaterials | aiProcess_JoinIdenticalVertices);
 
     // verify that loading was successfull + error handeling
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
@@ -97,6 +99,12 @@ void Scene::loadScene(std::string file_path)
         throw std::exception();
     }
 
+    auto scene_import_time_end = std::chrono::high_resolution_clock::now();
+    m_sceneImportTime = scene_import_time_end - scene_import_time_start;
+
+    m_modelParsingTime = m_modelParsingTime.zero();
+    m_hierarchyGenTime = m_hierarchyGenTime.zero();
+    
     // load meshes
     for (uint m = 0; m < scene->mNumMeshes; m++)
     {
@@ -107,15 +115,26 @@ void Scene::loadScene(std::string file_path)
         m_primitive_indices.push_back(m_meshes.back()->m_primitive_indices);
         m_meshlets.push_back(m_meshes.back()->m_meshlets);
         m_morph_indices.push_back(m_meshes.back()->m_morph_indices);
+
+        m_modelParsingTime += m_meshes.back()->m_meshParseTime;
+        m_hierarchyGenTime += m_meshes.back()->m_hierarchyGenTime;
     }
     m_mesh_count = scene->mNumMeshes;
 
+ 
+    
+
+
     // process scene tree
+    scene_import_time_start = std::chrono::high_resolution_clock::now();
     float4x4 base_transform = float4x4(1, 0, 0, 0,
         0, 1, 0, 0,
         0, 0, 1, 0,
         0, 0, 0, 1);
     processSceneNode(scene->mRootNode, scene, base_transform);
+
+    scene_import_time_end = std::chrono::high_resolution_clock::now();
+    m_sceneImportTime += scene_import_time_end - scene_import_time_start;
 }
 
 
@@ -260,7 +279,7 @@ void Scene::free()
     m_total_meshlet_count = 0;
     m_totoal_triangle_count = 0;
     m_total_vertex_count = 0;
-    m_preProcessingTime = m_preProcessingTime.zero();
+    m_totalPreProcessingTime = m_totalPreProcessingTime.zero();
 
     // clear all data vectors
     m_scene_objects.clear();

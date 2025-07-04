@@ -16,15 +16,23 @@ Mesh::Mesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
     OutputDebugString("Started Mesh Initialisation\n");
     parseMesh(assimp_mesh, assimp_scene);
     OutputDebugString("Done parsing\n");
+
+    auto benchmark_time_start = std::chrono::high_resolution_clock::now();
+
     generateLeafMeshlets();
     OutputDebugString("Generated Leaf Meshlets\n");
     buildMeshletHierachy();
     OutputDebugString("Finished Hierarchy Generation\n");
+
+    auto benchmark_time_end = std::chrono::high_resolution_clock::now();
+    m_hierarchyGenTime = benchmark_time_end - benchmark_time_start;
 }
 
 
 void Mesh::parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
 {
+    auto benchmark_time_start = std::chrono::high_resolution_clock::now();
+
     // initialize bounding sphere approximation with zero
     // --> set bounding sphere radius ontop of average vertex position
     // --> set radius = furthest vertex distance from center
@@ -115,6 +123,9 @@ void Mesh::parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
     meshopt_remapIndexBuffer(m_original_indices.data(), raw_indices.data(), raw_indices.size(), &remap[0]);
     meshopt_remapVertexBuffer(m_vertices.data(), raw_vertices.data(), raw_vertices.size(), sizeof(S_Vertex), &remap[0]);
     meshopt_optimizeVertexCache(m_original_indices.data(), m_original_indices.data(), raw_indices.size(), vertex_count);
+
+    auto benchmark_time_end = std::chrono::high_resolution_clock::now();
+    m_meshParseTime = benchmark_time_end - benchmark_time_start;
 
     // simplify mesh if triangle count is larger than maximum to prevent excessive pre-compute times
     if (m_maximum_mesh_triangle_count)

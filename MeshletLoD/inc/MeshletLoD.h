@@ -160,6 +160,8 @@ private:
     float       m_autoRotationOffset    = 4;
     bool        m_lockCameraShaderConstant = false;
     float3      m_lockedCameraPos       = float3(0, 0, 0);
+
+    std::chrono::duration<double> m_apiSetupTime;
     
     // Descriptor heap
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_CBV_SRV_UAV_Heap;
@@ -200,9 +202,11 @@ private:
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
 
     Scene m_scene;
-    char  m_model_file_path[1024] = "./assets/scenes/TorusInstances.glb";
+    char  m_model_file_path[1024] = "C:/Users/wolfr/Desktop/TestScene.glb";
 };
 
+//"C:/Users/wolfr/Desktop/DragonInstances.glb";
+//"./assets/scenes/TorusInstances.glb";
 //"C:/Users/wolfr/Desktop/subdividedCube.glb";
 //"./assets/scenes/plane.glb";
 //"C:/Users/wolfr/Desktop/Master Arbeit/Blender/exports/DragonInstances.glb";

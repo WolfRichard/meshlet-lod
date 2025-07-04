@@ -283,6 +283,8 @@ void MeshletLoD::setupBindlessUCharToUIntSrvAndBuffers(D3D12_GPU_DESCRIPTOR_HAND
 
 bool MeshletLoD::LoadContent()
 {
+    auto api_setup_time_start = std::chrono::high_resolution_clock::now();
+
     auto device = Application::Get().GetDevice();
     auto commandQueue = Application::Get().GetCommandQueue(D3D12_COMMAND_LIST_TYPE_COPY);
     auto commandList = commandQueue->GetCommandList();
@@ -571,6 +573,10 @@ bool MeshletLoD::LoadContent()
 
     // Resize/Create the depth buffer.
     ResizeDepthBuffer(GetClientWidth(), GetClientHeight());
+
+
+    auto api_setup_time_end = std::chrono::high_resolution_clock::now();
+    m_apiSetupTime = api_setup_time_end - api_setup_time_start;
 
     return true;
 }
@@ -1178,7 +1184,11 @@ void MeshletLoD::updateImGui()
         ImGui::Text("total   vertex count: %d", (unsigned int)m_scene.m_total_vertex_count);
         ImGui::Text("total triangle count: %d", (unsigned int)m_scene.m_totoal_triangle_count);
         ImGui::Separator();
-        ImGui::Text("pre-processing  time: %.4f sec", m_scene.m_preProcessingTime);
+        ImGui::Text("scene import   time: %.4f sec", m_scene.m_sceneImportTime);
+        ImGui::Text("mesh parsing   time: %.4f sec", m_scene.m_modelParsingTime);
+        ImGui::Text("hierachy-gen.  time: %.4f sec", m_scene.m_hierarchyGenTime);
+        ImGui::Text("total pre-pro. time: %.4f sec", m_scene.m_totalPreProcessingTime);
+        ImGui::Text("api setup      time: %.4f sec", m_apiSetupTime);
     }
     ImGui::End();
 

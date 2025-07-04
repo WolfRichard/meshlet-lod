@@ -42,7 +42,10 @@ public:
     uint m_mesh_count;
 
     // pre-compute benchmark statistics
-    std::chrono::duration<double>              m_preProcessingTime;
+    std::chrono::duration<double>             m_totalPreProcessingTime;
+    std::chrono::duration<double>             m_sceneImportTime;
+    std::chrono::duration<double>             m_modelParsingTime;
+    std::chrono::duration<double>             m_hierarchyGenTime;
 
 private:
     // loads the specified scene file, will always look for a previously created back-up for scenes that have already have been loaded once

@@ -53,13 +53,16 @@ public:
     // indices of the mesh before simplification and meshlet generation
     std::vector<uint> m_original_indices; 
 
+    std::chrono::duration<double> m_meshParseTime;
+    std::chrono::duration<double> m_hierarchyGenTime;
+
 private:
     // custom simplification needed for geomorphing
     // if disabled it will default to the simplification provided by the mesh optimizer library which is currently faster and results in better simplification quality
     bool m_useCustomSimplification = false;
 
     // limits the maximum triangle count of meshes before they are preprocessed, so that preprocessing does not exceed reasonable times
-    uint m_maximum_mesh_triangle_count = 500000; // 7.2 million primitives takes around 275 min to pre-compute data for
+    uint m_maximum_mesh_triangle_count = 0; // 7.2 million primitives takes around 275 min to pre-compute data for
 
     // returns an edge represented as a pair of two uints
     // vertex indices will be ordered by value to make later comparing of two edges simpler
@@ -114,4 +117,7 @@ private:
     std::vector<uint> m_current_hierarchy_top_level_meshlets; 
     // indices to the groups that are still beeing processed in the construction of the DAG
     std::vector<uint> m_current_hierarchy_top_level_groups; 
+
+
+    
 };

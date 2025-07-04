@@ -69,7 +69,7 @@ source_group( "Resources\\Shaders" FILES ${SHADER_FILES} )
 
 set_source_files_properties( shaders/MeshShader.hlsl PROPERTIES 
     VS_SHADER_TYPE Mesh
-    VS_SHADER_MODEL 6.6
+    VS_SHADER_MODEL 6.5
 )
 
 set_source_files_properties( shaders/TaskShader.hlsl PROPERTIES 
