@@ -57,6 +57,7 @@ public:
     std::chrono::duration<double> m_hierarchyGenTime;
 
 private:
+    uint last_group_count = 0;
     // custom simplification needed for geomorphing
     // if disabled it will default to the simplification provided by the mesh optimizer library which is currently faster and results in better simplification quality
     bool m_useCustomSimplification = false;

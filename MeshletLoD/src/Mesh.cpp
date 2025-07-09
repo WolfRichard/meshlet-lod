@@ -13,7 +13,9 @@ using namespace DirectX;
 
 Mesh::Mesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
 {
-    OutputDebugString("Started Mesh Initialisation\n");
+    OutputDebugString("Started Mesh Initialisation of: ");
+    OutputDebugString(assimp_mesh->mName.C_Str());
+    OutputDebugString("\n");
     parseMesh(assimp_mesh, assimp_scene);
     OutputDebugString("Done parsing\n");
 
@@ -32,7 +34,6 @@ Mesh::Mesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
 void Mesh::parseMesh(aiMesh* assimp_mesh, const aiScene* assimp_scene)
 {
     auto benchmark_time_start = std::chrono::high_resolution_clock::now();
-
     // initialize bounding sphere approximation with zero
     // --> set bounding sphere radius ontop of average vertex position
     // --> set radius = furthest vertex distance from center
@@ -331,6 +332,7 @@ void Mesh::groupMeshlets()
     OutputDebugString(("Number of Groups: " + std::to_string(MATIS_numPartitions) + "\n").c_str());
 
     // mark newly gnerated meshlet grous as current top level 
+    last_group_count = m_current_hierarchy_top_level_groups.size();
     m_current_hierarchy_top_level_groups.clear();
     for (int k = 0; k < MATIS_numPartitions; k++)
     {
@@ -502,6 +504,44 @@ void Mesh::simplifiyTopLevelGroups()
         //computeGroupBoundingSphere(current_group)
 
 
+        std::vector<unsigned char> locked_simplification_vertices(m_vertices.size(), 0);
+        auto group_boundary_edges = extractBoundaryEdges(merged_deduplicated_indices);
+        std::unordered_set<uint> unique_edge_vertices;
+        for (auto be : group_boundary_edges)
+        {
+            unique_edge_vertices.insert(be.first);
+            unique_edge_vertices.insert(be.second);
+        }
+
+        if (last_group_count == m_current_hierarchy_top_level_groups.size())
+            OutputDebugString("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! LOOP DETECTED !!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+        else
+        for (auto vi : unique_edge_vertices)
+        {
+            //locked_simplification_vertices[vi] = 1;
+
+            for (uint og = 0; og < m_current_hierarchy_top_level_groups.size(); og++)
+            {
+                if (og == g) continue; // skip meshlets of current group
+
+                S_MeshletGroup& other_group = m_meshlet_groups[m_current_hierarchy_top_level_groups[og]];
+                for (uint om = 0; om < other_group.meshlet_count; om++)
+                {
+                    S_Meshlet& other_meshlet = m_meshlets[other_group.meshlets[om]];
+
+                    for (uint vii = other_meshlet.vertex_offset; vii < other_meshlet.vertex_offset + other_meshlet.vertex_count; vii++)
+                    {
+                        if (m_vertex_indices[vii] == vi)
+                            locked_simplification_vertices[vi]++;
+                    }
+                }
+            }
+
+            if (locked_simplification_vertices[vi] > 1) locked_simplification_vertices[vi] = 1;
+            
+        }
+
+
         // simplify the meshlet group to have enough space to hold 2 meshlets
         std::vector<uint> simplified_indices(merged_deduplicated_indices.size());
         float lod_error = 0.0f;       
@@ -519,7 +559,7 @@ void Mesh::simplifiyTopLevelGroups()
         size_t simplifiedIndexCount = meshopt_simplify_tracking(
             simplified_indices.data(), merged_deduplicated_indices.data(), merged_deduplicated_indices.size(),
             reinterpret_cast<const float*>(&m_vertices.data()[0].position.x), m_vertices.size(), sizeof(S_Vertex),
-            target_index_count, FLT_MAX, meshopt_SimplifyLockBorder /* | meshopt_SimplifySparse */ | meshopt_SimplifyErrorAbsolute, &lod_error, &vertex_remap);
+            target_index_count, FLT_MAX, /*meshopt_SimplifyLockBorder |  meshopt_SimplifySparse | */ meshopt_SimplifyErrorAbsolute, &lod_error, &vertex_remap, locked_simplification_vertices.data());
         simplified_indices.resize(simplifiedIndexCount);
         
         // set base error line for simplified meshlets aas highest error from base meshlets

@@ -2097,7 +2097,7 @@ size_t meshopt_simplify(unsigned int* destination, const unsigned int* indices, 
 /*				BEGIN : CUSTOM CODE FOR MESHLET - LOD !							*/
 /*		alternative to meshopt_simplyfy() that returns vertex remap				*/
 /********************************************************************************/
-size_t meshopt_simplifyEdgeTracking(unsigned int* destination, const unsigned int* indices, size_t index_count, const float* vertex_positions_data, size_t vertex_count, size_t vertex_positions_stride, size_t target_index_count, float target_error, unsigned int options, float* out_result_error, std::vector<uint32_t>* vertex_remap)
+size_t meshopt_simplifyEdgeTracking(unsigned int* destination, const unsigned int* indices, size_t index_count, const float* vertex_positions_data, size_t vertex_count, size_t vertex_positions_stride, size_t target_index_count, float target_error, unsigned int options, float* out_result_error, std::vector<uint32_t>* vertex_remap, const unsigned char* vertex_lock)
 {
 	using namespace meshopt;
 
@@ -2135,7 +2135,7 @@ size_t meshopt_simplifyEdgeTracking(unsigned int* destination, const unsigned in
 	unsigned char* vertex_kind = allocator.allocate<unsigned char>(vertex_count);
 	unsigned int* loop = allocator.allocate<unsigned int>(vertex_count);
 	unsigned int* loopback = allocator.allocate<unsigned int>(vertex_count);
-	classifyVertices(vertex_kind, loop, loopback, vertex_count, adjacency, remap, wedge, NULL, sparse_remap, options);
+	classifyVertices(vertex_kind, loop, loopback, vertex_count, adjacency, remap, wedge, vertex_lock, sparse_remap, options);
 
 	Vector3* vertex_positions = allocator.allocate<Vector3>(vertex_count);
 	float vertex_scale = rescalePositions(vertex_positions, vertex_positions_data, vertex_count, vertex_positions_stride, sparse_remap);
@@ -2218,6 +2218,7 @@ size_t meshopt_simplifyEdgeTracking(unsigned int* destination, const unsigned in
 		result_count = new_count;
 	}
 
+
 	// convert resulting indices back into the dense space of the larger mesh
 	if (sparse_remap)
 		for (size_t i = 0; i < result_count; ++i)
@@ -2230,9 +2231,8 @@ size_t meshopt_simplifyEdgeTracking(unsigned int* destination, const unsigned in
 	return result_count;
 }
 
-size_t meshopt_simplify_tracking(unsigned int* destination, const unsigned int* indices, size_t index_count, const float* vertex_positions_data, size_t vertex_count, size_t vertex_positions_stride, size_t target_index_count, float target_error, unsigned int options, float* out_result_error, std::vector<uint32_t>* vertex_remap)
 {
-	return meshopt_simplifyEdgeTracking(destination, indices, index_count, vertex_positions_data, vertex_count, vertex_positions_stride, target_index_count, target_error, options, out_result_error, vertex_remap);
+	return meshopt_simplifyEdgeTracking(destination, indices, index_count, vertex_positions_data, vertex_count, vertex_positions_stride, target_index_count, target_error, options, out_result_error, vertex_remap, vertex_lock);
 }
 
 /********************************************************************************/
