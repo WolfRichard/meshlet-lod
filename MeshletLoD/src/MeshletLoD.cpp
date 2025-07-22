@@ -1184,11 +1184,13 @@ void MeshletLoD::updateImGui()
         ImGui::Text("total   vertex count: %d", (unsigned int)m_scene.m_total_vertex_count);
         ImGui::Text("total triangle count: %d", (unsigned int)m_scene.m_totoal_triangle_count);
         ImGui::Separator();
-        ImGui::Text("scene import   time: %.4f sec", m_scene.m_sceneImportTime);
-        ImGui::Text("mesh parsing   time: %.4f sec", m_scene.m_modelParsingTime);
-        ImGui::Text("hierachy-gen.  time: %.4f sec", m_scene.m_hierarchyGenTime);
-        ImGui::Text("total pre-pro. time: %.4f sec", m_scene.m_totalPreProcessingTime);
-        ImGui::Text("api setup      time: %.4f sec", m_apiSetupTime);
+        ImGui::Text("scene import   time: %.6f sec", m_scene.m_sceneImportTime);
+        ImGui::Text("mesh parsing   time: %.6f sec", m_scene.m_modelParsingTime);
+        ImGui::Text("hierachy-gen.  time: %.6f sec", m_scene.m_hierarchyGenTime);
+        ImGui::Text("api setup      time: %.6f sec", m_apiSetupTime);
+        ImGui::Text("total pre-pro. time: %.6f sec", m_scene.m_totalPreProcessingTime + m_apiSetupTime);
+        ImGui::Text("back-up load   time: %.6f sec", m_scene.m_totalPreProcessingTime);
+        
     }
     ImGui::End();
 

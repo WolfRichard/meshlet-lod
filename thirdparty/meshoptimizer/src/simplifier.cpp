@@ -2231,6 +2231,7 @@ size_t meshopt_simplifyEdgeTracking(unsigned int* destination, const unsigned in
 	return result_count;
 }
 
+size_t meshopt_simplify_tracking(unsigned int* destination, const unsigned int* indices, size_t index_count, const float* vertex_positions_data, size_t vertex_count, size_t vertex_positions_stride, size_t target_index_count, float target_error, unsigned int options, float* out_result_error, std::vector<uint32_t>* vertex_remap, const unsigned char* vertex_lock)
 {
 	return meshopt_simplifyEdgeTracking(destination, indices, index_count, vertex_positions_data, vertex_count, vertex_positions_stride, target_index_count, target_error, options, out_result_error, vertex_remap, vertex_lock);
 }
