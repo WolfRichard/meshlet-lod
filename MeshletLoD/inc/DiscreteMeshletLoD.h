@@ -193,7 +193,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
 
     MeshletScene m_scene;
-    char  m_model_file_path[1024] = "./assets/scenes/TestScene.glb";//"./assets/scenes/TorusInstances.glb";
+    char  m_model_file_path[1024] = "C:/Users/wolfr/Desktop/dragonScenes/Dragon10000t512i.glb";//"./assets/scenes/TestScene.glb";//"./assets/scenes/TorusInstances.glb";
 };
 
 //"C:/Users/wolfr/Downloads/xyzrgb_dragon.ply/xyzrgb_dragon.ply";
